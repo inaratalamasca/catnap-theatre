@@ -29,7 +29,7 @@ MV3 content scripts match `https://suno.com/*` and `https://www.suno.com/*`, top
 
 Content scripts have access to data in the Suno page by design. This preview reads title/artist/art/lyrics and native playback state, keeping it local. It does not export listening history, authenticate on the user’s behalf, send analytics or communicate with a hosted Catnap service. Suno itself still performs its own normal network requests. Copying a matching song video may cause a second media request/cache read.
 
-The bundled AIU logo is exposed only to the supported Suno origins. The lounge loads only its packaged scripts/styles and the AIU Radio stream. Settings import accepts a versioned fixed schema, ignores extra fields, bounds lengths/numbers and rejects unsupported versions. It does not import HTML, script, URLs or file paths.
+The bundled AIU logo and lounge entry page are exposed only to the supported Suno origins. The lounge entry must be web-accessible so the host can open it from its Suno-page link. The lounge loads only its packaged scripts/styles and the AIU Radio stream. Settings import accepts a versioned fixed schema, ignores extra fields, bounds lengths/numbers and rejects unsupported versions. It does not import HTML, script, URLs or file paths.
 
 A trusted local file is shown with a Blob URL. Files never become web-accessible extension resources or uploads. Media is muted; user-selected files and displayed messages are still visible in a screen share.
 
