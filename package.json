@@ -1,0 +1,8 @@
+{
+  "name": "catnap-theatre",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AI-free Suno theatre overlay, preview for host testing",
+  "scripts": {"test": "node --test tests/*.test.cjs", "check": "bash scripts/check.sh"},
+  "devDependencies": {"jsdom": "26.0.0"}
+}

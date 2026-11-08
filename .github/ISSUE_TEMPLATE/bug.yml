@@ -1,0 +1,24 @@
+name: Bug report
+description: Describe a reproducible failure without private account or show data.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version and browser/OS
+      description: Use the manifest/source version, not the old folder label.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result, actual result
+      description: Include whether this happened on air or in a test. Remove tokens, private IDs and messages.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe evidence and workaround
+      description: Redacted screenshot, exact error and whether the native player still works.

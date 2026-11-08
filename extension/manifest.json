@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Catnap Theatre for Suno — Preview",
+  "version": "0.2.0",
+  "description": "A local, AI-free theatre overlay for native Suno playback. Preview release for host testing.",
+  "permissions": ["storage"],
+  "options_page": "lounge.html",
+  "content_scripts": [{
+    "matches": ["https://suno.com/*", "https://www.suno.com/*"],
+    "js": ["helpers.js", "content.js", "lyric-scroll.js", "visual-media.js", "standalone.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }],
+  "web_accessible_resources": [{"resources": ["assets/aiu-logo.png"], "matches": ["https://suno.com/*", "https://www.suno.com/*"]}],
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'"}
+}
