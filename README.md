@@ -4,7 +4,7 @@
 
 A simple theatre overlay for people hosting Suno listening parties. Suno plays the music; Catnap displays the artwork, lyrics, visible playlist and host messages. No AI, Discord bot, uploader account, SSH tunnel or backend service is required.
 
-**This is a separate development package, not a store release.** Version 0.5.0 is tested in an isolated Chromium profile with synthetic Suno fixtures. The installed 0.4.0 build stays untouched. Install or switch builds between shows, because extension reloads interrupt active capture.
+**This is a separate development package, not a store release.** Version 0.5.0 is tested in an isolated Chromium profile with synthetic Suno fixtures. The working Dev1 standalone 0.5.0 folder stays untouched by this separate icon revision. Install or switch builds between shows, because extension reloads interrupt active capture.
 
 ![Music-reactive background bars in an isolated rehearsal](docs/screenshots/visualizer-fixture.png)
 
