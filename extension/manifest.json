@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno \u2014 Preview",
-  "version": "0.2.0",
-  "description": "A local, AI-free theatre overlay for native Suno playback. Preview release for host testing.",
+  "name": "Catnap Theatre for Suno \u2014 Broadcast Dev",
+  "version": "0.3.0",
+  "description": "Standalone Theatre with optional music-only HQ broadcast. Development pilot; no AI or Discord bot required.",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "tabCapture",
+    "offscreen"
   ],
   "options_page": "lounge.html",
   "content_scripts": [
@@ -37,6 +40,17 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'; connect-src https: http:"
+  },
+  "minimum_chrome_version": "116",
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "broadcast-worker.js"
+  },
+  "action": {
+    "default_title": "Catnap music broadcast"
   }
 }

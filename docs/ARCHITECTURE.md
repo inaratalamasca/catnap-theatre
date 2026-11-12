@@ -1,4 +1,4 @@
-# Architecture — version 0.2.0 alpha
+# Architecture — version 0.3.0 broadcast development
 
 ```text
 Suno page and its native audio/queue
@@ -25,9 +25,9 @@ Separate lounge.html + lounge.js
 
 ## Permission and data boundary
 
-MV3 content scripts match `https://suno.com/*` and `https://www.suno.com/*`, top frame only. The sole extension API permission is `storage`. There is no service worker, cookies permission, debugger API, `tabs` permission, private API fetch, token scraping or backend bridge.
+MV3 content scripts match `https://suno.com/*` and `https://www.suno.com/*`, top frame only. The display layer retains its original local storage boundary. The optional broadcaster adds `activeTab`, `tabCapture`, `offscreen`, a service worker and per-relay optional host permission. Its toolbar control window initiates capture explicitly; content scripts cannot command it or read its session token. There is no cookies, debugger, `tabs`, microphone or private Suno API permission.
 
-Content scripts have access to data in the Suno page by design. This preview reads title/artist/art/lyrics and native playback state, keeping it local. It does not export listening history, authenticate on the user’s behalf, send analytics or communicate with a hosted Catnap service. Suno itself still performs its own normal network requests. Copying a matching song video may cause a second media request/cache read.
+Content scripts have access to data in the Suno page by design. This preview reads title/artist/art/lyrics and native playback state, keeping it local. The display layer does not export listening history, authenticate on the user’s behalf or send analytics. Only an explicitly started broadcaster sends selected tab audio to the configured WHIP relay. Suno itself still performs its own normal network requests. Copying a matching song video may cause a second media request/cache read.
 
 The bundled AIU logo and lounge entry page are exposed only to the supported Suno origins. The lounge entry must be web-accessible so the host can open it from its Suno-page link. The lounge loads only its packaged scripts/styles and the AIU Radio stream. Settings import accepts a versioned fixed schema, ignores extra fields, bounds lengths/numbers and rejects unsupported versions. It does not import HTML, script, URLs or file paths.
 
@@ -43,4 +43,8 @@ The older Catnap and new standalone extension share element IDs to preserve the 
 
 ## What belongs outside this project
 
-Discord intake/posting/reactions, AIU uploader leases, backend queue persistence, Suno MCP credentials, show-production AI, cue PDFs and vetted-host controls belong to the hosting project. OBS encoding, simulcast and independent broadcast surfaces belong to the studio/audio roadmap. Adding any of these must not make the standalone player require them.
+Discord intake/posting/reactions, AIU uploader leases, backend queue persistence, Suno MCP credentials, show-production AI, cue PDFs and vetted-host controls belong to the hosting project. Optional music broadcasting is now a modular toolbar/offscreen component in this development build; the Theatre display never requires the relay. Full OBS-style mixing, video simulcast and independent production surfaces remain outside this module.
+
+## Optional audio route
+
+Toolbar action → control window → worker validates source/relay permission → tabCapture audio stream ID → offscreen document restores local monitor and publishes stereo Opus over WHIP. A generation guard and bounded cleanup stop late captures and release late relay allocations. Host/Discord microphone audio is not captured. Secrets remain in session storage, not the page or settings export. See BROADCAST-PILOT.md for acceptance limits.

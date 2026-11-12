@@ -1,5 +1,7 @@
 # Catnap Theatre
 
+**Development branch 0.3.0 adds an optional music-only broadcaster.** Use [the pilot guide](docs/BROADCAST-PILOT.md) before loading this isolated build. The broadcaster is not installed in Dev1 and has not been accepted in a live Discord show. The source 0.2.0 presentation remains the baseline described below.
+
 A simple theatre overlay for people hosting Suno listening parties. Suno plays the music; Catnap displays the artwork, lyrics, visible playlist and host messages. No AI, Discord bot, uploader account, SSH tunnel or backend service is required.
 
 **Version 0.2.0 is a prepared alpha preview, not a store release.** The source passes focused automated tests and its sample screen was inspected in an isolated headless Chrome. The new build has not been activated in Ina’s installed browser or tested against a live signed-in Suno session. Keep the current show setup until the acceptance checklist is complete.
