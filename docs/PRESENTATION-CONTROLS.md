@@ -1,21 +1,29 @@
-# Persistent Theatre controls — development version 0.4.0
+# Persistent Theatre controls — development version 0.5.0
 
-Open Theatre in your Suno tab, open **Settings**, then choose **Popout controls**.
+Open Theatre in your Suno tab and click **Controls ↗** in its header.
 A separate control window stays open while you work in other tabs. Choosing
-Popout controls again brings that same window forward. Closing the window
+Controls again brings that same window forward. Closing the window
 leaves Theatre and the music running.
+
+The presentation canvas no longer has Settings or Visuals menus, lyric-option
+buttons, or focusable configuration fields. These options live in the popout.
+Normal play/pause, previous/next, seeking, visible-playlist navigation and Close
+remain available on Theatre.
 
 The window includes the existing presentation options:
 
 - Layout, lyric size, cue-line hiding, lyric following and Reload lyrics.
 - Host name, background colour, local logo and background image.
+- Music-reactive background bars, their enable switch and 5–40% opacity.
 - Muted song video, quick banners, custom banner text, local image/GIF/video,
   recent files, placement, timeout, Show overlay and Clear overlay.
 - Settings export/import/reset and the lounge link.
 
-These are the same settings and handlers used by Theatre's inline controls.
-Changes appear in the linked Theatre, and inline changes appear in the popout.
-Layout and branding preferences remain in this browser profile. Local files
+The popout uses Theatre's existing local handlers and validated settings.
+Changes appear in the linked Theatre. Internal adapter controls are hidden,
+inert and excluded from keyboard/accessibility navigation; the compatible
+advanced controller can still use those same handlers.
+Presentation preferences remain in this browser profile. Local files
 remain in their Suno tab; they survive closing/reopening the control window,
 but are not saved into settings exports or retained after the Suno tab closes.
 Local uploads stay within the browser and are never sent to a server.
@@ -39,8 +47,10 @@ The previous loaded extension folders have not been modified by this work.
 
 Verification used an isolated temporary Chromium profile and a synthetic Suno
 fixture, with no real user profile or live stream. It covered real control
-window creation/reuse, changes in both directions, banner display/clear, local
+window creation/reuse, saved-setting changes, banner display/clear, local
 image transfer/rendering, close/reopen persistence and separate source tabs.
+It also checks that configuration menus/fields are absent from the main
+presentation's accessibility tree while its playback controls remain available.
 It recorded no native playback clicks, captures or offscreen documents, and
 kept an existing broadcast-source binding unchanged. Actual Brave streaming
 use, large local files and full-show duration remain manual acceptance checks.

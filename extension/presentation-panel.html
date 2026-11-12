@@ -11,6 +11,11 @@
 <label class="check"><input id="stripTags" type="checkbox">Hide [section / metadata] lines</label>
 <div class="row"><button id="auto-scroll" type="button" aria-pressed="true">Auto-scroll</button><button id="reload-lyrics" type="button">Reload lyrics</button></div>
 </section>
+<section><h2>Background visualizer</h2>
+<label class="check"><input id="visualizerEnabled" type="checkbox" checked>Music-reactive background bars</label>
+<label>Opacity<span class="row"><input id="visualizerOpacity" type="range" min="5" max="40" step="1" value="20"><output id="visualizer-opacity-value">20%</output></span></label>
+<small id="visualizer-status">Waiting for a supported music source.</small>
+</section>
 <section><h2>Host &amp; background</h2>
 <label>Host name<input id="brand" maxlength="50"></label>
 <label class="colour">Background colour<input id="background" type="color" value="#090b14"></label>
@@ -34,7 +39,7 @@
 <div class="row"><button id="export" type="button">Save settings file</button><button id="reset" type="button">Reset settings</button></div>
 <label>Load settings file<input id="import" type="file" accept="application/json,.json"></label>
 <a id="lounge" target="_blank" rel="noopener">Open waiting / pre-show / after-show lounge ↗</a>
-<small>Layout and branding settings stay in this browser profile. Local media stays in the linked Suno tab until it is cleared or closed. Closing this window leaves Theatre running.</small>
+<small>Presentation settings stay in this browser profile. Local media stays in the linked Suno tab until it is cleared or closed. Closing this window leaves Theatre running.</small>
 </section>
 </main>
 <script src="helpers.js"></script><script src="presentation-panel.js"></script>

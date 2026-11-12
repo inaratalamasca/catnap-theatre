@@ -1,8 +1,9 @@
-/* Catnap broadcast service worker, version 0.4.0.
+/* Catnap broadcast service worker, version 0.5.0.
  * Only the packaged toolbar control window can start capture. Suno content scripts never receive tokens.
  */
 'use strict';
-importScripts('broadcast-core.js','broadcast-metadata-core.js','presentation-control-worker.js');
+const SCRIPT_VERSION = '0.5.0';
+importScripts('broadcast-core.js','broadcast-metadata-core.js','presentation-control-worker.js','visualizer.js');
 const PANEL = chrome.runtime.getURL('broadcast.html');
 const OFFSCREEN = chrome.runtime.getURL('broadcast-offscreen.html');
 let creating, commandGeneration = 0;
@@ -10,6 +11,7 @@ let creating, commandGeneration = 0;
 // public text; the publisher key remains in extension session storage/worker.
 const METADATA_SESSION = 'broadcastMetadataSession';
 let metadataOperations = Promise.resolve();
+let lastVisualizerForward=0;
 function metadataTask(operation) {
   const result = metadataOperations.then(operation);
   metadataOperations = result.catch(() => {});
@@ -93,6 +95,18 @@ async function ensureOffscreen() {
   await creating;
 }
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if(message.target==='broadcast-visualizer'){
+    // Spectrum is a small local-only projection from the monitor we already
+    // have. Only the actual captured source can receive it; toolbar selection
+    // and arbitrary Suno pages cannot redirect or forge these updates.
+    if(sender.id!==chrome.runtime.id||sender.url!==OFFSCREEN)return;
+    const bands=CatnapVisualizer.sanitizeBands(message.bands),stamp=Date.now();
+    if(!bands||stamp-lastVisualizerForward<100)return;lastVisualizerForward=stamp;
+    void metadataState().then(binding=>{
+      if(binding?.live)return chrome.tabs.sendMessage(binding.sourceTabId,{target:'catnap-visualizer-levels',bands,live:true},{frameId:0});
+    }).catch(()=>{});
+    return;
+  }
   if (message.target === 'broadcast-status' && sender.id === chrome.runtime.id && sender.url === OFFSCREEN) {
     const text=message.state==='live'?'LIVE':message.state==='idle'?'':message.state==='error'?'ERR':'…';
     void chrome.action.setBadgeText({text}); void chrome.action.setBadgeBackgroundColor({color:message.state==='error'?'#a12448':'#245b52'});

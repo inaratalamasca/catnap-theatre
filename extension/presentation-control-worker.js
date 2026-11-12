@@ -1,4 +1,4 @@
-/* Catnap presentation controls, version 0.4.0.
+/* Catnap presentation controls, version 0.5.0.
  * Reusable windows stay pinned to their originating Suno tab. This module has
  * no broadcast, navigation, audio-capture or playback commands.
  */
