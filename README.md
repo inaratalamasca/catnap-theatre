@@ -50,6 +50,7 @@ reader receives no publish token and cannot control playback.
 
 - [User guide and storage](docs/USER-GUIDE.md)
 - [Persistent presentation controls](docs/PRESENTATION-CONTROLS.md)
+- [Toolbar identity and pinning](docs/TOOLBAR-ICON.md)
 - [Background music bars](docs/BACKGROUND-VISUALIZER.md)
 - [Every requested feature: status and acceptance](docs/REQUIREMENTS.md)
 - [Architecture and boundaries](docs/ARCHITECTURE.md)
