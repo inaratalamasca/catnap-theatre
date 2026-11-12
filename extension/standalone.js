@@ -1,10 +1,10 @@
-// Catnap Theatre standalone companion, version 0.2.0.
-// Changes: local settings, selectable layouts, visible playlist and lyric controls.
+// Catnap Theatre standalone companion, version 0.4.0.
+// Changes: shared settings API and persistent presentation controls popout.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.2.0';
+  const SCRIPT_VERSION = '0.4.0';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';
@@ -18,11 +18,15 @@
     try{await chrome.storage.local.set({[STORAGE_KEY]:prefs});if(status)status.textContent='Settings saved in this browser profile.';}
     catch{if(status)status.textContent='Settings work for this tab, but browser storage is unavailable.';}
   }
+  // Isolated-world adapter: both control surfaces use this same validator,
+  // preferences object, repaint and profile storage write.
+  globalThis.CatnapPresentationSettings=Object.freeze({read:()=>({...prefs}),save});
   function paint(){
     if(!root)return;
     root.dataset.layout=prefs.layout;root.style.setProperty('--ct-lyric-size',prefs.fontSize+'px');
     root.style.setProperty('--ct-background',prefs.background);root.style.setProperty('background',prefs.background,'important');
     if(backgroundUrl){root.style.setProperty('background-image',`url("${backgroundUrl}")`,'important');root.style.setProperty('background-size','cover','important');root.style.setProperty('background-position','center','important');}
+    else root.style.removeProperty('background-image');
     const customLogo=root.querySelector('.ct-custom-logo');if(customLogo){customLogo.hidden=!logoUrl;if(logoUrl)customLogo.src=logoUrl;}
     const catIcon=root.querySelector('.ct-brand>svg');if(catIcon)catIcon.style.display=logoUrl?'none':'';
     const brand=root.querySelector('.ct-brand-main');if(brand)brand.textContent=prefs.brand||'Catnap Theatre';
@@ -70,6 +74,7 @@
     root.appendChild(style);
     tools=element('details',{class:'ct-standalone-tools'});
     tools.innerHTML=`<summary aria-label="Theatre settings">Settings</summary><div class="ct-settings-panel">
+<button type="button" class="ct-popout-controls">Popout controls ↗</button>
 <label>Layout<select name="layout"><option value="duet">Artwork + lyrics</option><option value="lineup">Playlist + artwork + lyrics</option><option value="art">Artwork focus</option></select></label>
 <label>Lyrics size<span class="ct-font-row"><button type="button" class="ct-font-down" aria-label="Smaller lyrics">A−</button><span class="ct-font-value"></span><button type="button" class="ct-font-up" aria-label="Larger lyrics">A+</button></span></label>
 <label class="ct-check"><input name="stripTags" type="checkbox">Hide [section / metadata] lines</label>
@@ -89,6 +94,10 @@
     const close=element('button',{type:'button',class:'ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
     close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));header.appendChild(close);
     status=tools.querySelector('.ct-settings-status');
+    tools.querySelector('.ct-popout-controls').onclick=async()=>{
+      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);tools.open=false;}
+      catch(error){status.textContent=error.message||'Could not open controls.';}
+    };
     const logo=element('img',{class:'ct-custom-logo',alt:'Host logo',hidden:''});Object.assign(logo.style,{maxWidth:'100px',height:'36px',objectFit:'contain'});root.querySelector('.ct-brand').prepend(logo);
     function localImage(control,kind){control.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)||file.size>20*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF under 20 MB.';return;}const old=kind==='logo'?logoUrl:backgroundUrl;if(old)URL.revokeObjectURL(old);const url=URL.createObjectURL(file);if(kind==='logo')logoUrl=url;else backgroundUrl=url;paint();status.textContent='Local image loaded for this tab only. It is not included in settings exports.';};}
     localImage(tools.querySelector('.ct-logo-file'),'logo');localImage(tools.querySelector('.ct-background-file'),'background');

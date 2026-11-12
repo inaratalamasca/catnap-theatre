@@ -1,9 +1,9 @@
 // Catnap theatre visual layer.
-// Version 0.2.0: standalone controls; remove controller message bridge.
+// Version 0.4.0: shared presentation controls and uploader-first AIU banners.
 // Presentation only: never controls Suno audio, navigation, voice or Discord.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.2.0';
+  const SCRIPT_VERSION = '0.4.0';
   // Keep at most five local files / 100 MiB in this tab; never upload or persist them.
   const recentFiles = [];
   let selectedFile = null;
@@ -88,7 +88,7 @@
       ui.status.textContent=selectedFile?'Loaded '+selectedFile.name+'; click Show overlay.':'No file selected.';
     });
     tools.querySelector('.ct-forget-files').addEventListener('click',()=>{clearOverlay();recentFiles.length=0;selectedFile=null;tools.querySelector('.ct-overlay-file').value='';renderRecents();ui.status.textContent='Recent files forgotten.';});
-    const presets=[['⚠️ Trigger warning','⚠️ TRIGGER WARNING — Sensitive themes in the next track. Take care of yourself.'],['⚠️ Content warning','⚠️ CONTENT WARNING — Mature themes / explicit lyrics.'],['🎶 Drop Tracks In Chat','🎶 DROP TRACKS IN CHAT — Share your Suno song link to join the queue!'],['🛑 No More Tracks','🛑 NO MORE TRACKS — Requests are closed. Enjoy the rest of the queue!'],['☕ Quick Break','☕ QUICK BREAK — Back in a moment!'],['💜 Thanks for Listening','💜 THANKS FOR LISTENING — You made the party!']];
+    const presets=[['⚠️ Trigger warning','⚠️ TRIGGER WARNING — Sensitive themes in the next track. Take care of yourself.'],['⚠️ Content warning','⚠️ CONTENT WARNING — Mature themes / explicit lyrics.'],['🎶 AIU uploader','🎶 AIU UPLOADER — Submit your track through https://uploader.aiu.fm/'],['🛑 No More Tracks','🛑 NO MORE TRACKS — Requests are closed. Enjoy the rest of the queue!'],['☕ Quick Break','☕ QUICK BREAK — Back in a moment!'],['💜 Thanks for Listening','💜 THANKS FOR LISTENING — You made the party!'],['🎶 Chat drops · emergency / non-AIU','🎶 CHAT DROPS — Emergency or non-AIU use only. Share your Suno song link in chat when the host explicitly opens chat requests.']];
     for(const [label,text] of presets){const button=document.createElement('button');button.type='button';button.textContent=label;button.addEventListener('click',()=>{tools.querySelector('.ct-banner-text').value=text;showOverlay(text,null);});tools.querySelector('.ct-presets').appendChild(button);}
     tools.querySelector('.ct-show-overlay').addEventListener('click',()=>showOverlay(tools.querySelector('.ct-banner-text').value.trim(),selectedFile||tools.querySelector('.ct-overlay-file').files[0]));
     // Standalone controls stay available here; there is no external controller bridge.

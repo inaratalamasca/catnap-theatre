@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Catnap Theatre verification. Version 0.3.0.
+# Catnap Theatre verification. Version 0.4.0.
 # Change summary: validate JavaScript, extension references and focused DOM tests.
 set -euo pipefail
-SCRIPT_VERSION='0.3.0'
+SCRIPT_VERSION='0.4.0'
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 printf 'Catnap Theatre checks %s\n' "$SCRIPT_VERSION"

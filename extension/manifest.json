@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno \u2014 Broadcast Dev",
-  "version": "0.3.0",
-  "description": "Standalone Theatre with optional music-only HQ broadcast. Development pilot; no AI or Discord bot required.",
+  "name": "Catnap Theatre for Suno \u2014 Broadcast Controls Dev",
+  "version": "0.4.0",
+  "description": "Standalone Theatre with detached host controls and optional music-only HQ broadcast with public song information. Development pilot.",
   "permissions": [
     "storage",
     "activeTab",
@@ -21,7 +21,9 @@
         "content.js",
         "lyric-scroll.js",
         "visual-media.js",
-        "standalone.js"
+        "standalone.js",
+        "broadcast-metadata.js",
+        "presentation-tab-controller.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
