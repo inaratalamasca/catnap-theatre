@@ -1,5 +1,14 @@
 # Changes
 
+## 0.6.0 development — 2026-11-15
+
+- Added optional read-only AIU LP/AP Pending intake with FIFO ordering, separate submission identities, uploader notes and tri-state disclaimer/radio flags. New arrivals append without restarting a playing entry.
+- Added shared Suno MCP playlist creation/sync with OAuth/PKCE, membership readback and a narrowly scoped native companion. Linux, Windows and macOS installer/launcher smoke checks pass on their respective CI systems; browser/account acceptance remains pending.
+- Added a mixed Suno/YouTube show queue with no Suno placeholders in managed mode. Paired sources prefer YouTube; missing/blocked sources hold for a host decision.
+- Added manual LP Load/Play separation, optional AP autoplay, timed warning overlays on advance, host-only context and clipboard announcements. Native source/loop guards prevent automatic next-song startup in focused and real-browser synthetic tests; live Suno/Discord/HQ behavior needs rehearsal.
+- Added a separate Catnap Inbox creator package without Theatre/capture permissions, using the same sync engine. Pinned distinct development IDs and purple/amber icons; no LLM or cue sheet is required.
+- Kept existing installed extensions and the submitted 0.5.0 Store beta separate. The v1 listener metadata is cleared during external-source entries until its schema supports those sources; private uploader notes never enter it.
+
 ## 0.5.0 early-access publication — 2026-11-15
 
 - Consolidated the existing broadcast, controls/visualizer and toolbar-icon changes into main.

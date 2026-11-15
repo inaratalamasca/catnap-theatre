@@ -126,8 +126,8 @@ show controls. Both use your signed-in uploader tab and your own Suno account.
 For the optional Suno companion, install Node.js 22 or later (24 LTS recommended),
 read native/README.md and register the exact extension ID assigned to this
 unpacked folder. Linux, Windows and macOS installer/source files are provided.
-Windows/macOS installation and browser launch have not been verified on those
-operating systems; treat them as development candidates. Packaging does not
+Isolated installer/launcher checks pass on Linux, Windows and macOS; actual
+browser connection and own-account Suno authorization still need rehearsal. Packaging does not
 install the companion or grant account access. No account credentials are included.
 
 The source README and docs describe the shared project; this file identifies

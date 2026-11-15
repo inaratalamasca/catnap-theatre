@@ -114,20 +114,20 @@ downloads, global security changes or service installation is performed.
 
 ## Validation status
 
-Mocked OAuth and MCP behavior, native framing, bounded SSE responses, Linux
-installer registration under isolated temporary directories, and the installed
-Linux launcher-to-Node health message are tested. **Windows compilation/registry
-and macOS browser launch have not been run on those operating systems.** Their
-installer/source files are development candidates and need platform rehearsal
-before describing them as supported releases. No real host installation,
-end-to-end account authorization or real playlist write was performed.
+Mocked OAuth and MCP behavior, native framing, bounded SSE responses and
+isolated installer/launcher checks are tested. The November 15
+[platform workflow](https://github.com/inaratalamasca/catnap-theatre/actions/runs/43761064568)
+passed on GitHub-hosted Linux, Windows and macOS, including actual Windows C#
+launcher compilation and a real binary-framed health exchange on each OS.
+These are development builds: actual Chrome/Brave-to-companion launch, Windows
+registry registration, own-account authorization and real playlist writes still
+require rehearsal before a supported release is claimed.
 
 `node scripts/native-platform-smoke.mjs` builds disposable installer output,
 checks exact-origin manifests and exchanges a framed health message through the
-real installed launcher. The Linux check passes locally. The dedicated
+real installed launcher. The Linux check also passes locally. The dedicated
 `native-platform.yml` workflow runs the same smoke on GitHub-hosted Linux,
-Windows and macOS; those remote results must be checked after the branch is
-pushed. Windows smoke uses `-NoRegister` and a temporary LOCALAPPDATA, so it
+Windows and macOS. Windows smoke uses `-NoRegister` and a temporary LOCALAPPDATA, so it
 does not alter HKCU; macOS smoke supplies a dedicated temporary Application
 Support root without changing HOME. These checks need no Suno credentials or
 provider requests. They test launcher/platform mechanics, not actual browser
