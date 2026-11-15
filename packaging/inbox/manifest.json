@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Catnap Inbox for AIU — Dev",
+  "version": "0.6.0",
+  "description": "Read your AIU LP/AP inbox and create or update a Suno playlist with verified, duplicate-aware additions.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "identity",
+    "nativeMessaging",
+    "alarms"
+  ],
+  "optional_host_permissions": [
+    "https://uploader.aiu.fm/*",
+    "https://suno.com/*",
+    "https://www.suno.com/*",
+    "https://studio-api-prod.suno.com/*"
+  ],
+  "background": {
+    "service_worker": "inbox-worker.js"
+  },
+  "options_page": "show.html",
+  "action": {
+    "default_title": "Catnap Inbox — LP/AP playlists",
+    "default_icon": {
+      "16": "assets/icons/theatre-16.png",
+      "32": "assets/icons/theatre-32.png",
+      "48": "assets/icons/theatre-48.png",
+      "128": "assets/icons/theatre-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/theatre-16.png",
+    "32": "assets/icons/theatre-32.png",
+    "48": "assets/icons/theatre-48.png",
+    "128": "assets/icons/theatre-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self' data:; media-src 'none'; frame-src 'none'; connect-src https://suno.com https://www.suno.com https://studio-api-prod.suno.com"
+  }
+}
