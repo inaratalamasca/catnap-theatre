@@ -11,7 +11,7 @@
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
   function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{}}={}){
     if(typeof guard!=='function')throw Error('A MAIN-world native media guard is required.');
-    let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1;
+    let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1,nativeTransition=-1;
     const delay=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
     function nativeCurrentId(){return sunoId(doc.querySelector('a[aria-label^="Playbar: Title for "]')?.href);}
     function nativeButton(id){
@@ -39,7 +39,7 @@
       if(event.source===win&&event.origin===win.location.origin&&event.data?.channel===NATIVE_CHANNEL){
         if(!current||core.playback(current).provider!=='suno'||event.data.generation!==generation)return;
         if(event.data.type==='ended'){const token=event.data.generation;void guard({action:'status',generation:token}).then(status=>{if(status.enabled&&!status.permitted&&generation===token)onEnded(token);}).catch(error=>{if(generation===token)onError(token,error.message);});}
-        if(event.data.type==='blocked')onError(generation,event.data.reason||'Native playback was held because its source changed.');
+        if(event.data.type==='blocked'){const token=event.data.generation;void guard({action:'status',generation:token}).then(status=>{if(generation===token&&nativeTransition!==token&&!status.permitted)onError(token,event.data.reason||'Native playback was held because its source changed.');}).catch(error=>{if(generation===token&&nativeTransition!==token)onError(token,error.message);});}
         return;
       }
       if(!frame||event.source!==frame.contentWindow||event.origin!==frameOrigin)return;
@@ -77,6 +77,8 @@
         return new Promise((resolve,reject)=>{pendingPlay={resolve,reject,timer:win.setTimeout(()=>{pendingPlay=null;post('pauseVideo');reject(Error('YouTube did not start. Press Play in the video, or check its embed permissions.'));},8000)};post('playVideo');});
       }
       const id=sunoId(source.url);if(!id)throw Error('This Suno song needs a canonical song link.');
+      nativeTransition=token;
+      try{
       await guard({action:'block',generation});
       if(token!==generation)throw Error('The selected show entry changed.');
       const nativeAudio=()=>Array.from(doc.querySelectorAll('audio')).find(el=>!el.closest('#catnap-theater-root')&&(el.currentSrc||el.src));
@@ -85,6 +87,7 @@
       const deadline=Date.now()+7000;
       while(token===generation&&Date.now()<deadline){const audio=nativeAudio(),key=audio?.currentSrc||audio?.src||'';if(nativeCurrentId()===id&&audio?.readyState>=2&&(!changingSong||key!==previousSource)){const status=await guard({action:'play',songId:id,sourceKey:key,restart:startedGeneration!==token,generation});if(!status?.permitted)throw Error('Suno playback was not authorized by the native guard.');startedGeneration=token;return;}await delay(80);}
       throw Error('Suno did not load the selected song. It remains held.');
+      }finally{if(nativeTransition===token)nativeTransition=-1;}
     }
     async function pause(entry,context={}){if(context.generation!==undefined&&context.generation!==generation)return;cancelPending('Playback was paused before it started.');if(entry&&core.playback(entry).provider==='youtube')post('pauseVideo');await guard({action:'pause',generation});}
     async function dispose(){if(destroyed)return;await stopAll({generation:generation+1});destroyed=true;win.removeEventListener('message',onMessage);await guard({action:'disable',generation});}

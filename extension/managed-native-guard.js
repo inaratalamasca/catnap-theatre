@@ -12,7 +12,7 @@
     const doc=win.document,proto=win.HTMLMediaElement?.prototype;
     if(!doc||!proto)return {command:()=>({ready:false,error:'Native media controls are unavailable.'})};
     const originalPlay=proto.play,originalPause=proto.pause,originalSetAttribute=win.Element.prototype.setAttribute;
-    const descriptors={};for(const key of ['src','srcObject','muted','autoplay'])descriptors[key]=Object.getOwnPropertyDescriptor(proto,key);
+    const descriptors={};for(const key of ['src','srcObject','muted','autoplay','loop'])descriptors[key]=Object.getOwnPropertyDescriptor(proto,key);
     const sourceProto=win.HTMLSourceElement?.prototype,sourceDescriptor=sourceProto&&Object.getOwnPropertyDescriptor(sourceProto,'src');
     let enabled=false,lease=null,generation=0,disposed=false;
     const saved=new Map();
@@ -20,9 +20,9 @@
     const media=()=>Array.from(doc.querySelectorAll('audio,video')).filter(native);
     const source=el=>el.currentSrc||el.src||'';
     const valid=el=>enabled&&lease?.media===el&&lease.source===source(el)&&!!lease.source;
-    function remember(el){if(!saved.has(el))saved.set(el,{muted:el.muted});}
+    function remember(el){if(!saved.has(el))saved.set(el,{muted:el.muted,loop:el.loop});}
     function setMuted(el,value){const setter=descriptors.muted?.set;if(setter)setter.call(el,value);else el.muted=value;}
-    function silence(el){remember(el);setMuted(el,true);try{originalPause.call(el);}catch{/* Detached/uninitialized media stays muted. */}}
+    function silence(el){remember(el);setMuted(el,true);if(descriptors.loop?.set)descriptors.loop.set.call(el,false);try{originalPause.call(el);}catch{/* Detached/uninitialized media stays muted. */}}
     function emit(type,extra={}){try{win.postMessage({channel:CHANNEL,type,generation,...extra},win.location.origin);}catch{/* Diagnostics never reopen the gate. */}}
     function block(reason='',notify=false){const hadLease=!!lease;lease=null;for(const el of media())silence(el);if(notify&&hadLease)emit('blocked',{reason});}
     function changing(el){if(!enabled||!native(el))return;if(lease?.media===el)block('The native audio source changed.',true);else silence(el);}
@@ -35,12 +35,14 @@
     }
     if(descriptors.muted?.set)Object.defineProperty(proto,'muted',{...descriptors.muted,set(value){if(enabled&&native(this)&&!valid(this)&&!value)return descriptors.muted.set.call(this,true);return descriptors.muted.set.call(this,value);}});
     if(descriptors.autoplay?.set)Object.defineProperty(proto,'autoplay',{...descriptors.autoplay,set(value){return descriptors.autoplay.set.call(this,enabled&&native(this)?false:value);}});
+    if(descriptors.loop?.set)Object.defineProperty(proto,'loop',{...descriptors.loop,set(value){if(enabled&&native(this)){remember(this);return descriptors.loop.set.call(this,false);}return descriptors.loop.set.call(this,value);}});
     if(sourceDescriptor?.set)Object.defineProperty(sourceProto,'src',{...sourceDescriptor,set(value){if(this.parentElement instanceof win.HTMLMediaElement)changing(this.parentElement);return sourceDescriptor.set.call(this,value);}});
     win.Element.prototype.setAttribute=function(name,value){
       const attr=String(name).toLowerCase();
       if(enabled&&native(this)){
         if(attr==='src')changing(this);
         if(attr==='autoplay')return;
+        if(attr==='loop'){remember(this);if(descriptors.loop?.set)descriptors.loop.set.call(this,false);return;}
         if(attr==='muted')remember(this);
       }else if(enabled&&this instanceof win.HTMLSourceElement&&this.parentElement instanceof win.HTMLMediaElement&&attr==='src')changing(this.parentElement);
       return originalSetAttribute.call(this,name,value);
@@ -50,7 +52,7 @@
     function onEnded(event){if(!enabled||!native(event.target))return;const current=lease?.media===event.target;if(current){block();emit('ended');}else silence(event.target);event.stopImmediatePropagation();}
     doc.addEventListener('play',onPlay,true);doc.addEventListener('playing',onPlay,true);doc.addEventListener('ended',onEnded,true);doc.addEventListener('loadstart',onLoadStart,true);
     const observer=new win.MutationObserver(records=>{if(!enabled)return;for(const record of records){if(record.type==='attributes'&&record.attributeName==='src'&&native(record.target)&&lease?.media===record.target&&!valid(record.target))block('The native audio source changed.',true);}for(const el of media())if(!valid(el)){if(el.autoplay&&descriptors.autoplay?.set)descriptors.autoplay.set.call(el,false);silence(el);}});
-    observer.observe(doc,{subtree:true,childList:true,attributes:true,attributeFilter:['src','autoplay']});
+    observer.observe(doc,{subtree:true,childList:true,attributes:true,attributeFilter:['src','autoplay','loop']});
     function status(){return {ready:!disposed,version:SCRIPT_VERSION,enabled,permitted:!!lease,generation,songId:lease?.songId||null};}
     async function command(message={}){
       if(disposed)throw Error('The native media guard has closed.');
@@ -72,11 +74,11 @@
           if(!valid(el)){block();throw Error('Suno changed the audio source before playback could start.');}
           return status();
         }
-        case 'disable':block();enabled=false;for(const [el,prefs]of saved)try{setMuted(el,prefs.muted);}catch{}saved.clear();return status();
+        case 'disable':block();enabled=false;for(const [el,prefs]of saved)try{setMuted(el,prefs.muted);if(descriptors.loop?.set)descriptors.loop.set.call(el,prefs.loop);}catch{}saved.clear();return status();
         default:throw Error('Unsupported managed native command.');
       }
     }
-    function dispose(){block();enabled=false;disposed=true;observer.disconnect();doc.removeEventListener('play',onPlay,true);doc.removeEventListener('playing',onPlay,true);doc.removeEventListener('ended',onEnded,true);doc.removeEventListener('loadstart',onLoadStart,true);proto.play=originalPlay;for(const [key,descriptor]of Object.entries(descriptors))if(descriptor)Object.defineProperty(proto,key,descriptor);if(sourceDescriptor)Object.defineProperty(sourceProto,'src',sourceDescriptor);win.Element.prototype.setAttribute=originalSetAttribute;for(const [el,prefs]of saved)try{setMuted(el,prefs.muted);}catch{}saved.clear();}
+    function dispose(){block();enabled=false;disposed=true;observer.disconnect();doc.removeEventListener('play',onPlay,true);doc.removeEventListener('playing',onPlay,true);doc.removeEventListener('ended',onEnded,true);doc.removeEventListener('loadstart',onLoadStart,true);proto.play=originalPlay;for(const [key,descriptor]of Object.entries(descriptors))if(descriptor)Object.defineProperty(proto,key,descriptor);if(sourceDescriptor)Object.defineProperty(sourceProto,'src',sourceDescriptor);win.Element.prototype.setAttribute=originalSetAttribute;for(const [el,prefs]of saved)try{setMuted(el,prefs.muted);if(descriptors.loop?.set)descriptors.loop.set.call(el,prefs.loop);}catch{}saved.clear();}
     return {command,status,dispose};
   }
   return {SCRIPT_VERSION,CHANNEL,install};
