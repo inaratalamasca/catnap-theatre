@@ -102,7 +102,7 @@
       if(this.disposed||token!==this.generation||!this.queue[this.index]||playback(this.queue[this.index]).provider!=='youtube'||!['ready','starting','paused'].includes(this.phase))return this.snapshot();
       ++this.playAttempt;this.phase=this.phase==='paused'?'paused':'ready';this.error=String(message||'YouTube needs a browser gesture. Press Play in the video.');return this.emit();
     }
-    async pause(){this.ensure();const generation=this.generation;++this.playAttempt;if(this.adapter.pause)await this.adapter.pause(this.queue[this.index]||null,{generation});else await this.adapter.stopAll({generation});if(generation===this.generation&&this.index>=0)this.phase='paused';return this.emit();}
+    async pause(){this.ensure();const generation=this.generation;++this.playAttempt;if(this.adapter.pause)await this.adapter.pause(this.queue[this.index]||null,{generation});else await this.adapter.stopAll({generation});if(generation!==this.generation||this.disposed)return this.snapshot();if(this.index>=0)this.phase='paused';return this.emit();}
     async ended(token){
       this.ensure();if(token!==this.generation||!['playing','starting'].includes(this.phase))return this.snapshot();
       const generation=this.generation;this.phase='ending';this.emit();await this.adapter.stopAll({generation});
