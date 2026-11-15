@@ -53,7 +53,7 @@ COMMON_FILES=(
 )
 THEATRE_FILES=(
   helpers.js content.js lyric-scroll.js visual-media.js standalone.js visualizer.js
-  managed-player.js managed-native-guard.js managed-media.js
+  managed-player.js managed-native-guard.js managed-media.js managed-show.js
   broadcast-core.js broadcast-metadata-core.js broadcast-metadata.js
   broadcast-worker.js broadcast-panel.js broadcast-offscreen.js
   broadcast.html broadcast.css broadcast-offscreen.html
@@ -97,9 +97,15 @@ build_flavor() {
     for file in "${THEATRE_FILES[@]}"; do copy_source "$PROJECT_DIR/extension/$file" "$package_dir/$file"; done
     copy_source "$PROJECT_DIR/extension/assets/aiu-logo.png" "$package_dir/assets/aiu-logo.png"
   fi
-  for file in 16 32 48 128; do copy_source "$PROJECT_DIR/extension/assets/icons/theatre-$file.png" "$package_dir/assets/icons/theatre-$file.png"; done
+  for file in 16 32 48 128; do
+    if [[ "$flavor" == inbox ]]; then
+      copy_source "$PROJECT_DIR/packaging/inbox/assets/icons/inbox-$file.png" "$package_dir/assets/icons/inbox-$file.png"
+    else
+      copy_source "$PROJECT_DIR/extension/assets/icons/theatre-$file.png" "$package_dir/assets/icons/theatre-$file.png"
+    fi
+  done
   for file in README.md CHANGELOG.md LICENSE NOTICE LICENSING.md; do copy_source "$PROJECT_DIR/$file" "$package_dir/$file"; done
-  for file in README.md catnap-suno-host.mjs install-linux.sh; do copy_source "$PROJECT_DIR/native/$file" "$package_dir/native/$file"; done
+  for file in README.md catnap-suno-host.mjs install-linux.sh install-windows.cmd install-windows.ps1 CatnapSunoLauncher.cs install-macos.sh; do copy_source "$PROJECT_DIR/native/$file" "$package_dir/native/$file"; done
   # Only maintained Markdown documentation is distributed. Screenshots are not
   # needed for installation; no historical/event/input folders are copied.
   while IFS= read -r file; do
@@ -117,10 +123,12 @@ Theatre playback, audio capture or YouTube playback. It lists external-only
 submissions for separate handling. The combined Theatre package adds the managed
 show controls. Both use your signed-in uploader tab and your own Suno account.
 
-For the optional Linux Suno companion, read native/README.md and register the
-exact extension ID assigned to this unpacked folder. Packaging does not install
-the companion or grant account access. Windows/macOS registration remains
-separate development work. No account credentials are included.
+For the optional Suno companion, install Node.js 22 or later (24 LTS recommended),
+read native/README.md and register the exact extension ID assigned to this
+unpacked folder. Linux, Windows and macOS installer/source files are provided.
+Windows/macOS installation and browser launch have not been verified on those
+operating systems; treat them as development candidates. Packaging does not
+install the companion or grant account access. No account credentials are included.
 
 The source README and docs describe the shared project; this file identifies
 the selected package. First-party licensing and branding terms are in LICENSE,

@@ -42,7 +42,7 @@ test('both flavors produce root-manifest folders/ZIPs with licensing and matchin
     const manifest=JSON.parse(fs.readFileSync(path.join(folder,'manifest.json'),'utf8'));
     assert.equal(manifest.version,'0.6.0');assert.equal(manifest.manifest_version,3);
     const members=execFileSync('unzip',['-Z1',archive],{encoding:'utf8'}).split('\n').filter(Boolean);
-    for(const file of ['manifest.json','LICENSE','NOTICE','LICENSING.md','PACKAGE-README.md','native/README.md','native/catnap-suno-host.mjs','native/install-linux.sh','docs/ACCEPTANCE.md'])assert.equal(members.includes(file),true,file);
+    for(const file of ['manifest.json','LICENSE','NOTICE','LICENSING.md','PACKAGE-README.md','native/README.md','native/catnap-suno-host.mjs','native/install-linux.sh','native/install-windows.cmd','native/install-windows.ps1','native/CatnapSunoLauncher.cs','native/install-macos.sh','docs/ACCEPTANCE.md'])assert.equal(members.includes(file),true,file);
     assert.equal(members.some(file=>file.startsWith('extension/')),false);
     assert.equal(members.some(file=>file.includes('connection.local')||file.endsWith('.env')||file.endsWith('.csv')),false);
     const digest=crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
@@ -58,6 +58,9 @@ test('both flavors produce root-manifest folders/ZIPs with licensing and matchin
   assert.equal(fs.existsSync(path.join(inbox,'content.js')),false);
   assert.equal(fs.existsSync(path.join(inbox,'managed-media.js')),false);
   assert.equal(fs.existsSync(path.join(inbox,'broadcast-worker.js')),false);
+  assert.equal(fs.existsSync(path.join(inbox,'assets/icons/inbox-128.png')),true);
+  assert.notDeepEqual(fs.readFileSync(path.join(inbox,'assets/icons/inbox-128.png')),fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.0/assets/icons/theatre-128.png')));
+  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.0/managed-show.js')),true);
   assert.match(fs.readFileSync(path.join(inbox,'package-mode.js'),'utf8'),/inboxOnly:true/);
   assert.match(fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.0/package-mode.js'),'utf8'),/inboxOnly:false/);
 });
