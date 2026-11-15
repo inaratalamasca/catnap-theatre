@@ -54,6 +54,18 @@
     "service_worker": "broadcast-worker.js"
   },
   "action": {
-    "default_title": "Catnap music broadcast"
+    "default_title": "Catnap Theatre — HQ broadcast controls",
+    "default_icon": {
+      "16": "assets/icons/theatre-16.png",
+      "32": "assets/icons/theatre-32.png",
+      "48": "assets/icons/theatre-48.png",
+      "128": "assets/icons/theatre-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/theatre-16.png",
+    "32": "assets/icons/theatre-32.png",
+    "48": "assets/icons/theatre-48.png",
+    "128": "assets/icons/theatre-128.png"
   }
 }

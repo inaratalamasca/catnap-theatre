@@ -1,5 +1,10 @@
 # Changes
 
+## 0.5.0 toolbar icon revision — 2026-11-12
+
+- Added the Catnap headphone cat as explicit toolbar/extension icons in four sizes; existing toolbar behavior and presentation features are unchanged.
+- Kept this source separate from the working Dev1 installation.
+
 ## 0.5.0 development — 2026-11-12
 
 - Moved presentation options into the persistent control window, with one Controls entry on Theatre. Playback, navigation and Close remain available on the canvas.
