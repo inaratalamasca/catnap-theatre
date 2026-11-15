@@ -1,0 +1,239 @@
+'use strict';
+/* Managed show integration tests, version 0.6.0.
+ * All accounts, tabs, provider data and MCP operations are synthetic mocks.
+ * Tests never load browser profiles, contact services or write real playlists.
+ */
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const crypto = require('node:crypto');
+const Core = require('../extension/inbox-core.js');
+const STATE_KEY = 'catnap-managed-show-v1';
+const SONG = '11111111-2222-4333-8444-555555555555';
+const SECOND = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+const PLAYLIST = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+const NEXT_PLAYLIST = '12345678-1234-4234-8234-123456789abc';
+const song = id => 'https://suno.com/song/' + id;
+const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const baseState = () => ({version:1,id:'fixture-show',mode:'lp',showName:'Fixture show',inboxId:'fixture-inbox',inboxName:'Fixture LP',
+  uploaderTabId:8,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
+const row = (id, values = {}) => ({id,status:'pending',deleted:false,submission_type:'LP',submitted_at:'2026-11-15 10:00:00',
+  title:'Fixture '+id,artist:'Fixture artist',uploader_name:'fixture-uploader',uploader_id:'fixture-id',message:'PRIVATE-UPLOADER-NOTE',
+  disclaimer_needed:'yes',suno_url:song(SONG),...values});
+const entry = (id = 'one', values = {}) => ({...Core.normalizeRows([row(id)],{inboxId:'fixture-inbox',mode:'lp'}).entries[0],...values});
+
+function fixture(options = {}) {
+  const local = {[STATE_KEY]:clone({...baseState(),...options.state})}, session = {};
+  const calls = {messages:[],scripts:[],fetch:[],mcp:[],alarms:[],windows:[],permissions:[]};
+  const tabMap = new Map([
+    [7,{id:7,url:'https://suno.com/playlist/'+PLAYLIST,title:'Synthetic Suno playlist'}],
+    [8,{id:8,url:'https://uploader.aiu.fm/',title:'Synthetic AIU Uploader'}],
+    [9,{id:9,url:'https://discord.com/channels/fixture/fixture',title:'Untouched Discord'}],
+    [10,{id:10,url:'https://suno.com.evil.invalid/',title:'Unrelated site'}]
+  ]);
+  let listener, startup, alarm;
+  const url = name => 'chrome-extension://fixture-extension/' + name;
+  function storage(memory) {
+    return {get:async keys=>{
+      if(typeof keys==='string') return {[keys]:clone(memory[keys])};
+      if(Array.isArray(keys)) return Object.fromEntries(keys.map(key=>[key,clone(memory[key])]));
+      return clone(memory);
+    },set:async values=>{for(const [key,value] of Object.entries(values))memory[key]=clone(value);},remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete memory[key];}};
+  }
+  const chrome = {
+    runtime:{id:'fixture-extension',getURL:url,onMessage:{addListener:fn=>{listener=fn;}},onStartup:{addListener:fn=>{startup=fn;}}},
+    storage:{local:storage(local),session:storage(session)},
+    tabs:{query:async()=>[...tabMap.values()].map(clone),get:async id=>{if(!tabMap.has(id))throw Error('No such fixture tab');return clone(tabMap.get(id));},sendMessage:async(tabId,message,target)=>{
+      calls.messages.push(clone({tabId,message,target}));
+      if(message.target==='catnap-inbox') {
+        if(message.action==='discover')return {ok:true,data:{inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP',mode:'lp'}],ap:[{id:'fixture-inbox',name:'Fixture AP',mode:'ap'}]}}};
+        if(message.action==='read')return {ok:true,data:options.inboxData?clone(options.inboxData):{inbox:{id:'fixture-inbox',name:'Fixture '+message.mode.toUpperCase(),mode:message.mode},summary:{pending:(options.rows||[]).length},rows:clone(options.rows||[])}};
+      }
+      if(message.target==='catnap-show-tab')return options.playerResponse || {ok:true};
+      throw Error('Unexpected tab message');
+    }},
+    scripting:{executeScript:async script=>{calls.scripts.push(script);return [{result:{ok:true}}];}},
+    permissions:{contains:async spec=>{calls.permissions.push(clone(spec));return options.permission!==false;}},
+    alarms:{create:async(name,spec)=>{calls.alarms.push({action:'create',name,...spec});},clear:async name=>{calls.alarms.push({action:'clear',name});return true;},onAlarm:{addListener:fn=>{alarm=fn;}}},
+    windows:{create:async spec=>{calls.windows.push(clone(spec));return {id:100};},update:async()=>({id:100})}
+  };
+  const CatnapSuno = {
+    status:async()=>({connected:true}),connect:async()=>({connected:true}),disconnect:async()=>({connected:false}),listPlaylists:async()=>[],
+    createPlaylist:async(name,visibility)=>{calls.mcp.push({operation:'create',name,visibility});return {id:PLAYLIST,name,visibility};},
+    reconcilePlaylist:async(id,ids,bindings)=>{
+      calls.mcp.push({operation:'reconcile',id,ids:[...ids],bindings});
+      if(options.onReconcile)return options.onReconcile({id,ids,bindings,local});
+      assert.equal(await bindings.isCurrent(),true);
+      return {confirmed:ids.length,addedConfirmed:ids.length,missing:[],failures:[]};
+    }
+  };
+  const sandbox = {chrome,CatnapSuno,CatnapInboxCore:Core,crypto,URL,AbortSignal,TextEncoder,Date,
+    fetch:async(target,spec)=>{calls.fetch.push({target,spec});return {ok:true,url:target,headers:{get:()=> 'text/html'},text:async()=>'<html><head></head></html>'};}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/show-worker.js'),'utf8'),sandbox);
+  const host = {id:'fixture-extension',url:url('show.html')};
+  const player = {id:'fixture-extension',url:'https://suno.com/playlist/'+PLAYLIST,tab:{id:7},frameId:0};
+  const send = (message,sender=host)=>new Promise(resolve=>{if(listener(message,sender,value=>resolve(clone(value)))!==true)resolve(undefined);});
+  const control = (action,parameters={},sender=host)=>send({target:'catnap-show-worker',action,...parameters},sender);
+  return {calls,local,session,tabMap,url,host,player,send,control,state:()=>clone(local[STATE_KEY]),startup:async()=>{startup();await tick();},alarm:async()=>{alarm({name:'catnap-inbox-watch'});await tick();}};
+}
+
+test('private host controls reject unrelated senders while own extension popup/tab is accepted', async () => {
+  const f=fixture();
+  for(const sender of [
+    {id:'another-extension',url:f.url('show.html')},
+    {id:'fixture-extension',url:'https://suno.com/playlist/'+PLAYLIST,tab:{id:7}},
+    {id:'fixture-extension',url:f.url('show.html')+'?untrusted=1'},
+    {id:'fixture-extension',url:'https://unrelated.invalid/show.html'}
+  ])assert.equal((await f.control('status',{},sender)).ok,false);
+  assert.equal((await f.control('status',{}, {...f.host,tab:{id:100}})).ok,true);
+  assert.equal(f.calls.mcp.length,0);
+  assert.equal(f.calls.messages.length,0);
+});
+
+test('uploader reads inject their core/adapter into only the selected authorized origin and include show mode', async () => {
+  const f=fixture({state:{mode:'ap'}});
+  assert.equal((await f.control('discover')).ok,true);
+  const injection=f.calls.scripts[0];
+  assert.deepEqual(clone(injection.target),{tabId:8,frameIds:[0]});
+  assert.deepEqual([...injection.files],['inbox-core.js','inbox-reader.js']);
+  const request=f.calls.messages[0];
+  assert.equal(request.tabId,8);assert.equal(request.message.target,'catnap-inbox');
+  assert.equal(request.message.mode,'ap');assert.equal(request.target.frameId,0);
+  assert.deepEqual(f.calls.permissions[0],{origins:['https://uploader.aiu.fm/*']});
+  assert.equal(f.calls.fetch.length,0);
+  const denied=fixture({permission:false});
+  assert.equal((await denied.control('discover')).ok,false);assert.equal(denied.calls.scripts.length,0);
+  const wrongOrigin=fixture();wrongOrigin.tabMap.set(8,{id:8,url:'https://uploader.aiu.fm.evil.invalid/'});
+  assert.equal((await wrongOrigin.control('discover')).ok,false);assert.equal(wrongOrigin.calls.scripts.length,0);
+});
+
+test('inbox import retains FIFO/YouTube-only entries and never writes a playlist or starts playback', async () => {
+  const f=fixture({state:{playlistId:PLAYLIST,playerTabId:7},rows:[
+    row('late',{submitted_at:'2026-11-15 12:00:00',suno_url:'',youtube_url:'https://youtu.be/AbCdEfGhI12'}),
+    row('early',{submitted_at:'2026-11-15 10:00:00'})
+  ]});
+  const result=await f.control('import');assert.equal(result.ok,true);
+  assert.deepEqual(result.data.entries.map(item=>item.submissionId),['early','late']);
+  assert.equal(result.data.entries[1].preferredSource,'youtube');assert.equal(result.data.entries[1].sunoId,null);
+  assert.equal(result.data.entries[0].note,'PRIVATE-UPLOADER-NOTE');
+  assert.equal(f.calls.mcp.length,0);
+  const playerMessages=f.calls.messages.filter(call=>call.message.target==='catnap-show-tab');
+  assert.equal(playerMessages.length,1);assert.equal(playerMessages[0].message.action,'update');
+  assert.equal(JSON.stringify(playerMessages).includes('PRIVATE-UPLOADER-NOTE'),false);
+  assert.equal(JSON.stringify(playerMessages).includes('fixture-uploader'),false);
+  assert.equal(playerMessages[0].message.show.entries[0].disclaimer,'yes');
+});
+
+test('refresh preserves played state and ordering while appending newly arrived submissions', async () => {
+  const current=entry('existing',{state:'playing',playbackId:'existing-occurrence'});
+  const f=fixture({state:{entries:[current]},rows:[
+    row('new',{submitted_at:'2026-11-15 11:00:00'}),
+    row('existing',{submitted_at:'2026-11-15 10:00:00',message:'Updated private note'})
+  ]});
+  assert.equal((await f.control('import')).ok,true);
+  const entries=f.state().entries;
+  assert.deepEqual(entries.map(item=>item.submissionId),['existing','new']);
+  assert.equal(entries[0].state,'playing');assert.equal(entries[0].playbackId,'existing-occurrence');
+  assert.equal(entries[0].note,'Updated private note');assert.equal(f.calls.mcp.length,0);
+});
+
+test('returned inbox/show binding must match before importing any rows', async () => {
+  const f=fixture({inboxData:{inbox:{id:'another-inbox',name:'Wrong inbox',mode:'lp'},rows:[row('wrong')],summary:{pending:1}}});
+  const result=await f.control('import');assert.equal(result.ok,false);assert.match(result.error,/does not match/);
+  assert.equal(f.state().entries.length,0);assert.equal(f.calls.mcp.length,0);
+});
+
+test('LP never accepts autoplay and AP autoplay can be explicitly enabled then disabled', async () => {
+  const f=fixture();
+  const rejected=await f.control('configure',{settings:{autoplay:true}});
+  assert.equal(rejected.ok,false);assert.match(rejected.error,/LP uses manual/);assert.equal(f.state().autoplay,false);
+  assert.equal((await f.control('configure',{settings:{mode:'ap',autoplay:true}})).ok,true);
+  assert.equal(f.state().autoplay,true);
+  assert.equal((await f.control('configure',{settings:{autoplay:false}})).ok,true);assert.equal(f.state().autoplay,false);
+  assert.equal((await f.control('configure',{settings:{mode:'lp'}})).ok,true);assert.equal(f.state().autoplay,false);
+  assert.equal((await f.control('watch',{enabled:true})).ok,false);
+  assert.equal(f.calls.alarms.some(call=>call.action==='create'),false);
+});
+
+test('only the bound top-level Suno player can report playback or invoke native commands', async () => {
+  const f=fixture({state:{playerTabId:7,entries:[entry()]}});
+  const observed={target:'catnap-show-observed',showId:'fixture-show',playback:{phase:'playing',index:0,generation:1,occurrenceId:'fixture-occurrence',source:'suno',current:{id:'fixture-inbox:one',note:'FORGED-NOTE'}}};
+  for(const sender of [{...f.player,tab:{id:8}},{...f.player,frameId:1},{...f.player,id:'foreign'},{...f.player,url:'https://suno.com.evil.invalid/'}]) {
+    assert.equal((await f.send(observed,sender)).ok,false);
+    assert.equal((await f.send({target:'managed-native',action:'play'},sender)).ok,false);
+  }
+  assert.equal(f.calls.scripts.length,0);assert.equal(f.state().playback,null);
+  assert.equal((await f.send({...observed,showId:'wrong-show'},f.player)).ok,false);
+  assert.equal((await f.send(observed,f.player)).ok,true);
+  assert.equal(f.state().playback.current.id,'fixture-inbox:one');
+  assert.equal(JSON.stringify(f.state().playback).includes('FORGED-NOTE'),false);
+  assert.equal((await f.send({target:'managed-native',action:'play',generation:1,songId:SONG},f.player)).ok,true);
+  assert.equal(f.calls.scripts[0].target.tabId,7);assert.equal(f.calls.scripts[0].world,'MAIN');
+});
+
+test('player binding targets only an open Suno tab and public player updates exclude host-only data', async () => {
+  const f=fixture({state:{entries:[entry()],playerTabId:null}});
+  assert.equal((await f.control('bind-player',{tabId:10})).ok,false);
+  assert.equal(f.state().playerTabId,null);
+  assert.equal((await f.control('bind-player',{tabId:7})).ok,true);
+  assert.equal(f.state().playerTabId,7);
+  const message=f.calls.messages.find(call=>call.message.action==='enable');
+  assert.equal(message.tabId,7);assert.equal(message.target.frameId,0);
+  assert.equal(message.message.show.entries[0].title,'Fixture one');
+  assert.equal('note' in message.message.show.entries[0],false);
+  assert.equal('uploaderId' in message.message.show.entries[0],false);
+  assert.equal('uploaderName' in message.message.show.entries[0],false);
+  f.tabMap.set(7,{id:7,url:'https://unrelated.invalid/'});
+  assert.equal((await f.control('play')).ok,false);
+  assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
+});
+
+test('manual announcement uses actual active source and uploader credit without notes unless explicitly requested', async () => {
+  const paired=entry('one',{youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12',preferredSource:'youtube',uploaderName:'@everyone-example'});
+  const f=fixture({state:{playerTabId:7,entries:[paired]}});
+  assert.equal((await f.control('announcement')).ok,false);
+  const observed={target:'catnap-show-observed',showId:'fixture-show',playback:{phase:'playing',index:0,generation:1,occurrenceId:'actual-source-occurrence',source:'suno',current:{id:paired.id}}};
+  assert.equal((await f.send(observed,f.player)).ok,true);
+  const announcement=await f.control('announcement');assert.equal(announcement.ok,true);
+  assert.match(announcement.data.text,/Now playing:/);
+  assert.match(announcement.data.text,/Submitted by: ＠everyone-example/);
+  assert.equal(announcement.data.text.includes(song(SONG)),true);
+  assert.equal(announcement.data.text.includes(paired.youtubeUrl),false);
+  assert.equal(announcement.data.context.source,'suno');
+  assert.equal('uploaderNote' in announcement.data.context,false);
+  assert.equal(JSON.stringify(announcement).includes('PRIVATE-UPLOADER-NOTE'),false);
+  assert.equal((await f.control('announcement',{includeNotes:true})).data.context.uploaderNote,'PRIVATE-UPLOADER-NOTE');
+  assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
+});
+
+test('playlist writes require explicit sync, exclude held/external-only items and deduplicate Suno IDs', async () => {
+  const f=fixture({state:{playlistId:PLAYLIST,entries:[
+    entry('valid'),entry('duplicate'),entry('held',{sunoId:SECOND,sunoUrl:song(SECOND),state:'held',holdReason:'Wrong show'}),
+    entry('youtube',{sunoId:null,sunoUrl:null,youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12',preferredSource:'youtube'})
+  ]}});
+  assert.equal(f.calls.mcp.length,0);
+  const result=await f.control('sync-playlist');assert.equal(result.ok,true);
+  assert.equal(f.calls.mcp.length,1);assert.equal(f.calls.mcp[0].id,PLAYLIST);
+  assert.deepEqual(f.calls.mcp[0].ids,[SONG]);assert.equal(f.state().lastPlaylistSync.confirmed,1);
+  f.local[STATE_KEY].playlistId=NEXT_PLAYLIST;
+  assert.equal(await f.calls.mcp[0].bindings.isCurrent(),false);
+  const missing=fixture({state:{entries:[entry()]}});
+  assert.equal((await missing.control('sync-playlist')).ok,false);assert.equal(missing.calls.mcp.length,0);
+  const unresolved=fixture({state:{playlistId:PLAYLIST,entries:[entry('short',{sunoId:null,sunoUrl:'https://suno.com/s/FixtureShare'})]}});
+  assert.equal((await unresolved.control('sync-playlist')).ok,false);assert.equal(unresolved.calls.mcp.length,0);
+});
+
+test('watching is bounded and explicitly stopped on browser startup without reconnecting or writing playlists', async () => {
+  const f=fixture({state:{mode:'ap',playlistId:PLAYLIST,playerTabId:7,watch:{enabled:true,until:Date.now()+3600000},playback:{phase:'playing'}}});
+  await f.startup();
+  assert.equal(f.state().watch.enabled,false);assert.equal(f.state().playerTabId,null);assert.equal(f.state().playback,null);
+  assert.equal(f.calls.mcp.length,0);assert.equal(f.calls.messages.length,0);
+  assert.equal(f.calls.alarms.some(call=>call.action==='create'),false);
+  assert.equal(f.calls.alarms.some(call=>call.action==='clear'),true);
+  const expired=fixture({state:{mode:'ap',watch:{enabled:true,until:Date.now()-1000},playlistId:PLAYLIST}});
+  await expired.alarm();
+  assert.equal(expired.state().watch.enabled,false);assert.equal(expired.calls.mcp.length,0);assert.equal(expired.calls.messages.length,0);
+});
