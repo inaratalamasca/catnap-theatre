@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.5 development — November 15, 2026
+
+- Add a bounded, muted native preparation step only after explicit Play, so a cold Suno player can finish loading without an audible lead-in. Quiet Load never enters preparation. Pause, stop, a different entry and timeout close preparation.
+- Keep exact song/source verification before audible playback. Loading failures report only safe readiness facts, without audio URLs or account data.
+- Preserve an operator's chosen Suno tab when native tab titles change; closing that chosen tab holds instead of silently targeting another one.
+- Live 0.6.4 linking and quiet staging succeeded, but cold Play timed out after finding the native control. The 0.6.5 preparation change still requires host rehearsal.
+
 ## 0.6.4 development — November 15, 2026
 
 - Correct Copy now playing to use the inbox's Discord user mention when available, with an `@name` fallback. Keep uploader identity host-only, avoid mass mentions, and never send chat automatically.

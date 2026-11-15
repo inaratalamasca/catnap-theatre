@@ -9,13 +9,13 @@ const extension = path.join(__dirname,'../extension');
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function settle() { await tick(); await tick(); }
 
-async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true}={}) {
+async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true,holdPlay=false}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
   const w=dom.window, messages=[],copies=[],permissions=[];
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:playerInitiallySelected?22:null,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
-  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant;
+  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant,finishPlay;
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
   const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
   w.setInterval=()=>0;
@@ -24,6 +24,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
     messages.push(structuredClone(message));let data;
     switch(message.action) {
       case 'status':data=snapshot();break;
+      case 'play':if(holdPlay)await new Promise(resolve=>{finishPlay=resolve;});data={done:true};break;
       case 'connect-suno':if(connectError)return {ok:false,error:connectError};sunoConnected=true;sunoReconnectRequired=false;data={connected:true};break;
       case 'disconnect-suno':sunoConnected=false;sunoReconnectRequired=false;data={connected:false};break;
       case 'configure':Object.assign(state,message.settings);data=structuredClone(state);break;
@@ -42,7 +43,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   }}};
   Object.defineProperty(w.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{if(clipboardDenied)throw Error('Clipboard permission denied');copies.push(value);}}});
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
-  return {dom,w,messages,copies,permissions,setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
+  return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
 }
 
 test('LP starts with autoplay off and disabled; AP permits a separate explicit toggle',async t=>{
@@ -186,4 +187,33 @@ test('choosing a source tab enables first row Load without an extra binding acti
   assert.equal(f.w.document.querySelector('#queue button').disabled,false);
   f.w.document.querySelector('#queue button').click();await settle();
   assert.equal(f.messages.find(m=>m.action==='load').tabId,22);
+});
+
+test('an unbound source selection survives tab-title refresh without connecting or playing',async t=>{
+  const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  await f.change('player-tab','22');
+  f.tabs.find(tab=>tab.id===22).title='A new native song title | Suno';
+  await f.change('show-name','Refresh without playback');
+  assert.equal(f.element('player-tab').value,'22');
+  assert.equal(f.w.document.querySelector('#queue button').disabled,false);
+  assert.equal(f.messages.some(m=>['bind-player','play','load'].includes(m.action)),false);
+});
+
+test('a closed chosen source holds instead of silently selecting another Suno tab',async t=>{
+  const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  await f.change('player-tab','22');
+  f.tabs.splice(f.tabs.findIndex(tab=>tab.id===22),1,{id:23,title:'Other Suno tab',kind:'suno'});
+  await f.change('show-name','Refresh after closed source');
+  assert.equal(f.element('player-tab').value,'');
+  assert.equal(f.w.document.querySelector('#queue button').disabled,true);
+  assert.equal(f.messages.some(m=>['bind-player','play','load'].includes(m.action)),false);
+});
+
+test('the host Pause button remains effective while Play is waiting for readiness',async t=>{
+  const f=await fixture({holdPlay:true});t.after(()=>f.dom.window.close());
+  await f.click('play');assert.equal(f.w.document.body.getAttribute('aria-busy'),'true');
+  await f.click('pause');
+  assert.equal(f.messages.filter(m=>m.action==='pause').length,1);
+  assert.equal(f.w.document.body.getAttribute('aria-busy'),'true','Pause must not unlock other pending actions');
+  f.releasePlay();await settle();assert.equal(f.w.document.body.hasAttribute('aria-busy'),false);
 });

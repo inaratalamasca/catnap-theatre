@@ -1,11 +1,12 @@
-/* Catnap Theatre managed-show presentation, version 0.6.4.
- * Change summary: reload-safe binding status, first-entry Play, trusted native
+/* Catnap Theatre managed-show presentation, version 0.6.5.
+ * Change summary: a second toggle cancels pending playback; reload-safe binding
+ * status, first-entry Play, trusted native
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. Host-only notes remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.4';
+  const SCRIPT_VERSION='0.6.5';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -97,6 +98,7 @@
   async function command(action,args={}){
     if(action==='status')return {enabled:active,showId:show?.id||null,bindingId:show?.bindingId||null,playback:state(),guard:active?await guard({action:'status'}):null,stageOpen:!!root()};
     if(!active||!coordinator)throw Error('Enable the managed show in Inbox & show controls first.');
+    if(action==='toggle'&&state().phase==='starting'){const playback=await coordinator.pause();render();return {playback};}
     const wasClosed=!root();
     if(['load','next','previous','play','toggle'].includes(action))view()?.open(true);
     if(['play','toggle'].includes(action)){
@@ -114,7 +116,7 @@
     else if(action==='next')result=await coordinator.loadNext();
     else if(action==='previous')result=await coordinator.loadPrevious();
     else if(action==='play')result=await coordinator.play();
-    else if(action==='toggle')result=await (state().phase==='playing'?coordinator.pause():coordinator.play());
+    else if(action==='toggle')result=await (['playing','starting'].includes(state().phase)?coordinator.pause():coordinator.play());
     else if(action==='pause')result=await coordinator.pause();
     else if(action==='stop')result=await coordinator.stop();
     else if(action==='repeat-warning')result=coordinator.repeatWarning();

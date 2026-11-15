@@ -61,7 +61,7 @@ function fixture(options = {}) {
         }
         if(message.action==='status')return options.healthResponse||{enabled:pageEnabled,showId:pageEnabled?pageShow:null,bindingId:pageEnabled?pageLease:null,guard:pageEnabled?{ready:true,enabled:true,integrity:true}:null,playback:{phase:'ready'},stageOpen:true};
         if(message.action==='disable'){if(options.rejectDisable)throw Error('Old content context lost');pageEnabled=false;return {enabled:false};}
-        return options.playerResponse || {ok:true};
+        return options.onPlayerCommand?options.onPlayerCommand(message):options.playerResponse || {ok:true};
       }
       throw Error('Unexpected tab message');
     }},
@@ -182,6 +182,7 @@ test('only the bound top-level Suno player can report playback or invoke native 
   for(const sender of [{...f.player,tab:{id:8}},{...f.player,frameId:1},{...f.player,id:'foreign'},{...f.player,url:'https://suno.com.evil.invalid/'}]) {
     assert.equal((await f.send(observed,sender)).ok,false);
     assert.equal((await f.send(native,sender)).ok,false);
+    assert.equal((await f.send({...native,action:'prepare',generation:1,songId:SONG},sender)).ok,false);
   }
   assert.equal(f.calls.scripts.length,0);assert.equal(f.state().playback,null);
   assert.equal((await f.send({...observed,showId:'wrong-show'},f.player)).ok,false);
@@ -192,6 +193,10 @@ test('only the bound top-level Suno player can report playback or invoke native 
   assert.equal(f.calls.scripts[0].target.tabId,7);assert.equal(f.calls.scripts[0].world,'MAIN');
   assert.equal(f.calls.scripts[0].args[0].sourceKey,'fixture-media-source');
   assert.equal(f.calls.scripts[0].args[0].restart,true);
+  assert.equal((await f.send({...native,action:'prepare',generation:1,songId:SONG},f.player)).ok,true);
+  assert.equal(f.calls.scripts[1].args[0].action,'prepare');
+  assert.equal(f.calls.scripts[1].args[0].songId,SONG);
+  assert.equal(f.calls.scripts[1].args[0].generation,1);
 });
 
 test('player binding targets only an open Suno tab and public player updates exclude host-only data', async () => {
@@ -374,6 +379,23 @@ test('advanced operation coordination covers writes and playback without wrappin
   assert.deepEqual(actions,['configure']);
   const denied=fixture({coordination:{runExclusive:async()=>{throw Error('Legacy writer still owns this show');}}});
   const result=await denied.control('create-playlist',{name:'Fixture playlist'});assert.equal(result.ok,false);assert.equal(denied.calls.mcp.length,0);
+});
+
+test('host Pause interrupts an awaited Play while retaining advanced ownership checks',async()=>{
+  let finishPlay;const coordinated=[];
+  const f=fixture({state:{playerTabId:7,entries:[entry()]},coordination:{runExclusive:async(action,fn)=>{coordinated.push(action);return fn();}},onPlayerCommand:message=>message.action==='play'?new Promise(resolve=>{finishPlay=resolve;}):{ok:true}});
+  const starting=f.control('play');
+  for(let n=0;n<10&&!finishPlay;n++)await tick();
+  assert.equal(typeof finishPlay,'function');
+  const pausing=f.control('pause');await tick();await tick();
+  const pauseSent=f.calls.messages.some(call=>call.message.action==='pause');
+  finishPlay({ok:true});await starting;
+  assert.equal((await pausing).ok,true);
+  assert.equal(pauseSent,true,'Pause must not queue behind native readiness');
+  assert.deepEqual(coordinated,['play','pause']);
+  const denied=fixture({state:{playerTabId:7},coordination:{runExclusive:async()=>{throw Error('Legacy owns playback');}}});
+  assert.equal((await denied.control('pause')).ok,false);
+  assert.equal(denied.calls.messages.some(call=>call.message.action==='pause'),false);
 });
 
 

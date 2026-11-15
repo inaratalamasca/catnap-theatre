@@ -1,11 +1,11 @@
-/* Catnap managed show worker, version 0.6.4.
+/* Catnap managed show worker, version 0.6.5.
  * Change summary: optional read-only uploader intake, private show queue,
  * explicit player binding, verified MCP playlist writes and bounded AP polling.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.4';
+  const SCRIPT_VERSION = '0.6.5';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
@@ -278,7 +278,7 @@
     if(message?.target==='managed-native'){
       (async()=>{
         const state=await get();if(sender.id!==chrome.runtime.id||sender.tab?.id!==state.playerTabId||sender.frameId!==0||!SUNO.test(sender.url||'')||message.showId!==state.id||message.bindingId!==state.playerLease)throw Error('Unbound managed player.');
-        if(!['enable','block','play','pause','disable','status'].includes(message.action))throw Error('Unknown media command.');
+        if(!['enable','block','prepare','play','pause','disable','status'].includes(message.action))throw Error('Unknown media command.');
         const result=await chrome.scripting.executeScript({target:{tabId:sender.tab.id,frameIds:[0]},world:'MAIN',func:command=>{if(!globalThis.CatnapManagedNative)throw Error('Native playback guard unavailable.');return globalThis.CatnapManagedNative.command(command);},args:[{action:message.action,generation:message.generation,songId:message.songId,sourceKey:message.sourceKey,restart:message.restart}]});
         return {ok:true,data:result[0]?.result};
       })().then(reply,error=>reply({ok:false,error:error.message}));return true;
@@ -296,7 +296,9 @@
     if(message?.target!=='catnap-show-worker')return;
     const run=()=>handle(message,sender);
     const controlled=async()=>await trustedPage(sender)&&coordinatedActions.has(message.action)?coordinate(message.action,run):run();
-    (message.action==='status'?run():serial(controlled)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.'}));return true;
+    // Pause must reach the bound player while a cold Play is still awaiting
+    // readiness. It retains trust/ownership checks, but never waits behind Play.
+    (message.action==='status'?run():message.action==='pause'?controlled():serial(controlled)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.'}));return true;
   });
   chrome.alarms.onAlarm.addListener(alarm=>{
     if(alarm.name!==ALARM)return;

@@ -1,5 +1,5 @@
 'use strict';
-/* Development package acceptance, version 0.6.4.
+/* Development package acceptance, version 0.6.5.
  * Uses only a temporary synthetic source checkout. Never installs either flavor.
  */
 const {test} = require('node:test');
@@ -27,7 +27,7 @@ function sandbox(t) {
   // Fix the fixture's manifest version independently of whatever shared branch
   // metadata is being edited concurrently. No real source file is changed.
   const manifestPath=path.join(root,'extension/manifest.json');
-  const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));manifest.version='0.6.4';
+  const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));manifest.version='0.6.5';
   fs.writeFileSync(manifestPath,JSON.stringify(manifest));
   fs.writeFileSync(path.join(root,'extension/connection.local.json'),'PRIVATE-FIXTURE-TOKEN');
   fs.writeFileSync(path.join(root,'.env'),'PRIVATE-FIXTURE-TOKEN');
@@ -37,10 +37,10 @@ function sandbox(t) {
 
 test('both flavors produce root-manifest folders/ZIPs with licensing and matching SHA-256 files',t=>{
   const f=sandbox(t),built=f.build();assert.equal(built.status,0,built.stderr);
-  for(const name of ['Catnap-Theatre-Inbox-Dev-v0.6.4','Catnap-Inbox-Dev-v0.6.4']) {
+  for(const name of ['Catnap-Theatre-Inbox-Dev-v0.6.5','Catnap-Inbox-Dev-v0.6.5']) {
     const folder=path.join(f.output,name),archive=path.join(f.output,name+'.zip');
     const manifest=JSON.parse(fs.readFileSync(path.join(folder,'manifest.json'),'utf8'));
-    assert.equal(manifest.version,'0.6.4');assert.equal(manifest.manifest_version,3);
+    assert.equal(manifest.version,'0.6.5');assert.equal(manifest.manifest_version,3);
     const members=execFileSync('unzip',['-Z1',archive],{encoding:'utf8'}).split('\n').filter(Boolean);
     for(const file of ['manifest.json','LICENSE','NOTICE','LICENSING.md','PACKAGE-README.md','native/README.md','native/catnap-suno-host.mjs','native/install-linux.sh','native/install-windows.cmd','native/install-windows.ps1','native/CatnapSunoLauncher.cs','native/install-macos.sh','docs/ACCEPTANCE.md'])assert.equal(members.includes(file),true,file);
     assert.equal(members.some(file=>file.startsWith('extension/')),false);
@@ -49,7 +49,7 @@ test('both flavors produce root-manifest folders/ZIPs with licensing and matchin
     assert.equal(fs.readFileSync(archive+'.sha256','utf8').trim().startsWith(digest+' '),true);
     assert.equal(fs.existsSync(path.join(folder,'connection.local.json')),false);
   }
-  const inbox=path.join(f.output,'Catnap-Inbox-Dev-v0.6.4');
+  const inbox=path.join(f.output,'Catnap-Inbox-Dev-v0.6.5');
   const manifest=JSON.parse(fs.readFileSync(path.join(inbox,'manifest.json'),'utf8'));
   assert.equal(manifest.background.service_worker,'inbox-worker.js');
   assert.equal('content_scripts' in manifest,false);
@@ -59,10 +59,10 @@ test('both flavors produce root-manifest folders/ZIPs with licensing and matchin
   assert.equal(fs.existsSync(path.join(inbox,'managed-media.js')),false);
   assert.equal(fs.existsSync(path.join(inbox,'broadcast-worker.js')),false);
   assert.equal(fs.existsSync(path.join(inbox,'assets/icons/inbox-128.png')),true);
-  assert.notDeepEqual(fs.readFileSync(path.join(inbox,'assets/icons/inbox-128.png')),fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.4/assets/icons/theatre-128.png')));
-  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.4/managed-show.js')),true);
+  assert.notDeepEqual(fs.readFileSync(path.join(inbox,'assets/icons/inbox-128.png')),fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.5/assets/icons/theatre-128.png')));
+  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.5/managed-show.js')),true);
   assert.match(fs.readFileSync(path.join(inbox,'package-mode.js'),'utf8'),/inboxOnly:true/);
-  assert.match(fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.4/package-mode.js'),'utf8'),/inboxOnly:false/);
+  assert.match(fs.readFileSync(path.join(f.output,'Catnap-Theatre-Inbox-Dev-v0.6.5/package-mode.js'),'utf8'),/inboxOnly:false/);
 });
 
 test('builder refuses to overwrite an existing package and does not alter source configuration',t=>{
@@ -71,7 +71,7 @@ test('builder refuses to overwrite an existing package and does not alter source
   assert.equal(f.build('--flavor','inbox').status,0);
   const result=f.build('--flavor','inbox');assert.notEqual(result.status,0);assert.match(result.stderr,/already exists/);
   assert.equal(fs.readFileSync(path.join(f.root,'extension/package-mode.js'),'utf8'),original);
-  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Inbox-Dev-v0.6.4/manifest.json')),true);
+  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Inbox-Dev-v0.6.5/manifest.json')),true);
 });
 
 test('builder rejects an invalid manifest reference and never releases a broken archive',t=>{
@@ -79,5 +79,5 @@ test('builder rejects an invalid manifest reference and never releases a broken 
   const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
   manifest.options_page='missing-controls.html';fs.writeFileSync(manifestPath,JSON.stringify(manifest));
   const built=f.build('--flavor','inbox');assert.notEqual(built.status,0);assert.match(built.stderr,/Missing\/invalid manifest resource/);
-  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Inbox-Dev-v0.6.4.zip')),false);
+  assert.equal(fs.existsSync(path.join(f.output,'Catnap-Inbox-Dev-v0.6.5.zip')),false);
 });
