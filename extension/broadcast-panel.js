@@ -3,6 +3,7 @@
 const endpoint = document.querySelector('#endpoint'), token = document.querySelector('#token');
 const statusLine = document.querySelector('#status'), start = document.querySelector('#start'), stop = document.querySelector('#stop');
 let busy = false, panelError = '';
+document.querySelector('#show-controls')?.addEventListener('click',async()=>{try{const result=await chrome.runtime.sendMessage({target:'catnap-show-worker',action:'open'});if(!result?.ok)throw Error(result?.error||'Show controls unavailable.');}catch(error){show({error:error.message});}});
 async function command(action, extra = {}) { return chrome.runtime.sendMessage({target:'broadcast-worker',action,...extra}); }
 function show(value) {
   if (!value) return;

@@ -98,10 +98,10 @@
     if(window.__catnapMetadataReaderInstalled)return;window.__catnapMetadataReaderInstalled=true;
     const runtime=window.chrome.runtime;let active=false,observer,timer,debounce,signature='';
     const send=force=>{
-      if(!active)return;const metadata=read(window.document,window.location);if(!metadata)return;
+      if(!active)return;const metadata=window.CatnapManagedShow?.active?window.CatnapManagedShow.metadata():read(window.document,window.location);if(!metadata)return;
       // Clock ticks update ETA on the heartbeat; track/queue/play-state changes
       // publish promptly without uploading the expanded list every second.
-      const next=JSON.stringify({...metadata,song:{...metadata.song,currentTimeSeconds:null}});if(!force&&next===signature)return;signature=next;
+      const next=JSON.stringify({...metadata,song:metadata.song?{...metadata.song,currentTimeSeconds:null}:null});if(!force&&next===signature)return;signature=next;
       Promise.resolve(runtime.sendMessage({target:'broadcast-metadata',action:'update',metadata})).catch(()=>{});
     };
     const stop=()=>{active=false;observer?.disconnect();window.clearInterval(timer);window.clearTimeout(debounce);signature='';};

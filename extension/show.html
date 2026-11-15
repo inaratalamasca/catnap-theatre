@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Inbox &amp; show controls</title><link rel="stylesheet" href="presentation-panel.css"><link rel="stylesheet" href="show.css"></head>
+<body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.0</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
+<p id="status" role="status" aria-live="polite">Loading show…</p>
+<main>
+<section><h2>Show setup</h2><div class="columns"><label>Party type<select id="mode"><option value="lp">Listening party · manual</option><option value="ap">Afterparty</option></select></label><label>Show name<input id="show-name" maxlength="100" placeholder="Tonight’s show"></label></div>
+<label>Uploader tab<select id="uploader-tab"><option value="">Choose the signed-in uploader</option></select></label>
+<div class="row"><button id="grant-inbox" type="button">Enable inbox &amp; Suno access</button><button id="discover" type="button">Find my inboxes</button></div>
+<label>Inbox<select id="inbox"><option value="">Choose your inbox</option></select></label>
+<div class="row"><button id="import" class="primary" type="button">Read Pending submissions</button><button id="new-show" type="button">New show</button></div>
+<label class="check"><input id="watch" type="checkbox">Update AP inbox and selected playlist every 2 minutes</label><small id="inbox-status">Reads only Pending submissions. Acceptance, release and cleanup stay manual.</small></section>
+<section id="theatre-playback"><h2>Theatre playback</h2><label>Playing Suno / Theatre tab<select id="player-tab"><option value="">Choose the tab you intend to share</option></select></label>
+<div class="row"><button id="bind-player" class="primary" type="button">Use this Theatre for the show</button><button id="unbind-player" type="button">Return to ordinary Suno</button></div>
+<label class="check"><input id="autoplay" type="checkbox">Autoplay the next song · AP only</label><small id="autoplay-help">Manual mode stops at the end. Load next changes artwork and warning without playing audio.</small>
+<div class="row playback"><button id="previous" type="button">Load previous</button><button id="next" type="button">Load next</button><button id="play" class="primary" type="button">Play</button><button id="pause" type="button">Pause</button></div>
+<label>Clear content warning after <span class="row"><input id="warning-seconds" type="number" min="2" max="120" value="10"><span>seconds</span></span></label>
+<button id="repeat-warning" type="button">Show warning again</button><p id="playback-status" role="status">No Theatre linked.</p></section>
+<section id="current-card"><h2>Loaded / playing song</h2><h3 id="current-title">No song loaded</h3><p id="current-credit"></p><p id="current-warning" class="warning-badge"></p><label>Uploader note<pre id="current-note">No uploader note.</pre></label>
+<div class="row"><button id="copy-playing" class="primary" type="button">Copy now playing</button><button id="copy-link" type="button">Copy song link</button></div>
+<details><summary>Assistant / bot context</summary><p>Copy the bound song and prepared announcement for a helper. This does not post to chat.</p><label class="check"><input id="include-notes" type="checkbox">Include the host-only uploader note in the copied context</label><button id="copy-context" type="button">Copy assistant context</button><textarea id="copy-fallback" rows="5" readonly aria-label="Copy text fallback" hidden></textarea></details></section>
+<section><h2>Running order <span id="queue-count"></span></h2><small>Suno and YouTube share one FIFO show order. Selecting Load never starts the song.</small><ol id="queue"></ol></section>
+<section><h2>Suno playlist</h2><p>The show works from its own running order. A Suno playlist contains the Suno songs; YouTube-only entries remain in Theatre.</p>
+<div class="row"><button id="connect-suno" type="button">Connect Suno</button><button id="disconnect-suno" type="button">Disconnect</button><button id="playlists" type="button">Load my playlists</button></div><small id="suno-status">Not connected. The optional Suno connector must be installed for playlist changes.</small>
+<label>Destination playlist<select id="playlist"><option value="">Choose a playlist</option></select></label>
+<button id="sync-playlist" class="primary" type="button">Add missing Suno songs &amp; verify</button>
+<details><summary>Create a playlist</summary><label>Playlist name<input id="new-playlist-name" maxlength="100"></label><label>Visibility<select id="visibility"><option value="private">Private</option><option value="public">Public</option></select></label><button id="create-playlist" type="button">Create and select playlist</button></details>
+<p id="playlist-status"></p></section>
+<footer><small>This development build does not send chat messages. Use one inbox synchronizer for this show. Switching extensions or reloading a playing tab can interrupt a stream.</small></footer>
+</main><script src="package-mode.js"></script><script src="show-panel.js"></script></body></html>

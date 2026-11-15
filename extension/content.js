@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.2.0
+// @version      0.6.0
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,11 +12,11 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.2.0 alpha
- * Change: standalone layouts/settings; contain artwork; preserve native playback.
+ * CATNAP THEATRE · v0.6.0 development
+ * Change: optional managed-show hooks for quiet Load/Play and queue rendering.
  *
- * DOM-only presentation layer. Suno retains ownership of audio, queue, repeat,
- * shuffle, and playback. Up Next shows visible playlist order only.
+ * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
+ * managed mode uses a source-bound guard and the separate show coordinator.
  * No Suno API calls, audio downloads or login access.
  *
  * Toggle: small "Catnap Theater" button on Suno playlist/song pages.
@@ -26,7 +26,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.2.0';
+  const SCRIPT_VERSION = '0.6.0';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;
@@ -327,11 +327,12 @@
       aiuLogo.style.display = 'none';
       query('.ct-aiu-fallback', root).style.display = 'block';
     });
-    state.ui.previous.addEventListener('click', () => clickNative(LABELS.prev));
-    state.ui.next.addEventListener('click', () => clickNative(LABELS.next));
+    state.ui.previous.addEventListener('click', () => globalThis.CatnapManagedShow?.active ? managedCommand('previous') : clickNative(LABELS.prev));
+    state.ui.next.addEventListener('click', () => globalThis.CatnapManagedShow?.active ? managedCommand('next') : clickNative(LABELS.next));
     state.ui.play.addEventListener('click', () => toggleNativePlayback());
     state.ui.progress.addEventListener('input', (event) => {
       const ratio = Number(event.target.value) / 1000;
+      if(globalThis.CatnapManagedShow?.active){globalThis.CatnapManagedShow.seek(ratio);return;}
       setNativeSeek(ratio);
       const duration = secondsFromNative().duration;
       if (duration > 0) state.ui.elapsed.textContent = clock(duration * ratio);
@@ -365,6 +366,7 @@
       syncSong(true);
       syncProgress();
     } else {
+      globalThis.CatnapManagedShow?.closed();
       state.open = false;
       if (state.root) state.root.remove();
       state.root = null;
@@ -402,6 +404,7 @@
   }
 
   function toggleNativePlayback() {
+    if(globalThis.CatnapManagedShow?.active){managedCommand('toggle');return;}
     // If Suno is already playing, always use its own Pause button.
     if (clickNative(LABELS.pause)) return;
     // Cold start: playlist Play must take priority over the idle Playbar Play.
@@ -484,6 +487,7 @@
   }
 
   function seekBy(seconds) {
+    if(globalThis.CatnapManagedShow?.active){const info=globalThis.CatnapManagedShow.progress();if(info?.duration)globalThis.CatnapManagedShow.seek((info.elapsed+seconds)/info.duration);return;}
     const info = secondsFromNative();
     if (info.duration > 0) setNativeSeek((info.elapsed + seconds) / info.duration);
   }
@@ -491,6 +495,13 @@
   function syncProgress() {
     if (!state.open || !state.root) return;
     const ui = state.ui;
+    const managed=globalThis.CatnapManagedShow?.active?globalThis.CatnapManagedShow.progress():null;
+    if(managed){
+      const ratio=managed.duration?Math.max(0,Math.min(1,managed.elapsed/managed.duration)):0;
+      ui.progress.value=String(Math.round(ratio*1000));ui.progress.style.setProperty('--ct-progress',(ratio*100).toFixed(2)+'%');
+      ui.elapsed.textContent=clock(managed.elapsed||0);ui.duration.textContent=managed.duration?clock(managed.duration):'--:--';
+      ui.play.innerHTML=managed.paused?ICONS.play:ICONS.pause;ui.play.setAttribute('aria-label',managed.paused?'Play loaded song':'Pause');ui.play.title=managed.paused?'Play loaded song (Space)':'Pause (Space)';return;
+    }
     const info = secondsFromNative();
     const slider = query(LABELS.progress);
     const audio = audioElement();
@@ -809,6 +820,7 @@
 
   function syncSong(firstRun = false) {
     if (!state.open || !state.root) return;
+    if(globalThis.CatnapManagedShow?.active){globalThis.CatnapManagedShow.render();return;}
     const song = readSong();
     syncUpNext(song);
     if (!song) {
@@ -902,15 +914,20 @@
     if (event.code === 'Space') {
       event.preventDefault(); event.stopPropagation(); toggleNativePlayback();
     } else if (event.code === 'ArrowLeft' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); clickNative(LABELS.prev);
+      event.preventDefault(); event.stopPropagation(); globalThis.CatnapManagedShow?.active?managedCommand('previous'):clickNative(LABELS.prev);
     } else if (event.code === 'ArrowRight' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); clickNative(LABELS.next);
+      event.preventDefault(); event.stopPropagation(); globalThis.CatnapManagedShow?.active?managedCommand('next'):clickNative(LABELS.next);
     } else if (event.code === 'ArrowLeft') {
       event.preventDefault(); event.stopPropagation(); seekBy(-5);
     } else if (event.code === 'ArrowRight') {
       event.preventDefault(); event.stopPropagation(); seekBy(5);
     }
   }
+
+  function managedCommand(action){Promise.resolve(globalThis.CatnapManagedShow.command(action)).catch(error=>{if(state.ui.desc)state.ui.desc.textContent=error.message;});}
+  // An isolated-world adapter for the optional managed queue. It exposes no
+  // credentials/page internals and leaves ordinary Theatre unchanged when off.
+  globalThis.CatnapTheatreView={open:toggle,nativeSong:readSong,nativeInfo:secondsFromNative,nativeCover:findCover,nativeLyrics:getLyrics,writeLyrics,nativeSeek:setNativeSeek};
 
   function init() {
     installCss();

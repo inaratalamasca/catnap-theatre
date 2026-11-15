@@ -11,6 +11,7 @@
   let operations=Promise.resolve(),mutationEpoch=0;
   const visualIds=['auto-scroll','reload-lyrics','video-enabled','banner-text','overlay-file','recent','forget-files','placement','expiry','show-overlay','clear-overlay','logo-file','background-file','clear-images'];
   const status=(text,error=false)=>{$('status').textContent=text;$('status').classList.toggle('error',error);};
+  $('show-controls').onclick=async()=>{try{const result=await chrome.runtime.sendMessage({target:'catnap-show-worker',action:'open'});if(!result?.ok)throw Error(result?.error||'Show controls unavailable.');}catch(error){status(error.message,true);}};
   async function send(action,details={}) {
     const result=await chrome.runtime.sendMessage({target:'presentation-worker',control,action,...details});
     if(!result)throw Error('The linked Suno tab is unavailable. Reopen controls from Theatre.');

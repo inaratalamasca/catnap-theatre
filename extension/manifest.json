@@ -1,16 +1,28 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno — Visualizer Dev",
-  "version": "0.5.0",
-  "description": "Standalone Theatre with pop-out presentation controls, subtle music-reactive background bars and optional HQ audio broadcasting.",
+  "name": "Catnap Theatre + Inbox — Development",
+  "version": "0.6.0",
+  "description": "Development theatre with optional AIU inbox playlists, mixed Suno/YouTube shows, manual advance and content warnings.",
   "permissions": [
     "storage",
     "activeTab",
     "tabCapture",
-    "offscreen"
+    "offscreen",
+    "tabs",
+    "alarms",
+    "scripting",
+    "identity",
+    "nativeMessaging"
   ],
   "options_page": "lounge.html",
   "content_scripts": [
+    {
+      "matches": ["https://suno.com/*", "https://www.suno.com/*"],
+      "js": ["managed-native-guard.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
     {
       "matches": [
         "https://suno.com/*",
@@ -24,7 +36,10 @@
         "standalone.js",
         "visualizer.js",
         "broadcast-metadata.js",
-        "presentation-tab-controller.js"
+        "presentation-tab-controller.js",
+        "managed-player.js",
+        "managed-media.js",
+        "managed-show.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
@@ -45,7 +60,7 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'; connect-src https: http:"
   },
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "120",
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
@@ -54,7 +69,7 @@
     "service_worker": "broadcast-worker.js"
   },
   "action": {
-    "default_title": "Catnap Theatre — HQ broadcast controls",
+    "default_title": "Catnap Theatre — broadcast and inbox controls",
     "default_icon": {
       "16": "assets/icons/theatre-16.png",
       "32": "assets/icons/theatre-32.png",

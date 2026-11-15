@@ -55,7 +55,9 @@ test('settings keyboard activation does not toggle native playback',async()=>{
 test('standalone removes controller visual bridge and uses contained artwork',()=>{
   const visual=fs.readFileSync(path.join(extension,'visual-media.js'),'utf8');assert.equal(visual.includes('catnap-visual-command'),false);
   const core=fs.readFileSync(path.join(extension,'content.js'),'utf8');assert.match(core,/\.ct-art \{[^}]*object-fit: contain/);
-  const m=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json')));assert.deepEqual(m.permissions,['storage','activeTab','tabCapture','offscreen']);assert.equal(m.host_permissions,undefined);assert.deepEqual(m.optional_host_permissions,['http://*/*','https://*/*']);
+  const m=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json')));assert.deepEqual(m.permissions,['storage','activeTab','tabCapture','offscreen','tabs','alarms','scripting','identity','nativeMessaging']);assert.equal(m.host_permissions,undefined);assert.deepEqual(m.optional_host_permissions,['http://*/*','https://*/*']);
+  assert.ok(m.content_scripts.every(script=>script.matches.every(match=>/^https:\/\/(?:www\.)?suno\.com\/\*$/.test(match))),'uploader access stays optional rather than an always-running reader');
+  assert.ok(m.content_scripts.some(script=>script.world==='MAIN'&&script.run_at==='document_start'&&script.js.includes('managed-native-guard.js')),'native autoplay gate is installed before the site registers its ended handlers');
 });
 test('approximate lyric following respects manual correction and pause/disable',async()=>{
   const {w,dom,root,ticks}=await fixture();

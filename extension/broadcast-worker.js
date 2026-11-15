@@ -2,8 +2,8 @@
  * Only the packaged toolbar control window can start capture. Suno content scripts never receive tokens.
  */
 'use strict';
-const SCRIPT_VERSION = '0.5.0';
-importScripts('broadcast-core.js','broadcast-metadata-core.js','presentation-control-worker.js','visualizer.js');
+const SCRIPT_VERSION = '0.6.0';
+importScripts('broadcast-core.js','broadcast-metadata-core.js','presentation-control-worker.js','visualizer.js','package-mode.js','inbox-core.js','suno-mcp.js','show-worker.js');
 const PANEL = chrome.runtime.getURL('broadcast.html');
 const OFFSCREEN = chrome.runtime.getURL('broadcast-offscreen.html');
 let creating, commandGeneration = 0;
@@ -71,7 +71,7 @@ async function receiveMetadata(message, sender) {
     if (!binding?.live || !CatnapBroadcastMetadata.sourceAllowed(sender,chrome.runtime.id,binding.sourceTabId)) return {ok:false};
     if (message.action === 'ready') { await readerControl(binding.sourceTabId,'start'); return {ok:true}; }
     if (message.action !== 'update') return {ok:false};
-    const metadata = CatnapBroadcastMetadata.sanitize(message.metadata);
+    const metadata = message.metadata?.version===1&&message.metadata.active===false?CatnapBroadcastMetadata.clear():CatnapBroadcastMetadata.sanitize(message.metadata);
     if (!metadata) return {ok:false};
     try { await postMetadata(binding,metadata); return {ok:true}; } catch (_) { return {ok:false}; }
   });

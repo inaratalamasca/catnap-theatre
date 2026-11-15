@@ -159,6 +159,7 @@
   }
   function refreshPlaylist(){
     if(!root?.isConnected||!playlist)return;
+    if(globalThis.CatnapManagedShow?.active)return;
     const rows=nativeRows();
     const current=songId(document.querySelector('a[aria-label^="Playbar: Title for "]')?.href||'');
     const nextSignature=JSON.stringify([location.pathname,current,rows.map(r=>[r.id,r.title,!!r.button])]);
