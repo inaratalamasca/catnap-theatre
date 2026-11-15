@@ -1,8 +1,16 @@
 # Host acceptance checklist
 
-Version 0.2.0 alpha, November 8, 2026. Run in a separate test profile before replacing a working show extension. No live reload was performed during project setup.
+Version 0.5.0 development, November 12, 2026. Run in a separate test profile before replacing a working show extension. The installed 0.4.0 build stays untouched.
 
-## Completed in this setup
+## Isolated 0.5.0 checks
+
+- [x] Syntax, manifest references and 43 focused tests, including source ownership, spectrum validation, pinned relay forwarding and the stale settings-response regression.
+- [x] Real persistent control window: settings, reuse, file transfer, banner actions, source binding and clean main-canvas accessibility.
+- [x] Computed background/foreground stacking and the subtle default-opacity fixture preview.
+- [x] Actual Chromium stream-backed audio reacts and fades; original input tracks and nonzero source audio survive disable, re-enable and source changes, without URL capture, microphone access or output rerouting.
+- [ ] Signed-in Suno rehearsal of the 0.5.0 build, including visualizer on/off through real track transitions and coexistence with Discord/broadcast capture.
+
+## Original 0.2.0 baseline evidence
 
 - [x] JavaScript syntax and MV3 referenced-script validation.
 - [x] Eight focused Node/jsdom tests: bounded settings, allowed song IDs, cue classification, settings/layout rendering, native row Play delegation, button keyboard safety, removed controller bridge and manual/pause/disabled lyric motion.

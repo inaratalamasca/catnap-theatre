@@ -1,9 +1,9 @@
 // Catnap theatre visual layer.
-// Version 0.4.0: shared presentation controls and uploader-first AIU banners.
+// Version 0.5.0: visual handlers remain private adapters for popout controls.
 // Presentation only: never controls Suno audio, navigation, voice or Discord.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.4.0';
+  const SCRIPT_VERSION = '0.5.0';
   // Keep at most five local files / 100 MiB in this tab; never upload or persist them.
   const recentFiles = [];
   let selectedFile = null;
@@ -50,7 +50,10 @@
     const songVideo = document.createElement('video');
     songVideo.className = 'ct-song-video'; songVideo.hidden = true; songVideo.muted = true; songVideo.defaultMuted = true; songVideo.playsInline = true; songVideo.preload = 'metadata';
     songVideo.setAttribute('aria-label', 'Current song video, muted'); frame.appendChild(songVideo);
+    // Keep the existing handler controls for the popout/advanced command bridge,
+    // but never expose a second options menu on the presentation canvas.
     const tools = document.createElement('details'); tools.className = 'ct-visual-tools';
+    tools.hidden = true; tools.inert = true; tools.setAttribute('inert',''); tools.setAttribute('aria-hidden','true'); tools.setAttribute('tabindex','-1');
     tools.innerHTML = `<summary>Visuals</summary><div class="ct-visual-panel">
 <label class="ct-visual-check"><input type="checkbox" class="ct-enable-video" checked> Play available song video</label>
 <div class="ct-presets" aria-label="Quick banners"></div>

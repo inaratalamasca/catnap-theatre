@@ -1,9 +1,9 @@
-// Catnap Theatre helpers, version 0.2.0.
+// Catnap Theatre helpers, version 0.5.0.
 // Pure validation and display logic shared by content scripts and Node tests.
 ((scope) => {
   'use strict';
-  const SCRIPT_VERSION = '0.2.0';
-  const defaults = Object.freeze({schemaVersion:1,layout:'duet',fontSize:21,stripTags:false,background:'#090b14',brand:'Catnap Radio'});
+  const SCRIPT_VERSION = '0.5.0';
+  const defaults = Object.freeze({schemaVersion:1,layout:'duet',fontSize:21,stripTags:false,background:'#090b14',brand:'Catnap Radio',visualizerEnabled:true,visualizerOpacity:0.20});
   function settings(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Choose a Catnap settings JSON file.');
     if (input.schemaVersion !== 1) throw new Error('Unsupported settings format.');
@@ -13,7 +13,9 @@
       fontSize:Math.max(14,Math.min(40,Number.isFinite(input.fontSize)?Math.round(input.fontSize):21)),
       stripTags:input.stripTags===true,
       background:/^#[0-9a-f]{6}$/i.test(input.background)?input.background:'#090b14',
-      brand:typeof input.brand==='string'?input.brand.trim().slice(0,50):'Catnap Radio'
+      brand:typeof input.brand==='string'?input.brand.trim().slice(0,50):'Catnap Radio',
+      visualizerEnabled:input.visualizerEnabled!==false,
+      visualizerOpacity:Number.isFinite(input.visualizerOpacity)?Math.max(0.05,Math.min(0.40,input.visualizerOpacity)):0.20
     };
   }
   function isCue(line) { return /^\s*\[[^\]\n]{1,300}\]\s*$/.test(String(line||'')); }

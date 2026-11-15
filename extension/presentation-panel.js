@@ -1,4 +1,4 @@
-/* Catnap persistent presentation controls, version 0.4.0.
+/* Catnap persistent presentation controls, version 0.5.0.
  * This window sends presentation commands to its fixed source tab. Settings
  * and overlays are applied by the same handlers used by the inline Theatre UI.
  */
@@ -8,7 +8,7 @@
   const control=new URLSearchParams(location.search).get('control');
   const $=id=>document.getElementById(id);
   let current=null,busy=0,uploading=false,refreshing=false,presetKey='',recentKey='',lastOpen=null;
-  let operations=Promise.resolve();
+  let operations=Promise.resolve(),mutationEpoch=0;
   const visualIds=['auto-scroll','reload-lyrics','video-enabled','banner-text','overlay-file','recent','forget-files','placement','expiry','show-overlay','clear-overlay','logo-file','background-file','clear-images'];
   const status=(text,error=false)=>{$('status').textContent=text;$('status').classList.toggle('error',error);};
   async function send(action,details={}) {
@@ -24,6 +24,13 @@
     const prefs=next.settings;
     for(const name of ['layout','brand','background'])value(name,prefs[name]);
     value('stripTags',prefs.stripTags,'checked');$('font-value').textContent=prefs.fontSize+' px';
+    value('visualizerEnabled',prefs.visualizerEnabled!==false,'checked');
+    const opacity=Math.round((Number.isFinite(prefs.visualizerOpacity)?prefs.visualizerOpacity:.20)*100);
+    value('visualizerOpacity',String(opacity));$('visualizer-opacity-value').textContent=opacity+'%';
+    $('visualizerOpacity').disabled=prefs.visualizerEnabled===false;
+    const visualizer=next.visualizer||{};
+    const visualizerReason=typeof visualizer.reason==='string'?visualizer.reason.trim().slice(0,180):'';
+    $('visualizer-status').textContent=prefs.visualizerEnabled===false?'Background bars are off.':visualizer.state==='reduced-motion'?'Background bars respect reduced-motion preferences.':visualizer.source==='none'||!visualizer.source?visualizerReason||'Waiting for a supported music source.':visualizer.state==='quiet'?'Music is quiet; the bars settle into the background.':'Reacting to the music behind the presentation.';
     for(const id of visualIds)$(id).disabled=!next.open||uploading;
     $('reload-lyrics').disabled=!next.open||next.reloadDisabled||uploading;
     $('auto-scroll').setAttribute('aria-pressed',String(next.autoScroll));
@@ -39,6 +46,7 @@
     $('visual-status').textContent=next.open?(next.visualStatus||'Local media stays in the linked Suno tab.'):'Open Theatre in the linked Suno tab to use visual controls.';
   }
   function run(task,message='Updated Theatre.') {
+    mutationEpoch++;
     busy++;
     // A queued task reads current only after the preceding reply has repainted
     // it. This preserves rapid font increments and blur→Show overlay ordering.
@@ -59,6 +67,9 @@
   }
   for(const name of ['layout','brand','background'])changeSetting(name,()=>$(name).value);
   changeSetting('stripTags',()=>$('stripTags').checked);
+  changeSetting('visualizerEnabled',()=>$('visualizerEnabled').checked);
+  changeSetting('visualizerOpacity',()=>Number($('visualizerOpacity').value)/100);
+  $('visualizerOpacity').addEventListener('input',()=>{$('visualizer-opacity-value').textContent=$('visualizerOpacity').value+'%';});
   for(const [id,delta] of [['font-down',-2],['font-up',2]])$(id).onclick=()=>current&&run(()=>send('set-settings',{settings:settings({...current.settings,fontSize:current.settings.fontSize+delta})}),'Lyrics size updated.');
   $('reset').onclick=()=>run(()=>send('set-settings',{settings:{...defaults}}),'Settings reset.');
   const field=(id,name,property='value')=>$(id).addEventListener('change',()=>{const value=$(id)[property];void run(()=>send('field',{name,value}));});
@@ -77,6 +88,7 @@
   };
   async function uploadFile(file,kind) {
     if(!file||uploading)return;
+    mutationEpoch++;
     uploading=true;document.body.dataset.uploading='true';if(current)paint(current);
     const id=crypto.randomUUID();
     try{
@@ -97,9 +109,12 @@
   $('lounge').href=chrome.runtime.getURL('lounge.html');
   async function refresh() {
     if(refreshing||busy||uploading)return;
+    const epoch=mutationEpoch;
     refreshing=true;
-    try{const next=await send('state');paint(next);if(!next.open)status('Theatre is closed. Saved settings are still available.');else if(lastOpen===false)status('Theatre controls are ready.');lastOpen=next.open;}
-    catch(error){status(error.message||'The linked Suno tab is unavailable.',true);}
+    // A reply can arrive after an edit has already completed. Discard that old
+    // snapshot so the next queued edit cannot resend preferences it has undone.
+    try{const next=await send('state');if(epoch!==mutationEpoch||busy||uploading)return;paint(next);if(!next.open)status('Theatre is closed. Saved settings are still available.');else if(lastOpen===false)status('Theatre controls are ready.');lastOpen=next.open;}
+    catch(error){if(epoch===mutationEpoch&&!busy&&!uploading)status(error.message||'The linked Suno tab is unavailable.',true);}
     finally{refreshing=false;}
   }
   void refresh();setInterval(refresh,1000);

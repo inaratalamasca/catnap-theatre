@@ -1,5 +1,9 @@
-/* Catnap offscreen music publisher, version 0.3.0. No microphone or video requested. */
+/* Catnap offscreen music publisher, version 0.5.0.
+ * Reuse the existing monitor analyser for the optional source-tab visualizer.
+ * No additional capture, output route, microphone or video is requested.
+ */
 'use strict';
+const SCRIPT_VERSION = '0.5.0';
 let status = {state:'idle',message:'Ready.'}, meter = 0, analyser, meterTimer;
 const publisher = new CatnapBroadcast.Publisher({
   capture: async streamId => {
@@ -12,10 +16,21 @@ const publisher = new CatnapBroadcast.Publisher({
   monitor: async stream => {
     const context = new AudioContext({sampleRate:48000,latencyHint:'interactive'});
     const source = context.createMediaStreamSource(stream);
-    analyser = context.createAnalyser(); analyser.fftSize = 256;
+    analyser = context.createAnalyser(); analyser.fftSize = 512;
+    // The canvas already eases movement. Avoid a second long spectral tail at
+    // the existing 250ms meter interval; this never changes monitor audio/RMS.
+    analyser.smoothingTimeConstant = .15;
     source.connect(analyser); source.connect(context.destination);
     await context.resume();
-    meterTimer = setInterval(() => { const values = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(values); meter = Math.min(1, Math.sqrt(values.reduce((sum,x) => sum+x*x,0)/values.length)); }, 250);
+    const values=new Float32Array(analyser.fftSize),frequencyValues=new Uint8Array(analyser.frequencyBinCount);
+    meterTimer = setInterval(() => {
+      analyser.getFloatTimeDomainData(values);meter=Math.min(1,Math.sqrt(values.reduce((sum,x)=>sum+x*x,0)/values.length));
+      if(status.state==='live'){
+        analyser.getByteFrequencyData(frequencyValues);
+        const bands=CatnapVisualizer.spectrum(frequencyValues,context.sampleRate,analyser.fftSize);
+        void chrome.runtime.sendMessage({target:'broadcast-visualizer',bands}).catch(()=>{});
+      }
+    },250);
     return {close:async () => { clearInterval(meterTimer); meter=0; source.disconnect(); analyser.disconnect(); await context.close(); }};
   },
   createPeer: () => new RTCPeerConnection({iceServers:[],bundlePolicy:'max-bundle'}),

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno \u2014 Broadcast Controls Dev",
-  "version": "0.4.0",
-  "description": "Standalone Theatre with detached host controls and optional music-only HQ broadcast with public song information. Development pilot.",
+  "name": "Catnap Theatre for Suno — Visualizer Dev",
+  "version": "0.5.0",
+  "description": "Standalone Theatre with pop-out presentation controls, subtle music-reactive background bars and optional HQ audio broadcasting.",
   "permissions": [
     "storage",
     "activeTab",
@@ -22,6 +22,7 @@
         "lyric-scroll.js",
         "visual-media.js",
         "standalone.js",
+        "visualizer.js",
         "broadcast-metadata.js",
         "presentation-tab-controller.js"
       ],
@@ -53,6 +54,18 @@
     "service_worker": "broadcast-worker.js"
   },
   "action": {
-    "default_title": "Catnap music broadcast"
+    "default_title": "Catnap Theatre — HQ broadcast controls",
+    "default_icon": {
+      "16": "assets/icons/theatre-16.png",
+      "32": "assets/icons/theatre-32.png",
+      "48": "assets/icons/theatre-48.png",
+      "128": "assets/icons/theatre-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/theatre-16.png",
+    "32": "assets/icons/theatre-32.png",
+    "48": "assets/icons/theatre-48.png",
+    "128": "assets/icons/theatre-128.png"
   }
 }

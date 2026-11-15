@@ -1,16 +1,16 @@
-# Music-only broadcast and controls pilot — 0.4.0 development build
+# Music-only broadcast and controls pilot — 0.5.0 development build
 
 Prepared November 12, 2026. This is a test build, not a production acceptance claim.
 
-Version 0.4.0 retains the 0.3.0 music-only broadcaster and adds a persistent presentation control window plus optional public now-playing metadata. Theatre still works when the relay is absent. Neither Discord voice, microphone audio, video, recording, bots nor AI is part of this broadcast path. This separate build has not been loaded into the user's browser profiles.
+Version 0.5.0 retains the music-only broadcaster and public now-playing metadata. Presentation options now live in the separate control window, with optional background music bars. Theatre still works when the relay is absent. Neither Discord voice, microphone audio, video, recording, bots nor AI is part of this broadcast path. The installed 0.4.0 build remains untouched.
 
 ## Safe installation between shows
 
-This development build is deliberately isolated in a new worktree and release ZIP. The currently loaded 0.3.0 extension folder was not changed.
+This development build is deliberately isolated in a new worktree and release ZIP. The currently loaded 0.4.0 extension folder was not changed.
 
 1. Stop any current show and finish the stream before changing extensions.
 2. In the chosen test profile's extensions page, disable the existing Catnap Theatre. **Never enable this and the older Theatre together**: they share page element IDs/content-script behavior.
-3. Extract `Catnap-Theatre-Controls-Dev-v0.4.0.zip` into a new folder and Load unpacked its `extension` folder. The previous extension's files remain intact. Settings are held per extension/profile; export them before switching if needed.
+3. Extract `Catnap-Theatre-Controls-Dev-v0.5.0.zip` into a new folder and Load unpacked its `extension` folder. The previous extension's files remain intact. Settings are held per extension/profile; export them before switching if needed.
 4. Open a test Suno song/playlist. If needed, refresh that tab before a show; a refresh can interrupt music.
 5. Pin the new Catnap toolbar action. Click it from the actual Suno music tab.
 6. Relay address defaults to `https://listen.catnapradio.com/live/whip`. Enter the private publish token supplied separately. It is never bundled in the extension, written into the Suno page or sent to listeners.
@@ -19,7 +19,7 @@ This development build is deliberately isolated in a new worktree and release ZI
 
 The toolbar opens a small separate extension window so that the relay permission prompt cannot dismiss the controls mid-start. The source Suno tab is bound by the toolbar invocation and stays selected even when the control window has focus.
 
-For presentation options, open Theatre → **Settings → Popout controls**. This
+For presentation options, open Theatre → **Controls ↗**. This
 separate window stays linked to the Suno tab that opened it and reuses all the
 existing layout, lyric, branding, banner and local-media handlers. Closing it
 keeps Theatre and music running. Presentation controls cannot start/stop a
