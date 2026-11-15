@@ -35,6 +35,7 @@ function fixture(options = {}) {
     [10,{id:10,url:'https://suno.com.evil.invalid/',title:'Unrelated site'}]
   ]);
   let listener, startup, alarm;
+  let pageEnabled=Number.isInteger(options.state?.playerTabId),pageShow=options.state?.id||'fixture-show',pageLease=options.state?.playerLease||'fixture-lease';
   const url = name => 'chrome-extension://fixture-extension/' + name;
   function storage(memory) {
     return {get:async keys=>{
@@ -55,8 +56,11 @@ function fixture(options = {}) {
       if(message.target==='catnap-show-tab') {
         if(message.action==='enable') {
           if(options.rejectEnable)throw Error('Synthetic managed player could not start');
-          return Object.hasOwn(options,'enableResponse')?options.enableResponse:{enabled:true};
+          const response=Object.hasOwn(options,'enableResponse')?options.enableResponse:{enabled:true};
+          if(response?.enabled){pageEnabled=true;pageShow=message.show.id;pageLease=message.show.bindingId;}return response;
         }
+        if(message.action==='status')return options.healthResponse||{enabled:pageEnabled,showId:pageEnabled?pageShow:null,bindingId:pageEnabled?pageLease:null,guard:pageEnabled?{ready:true,enabled:true,integrity:true}:null,playback:{phase:'ready'},stageOpen:true};
+        if(message.action==='disable'){if(options.rejectDisable)throw Error('Old content context lost');pageEnabled=false;return {enabled:false};}
         return options.playerResponse || {ok:true};
       }
       throw Error('Unexpected tab message');
@@ -64,7 +68,7 @@ function fixture(options = {}) {
     scripting:{executeScript:async script=>{
       calls.scripts.push(script);
       if(script.func) {
-        const result=vm.runInNewContext('('+script.func.toString()+')(...args)',{args:script.args||[],CatnapManagedNative:{command:command=>{calls.native.push(clone(command));return {ok:true};}}});
+        const result=await vm.runInNewContext('('+script.func.toString()+')(...args)',{args:script.args||[],document:{querySelectorAll:()=>[]},URL,CatnapManagedNative:{status:()=>({enabled:false}),command:command=>{calls.native.push(clone(command));return {ok:true};}}});
         return [{result}];
       }
       return [{result:{ok:true}}];
@@ -83,14 +87,14 @@ function fixture(options = {}) {
       return {confirmed:ids.length,addedConfirmed:ids.length,missing:[],failures:[]};
     }
   };
-  const sandbox = {chrome,CatnapSuno,CatnapInboxCore:Core,crypto,URL,AbortSignal,TextEncoder,Date,
+  const sandbox = {CatnapShowCoordination:options.coordination,chrome,CatnapSuno,CatnapInboxCore:Core,crypto,URL,AbortSignal,TextEncoder,Date,
     fetch:async(target,spec)=>{calls.fetch.push({target,spec});return {ok:true,url:target,headers:{get:()=> 'text/html'},text:async()=>'<html><head></head></html>'};}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/show-worker.js'),'utf8'),sandbox);
   const host = {id:'fixture-extension',url:url('show.html')};
   const player = {id:'fixture-extension',url:'https://suno.com/playlist/'+PLAYLIST,tab:{id:7},frameId:0};
   const send = (message,sender=host)=>new Promise(resolve=>{if(listener(message,sender,value=>resolve(clone(value)))!==true)resolve(undefined);});
   const control = (action,parameters={},sender=host)=>send({target:'catnap-show-worker',action,...parameters},sender);
-  return {calls,local,session,tabMap,url,host,player,send,control,state:()=>clone(local[STATE_KEY]),startup:async()=>{startup();await tick();},alarm:async()=>{alarm({name:'catnap-inbox-watch'});await tick();}};
+  return {calls,local,session,tabMap,url,host,player,send,control,reload:()=>{pageEnabled=false;},state:()=>clone(local[STATE_KEY]),startup:async()=>{startup();await tick();},alarm:async()=>{alarm({name:'catnap-inbox-watch'});await tick();}};
 }
 
 test('private host controls reject unrelated senders while own extension popup/tab is accepted', async () => {
@@ -306,4 +310,75 @@ test('watching is bounded and explicitly stopped on browser startup without reco
   const expired=fixture({state:{mode:'ap',watch:{enabled:true,until:Date.now()-1000},playlistId:PLAYLIST}});
   await expired.alarm();
   assert.equal(expired.state().watch.enabled,false);assert.equal(expired.calls.mcp.length,0);assert.equal(expired.calls.messages.length,0);
+});
+
+
+test('status verifies the live page lease and does not claim manual coverage after reload',async()=>{
+  const f=fixture({state:{playerTabId:7,entries:[entry()],playback:{phase:'paused'}}});
+  assert.equal((await f.control('status')).data.playbackHealth.linked,true);
+  f.reload();const result=await f.control('status');
+  assert.equal(result.data.playbackHealth.linked,false);assert.match(result.data.playbackHealth.reason,/reloaded|changed/);
+  assert.equal(f.calls.native.length,0,'status must not stop or rebind media');
+});
+
+test('explicit Load reconnects a reloaded page with a fresh lease and never sends Play',async()=>{
+  const f=fixture({state:{playerTabId:7,entries:[entry()]}});f.reload();
+  const result=await f.control('load',{tabId:7,index:0});assert.equal(result.ok,true);
+  assert.notEqual(f.state().playerLease,'fixture-lease');
+  const messages=f.calls.messages.filter(x=>x.message.target==='catnap-show-tab').map(x=>x.message.action);
+  assert.equal(messages.includes('enable'),true);assert.equal(messages.at(-1),'load');assert.equal(messages.includes('play'),false);
+});
+
+test('explicit Play binds a fresh show, while import and configuration never bind or start audio',async()=>{
+  const f=fixture({state:{entries:[entry()]}});
+  assert.equal((await f.control('configure',{settings:{warningSeconds:12}})).ok,true);
+  assert.equal(f.calls.messages.some(x=>x.message.action==='enable'),false);
+  assert.equal((await f.control('play',{tabId:7})).ok,true);
+  const actions=f.calls.messages.filter(x=>x.message.target==='catnap-show-tab').map(x=>x.message.action);
+  assert.equal(actions.includes('enable'),true);assert.equal(actions.at(-1),'play');
+});
+
+test('unverified native wrapper integrity rejects activation and rolls back the stale binding',async()=>{
+  const f=fixture({healthResponse:{enabled:true,showId:'fixture-show',bindingId:'wrong',guard:{ready:true,enabled:true,integrity:false}}});
+  assert.equal((await f.control('bind-player',{tabId:7})).ok,false);
+  assert.equal(f.state().playerTabId,null);assert.equal(f.state().playback,null);
+});
+
+test('advanced operation coordination covers writes and playback without wrapping native callbacks',async()=>{
+  const actions=[];const f=fixture({coordination:{runExclusive:async(action,fn)=>{actions.push(action);return fn();}}});
+  assert.equal((await f.control('configure',{settings:{showName:'Coordinated fixture'}})).ok,true);
+  assert.equal((await f.control('status')).ok,true);
+  assert.deepEqual(actions,['configure']);
+  const denied=fixture({coordination:{runExclusive:async()=>{throw Error('Legacy writer still owns this show');}}});
+  const result=await denied.control('create-playlist',{name:'Fixture playlist'});assert.equal(result.ok,false);assert.equal(denied.calls.mcp.length,0);
+});
+
+
+test('Theatre Play reconnects its own persisted show after reload and rejects unrelated source tabs',async()=>{
+  const f=fixture({state:{playerTabId:7,playlistId:PLAYLIST,entries:[entry()]}});f.reload();
+  const result=await f.send({target:'catnap-show-intent',action:'toggle'},f.player);
+  assert.equal(result.ok,true);assert.equal(result.handled,true);
+  const actions=f.calls.messages.filter(x=>x.message.target==='catnap-show-tab').map(x=>x.message.action);
+  assert.equal(actions.includes('enable'),true);assert.equal(actions.at(-1),'toggle');
+  const foreign=await f.send({target:'catnap-show-intent',action:'toggle'},{...f.player,id:'other'});assert.equal(foreign.ok,false);
+  const wrong=fixture({state:{playerTabId:99,playlistId:PLAYLIST,entries:[entry()]}});
+  const untouched=await wrong.send({target:'catnap-show-intent',action:'toggle'},wrong.player);
+  assert.equal(untouched.handled,false);assert.equal(wrong.calls.scripts.length,0);
+});
+
+test('Theatre request can start its matching destination playlist but cannot bind an unrelated playlist',async()=>{
+  const f=fixture({state:{playlistId:PLAYLIST,entries:[entry()]}});
+  assert.equal((await f.send({target:'catnap-show-intent',action:'toggle'},f.player)).handled,true);
+  const other=fixture({state:{playlistId:NEXT_PLAYLIST,entries:[entry()]}});
+  assert.equal((await other.send({target:'catnap-show-intent',action:'toggle'},other.player)).handled,false);
+  assert.equal(other.calls.scripts.length,0);
+});
+
+
+test('explicit return to ordinary playback clears a missing tab and safely disables an invalidated page',async()=>{
+  const gone=fixture({state:{playerTabId:7}});gone.tabMap.delete(7);
+  assert.equal((await gone.control('unbind-player')).ok,true);assert.equal(gone.state().playerTabId,null);
+  const reloaded=fixture({state:{playerTabId:7},rejectDisable:true});
+  assert.equal((await reloaded.control('unbind-player')).ok,true);assert.equal(reloaded.state().playerTabId,null);
+  assert.equal(reloaded.calls.native.some(x=>x.action==='disable'),true);
 });

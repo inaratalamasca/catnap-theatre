@@ -70,3 +70,25 @@ test('approximate lyric following respects manual correction and pause/disable',
   root.querySelector('.ct-lyrics-auto').click();audio.paused=false;audio.currentTime=33;ticks.forEach(f=>f());assert.ok(Math.abs(scroller.scrollTop-203.333333)<.001);
   dom.window.close();
 });
+
+
+test('visible Pause never reconnects an inactive show or starts its first entry',async()=>{
+  const f=await fixture();try{
+    let pauses=0,intents=0;f.w.CatnapManagedShow={active:false};
+    f.w.chrome.runtime.sendMessage=async()=>{intents++;return {ok:true,handled:true};};
+    f.w.document.querySelector('[aria-label="Playbar: Pause button"]').addEventListener('click',()=>pauses++);
+    f.root.querySelector('.ct-toggle').click();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(pauses,1);assert.equal(intents,0);
+  }finally{f.dom.window.close();}
+});
+
+test('Theatre start asks its worker to recover a saved show before native playlist autoplay',async()=>{
+  const f=await fixture();try{
+    let nativeStarts=0;const intents=[];f.w.CatnapManagedShow={active:false};
+    f.w.document.querySelector('[aria-label="Playbar: Pause button"]').remove();
+    const button=f.w.document.createElement('button');button.setAttribute('aria-label','Play playlist');button.onclick=()=>nativeStarts++;f.w.document.body.append(button);
+    f.w.chrome.runtime.sendMessage=async message=>{intents.push(message);return {ok:true,handled:true};};
+    f.root.querySelector('.ct-toggle').click();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(intents[0].target,'catnap-show-intent');assert.equal(intents[0].action,'toggle');assert.equal(nativeStarts,0);
+  }finally{f.dom.window.close();}
+});

@@ -1,10 +1,11 @@
-/* Catnap Theatre managed-show presentation, version 0.6.0.
- * Change summary: mixed-source queue, staged artwork, timed content warnings,
- * and explicit Load/Play. Host-only notes remain in the extension window.
+/* Catnap Theatre managed-show presentation, version 0.6.3.
+ * Change summary: reload-safe binding status, first-entry Play, trusted native
+ * controls routed through manual/AP coordination, staged artwork and timed
+ * warnings. Host-only notes remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.0';
+  const SCRIPT_VERSION='0.6.3';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -94,7 +95,20 @@
     show=next;coordinator.appendQueue(next.entries);coordinator.setWarningSeconds(next.warningSeconds);coordinator.setAutoplay(next.mode==='ap'&&next.autoplay);render();return {updated:true};
   }
   async function command(action,args={}){
+    if(action==='status')return {enabled:active,showId:show?.id||null,bindingId:show?.bindingId||null,playback:state(),guard:active?await guard({action:'status'}):null,stageOpen:!!root()};
     if(!active||!coordinator)throw Error('Enable the managed show in Inbox & show controls first.');
+    const wasClosed=!root();
+    if(['load','next','previous','play','toggle'].includes(action))view()?.open(true);
+    if(['play','toggle'].includes(action)){
+      if(state().index<0){
+        if(!state().queue.length)throw Error('The show queue is empty. Refresh the selected inbox before pressing Play.');
+        // Entry zero is authoritative. Never skip a held FIFO submission in
+        // order to make a later song play when the host presses Play.
+        await coordinator.load(0);
+      }else if(wasClosed||coordinator.needsRestage){coordinator.needsRestage=false;await coordinator.load(state().index);}
+      if(!['ready','paused','playing','ended'].includes(state().phase))throw Error(state().error||'The first show entry is held. Resolve it or choose a source deliberately.');
+    }
+    if(action==='play'&&state().phase==='playing')return {playback:state()};
     let result;
     if(action==='load')result=await coordinator.load(args.index);
     else if(action==='next')result=await coordinator.loadNext();
@@ -116,6 +130,10 @@
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message?.target!=='catnap-show-tab'||sender.id!==chrome.runtime.id||sender.tab)return;
     (async()=>{
+      // A tab reload clears this content-world binding while the worker may
+      // still retain its previous lease. Status must be readable before the
+      // show-ID check, so the worker can detect and explicitly rebind it.
+      if(message.action==='status')return command('status');
       if(message.action==='enable')return enable(message.show);
       if(message.action==='update')return update(message.show);
       if(message.action==='disable')return disable();
@@ -138,7 +156,56 @@
       if(index>=0&&coordinator===closingCoordinator&&state().generation===token)closingCoordinator.needsRestage=true;
     }).catch(displayError);
   }
-  globalThis.CatnapManagedShow={SCRIPT_VERSION,get active(){return active;},snapshot:state,command,render,progress,seek,metadata,closed:closedTheatre};
+  function songId(url){try{const value=new URL(url,location.href);return ['suno.com','www.suno.com'].includes(value.hostname)?/^\/song\/([a-f0-9-]{36})\/?$/i.exec(value.pathname)?.[1]?.toLowerCase()||null:null;}catch{return null;}}
+  function rowSong(button){
+    let parent=button.parentElement;
+    for(let depth=0;parent&&depth<5;parent=parent.parentElement,depth++){
+      if(['BODY','HTML','MAIN'].includes(parent.tagName)||parent.contains(root()))break;
+      const ids=new Set(Array.from(parent.querySelectorAll('a[href*="/song/"]')).map(anchor=>songId(anchor.href)).filter(Boolean));
+      if(ids.size===1)return [...ids][0];if(ids.size>1)break;
+    }
+    return null;
+  }
+  function routeNativeControl(event){
+    // Programmatic native-row clicks made by managed-media.js must reach
+    // Suno so it can prepare its source, while the MAIN guard keeps it muted.
+    if(!active||!coordinator||event.isTrusted!==true)return false;
+    const target=event.target instanceof Element?event.target:null;if(!target||target.closest('#catnap-theater-root'))return false;
+    let action=null,index=null,error='';
+    if(event.type==='click'){
+      if(event.button!==undefined&&event.button!==0)return false;
+      const button=target.closest('button');if(!button)return false;
+      const label=(button.getAttribute('aria-label')||button.title||'').trim();
+      const exact={'Playbar: Play button':'play','Playbar: Pause button':'pause','Playbar: Next Song button':'next','Playbar: Previous Song button':'previous'};
+      action=exact[label]||null;
+      if(!action&&/^play playlist$/i.test(label)){action='play';index=0;}
+      else if(!action&&/^(?:play|pause)(?:\s|$)/i.test(label)&&!/playlist/i.test(label)){
+        const id=rowSong(button);if(!id)return false;
+        const matches=state().queue.map((entry,at)=>({entry,at})).filter(value=>value.entry.sunoId===id);
+        const current=matches.find(value=>value.at===state().index),chosen=current||(matches.length===1?matches[0]:null);
+        if(!chosen)error=matches.length?'This song has multiple show submissions. Choose the intended entry in the show controls.':'This song is outside the active show queue. Choose a show entry or return to ordinary Suno.';
+        else if(/^pause/i.test(label)){if(chosen.at!==state().index)error='Choose the playing show entry before pausing it.';else action='pause';}
+        else{action='play';index=chosen.at;}
+      }
+    }else if(event.type==='keydown'){
+      if(event.ctrlKey||event.altKey||event.metaKey||target.closest('input,textarea,select,[contenteditable="true"]'))return false;
+      if(target.closest('button')&&!/Playbar:/.test(target.closest('button').getAttribute('aria-label')||''))return false;
+      if(event.key===' '||event.code==='Space'||event.key==='MediaPlayPause')action='toggle';
+      else if(event.key==='MediaTrackNext'||event.key==='ArrowRight'&&event.shiftKey)action='next';
+      else if(event.key==='MediaTrackPrevious'||event.key==='ArrowLeft'&&event.shiftKey)action='previous';
+    }
+    if(!action&&!error)return false;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(error){displayError(Error(error));return true;}
+    const owner=coordinator;
+    void (async()=>{
+      if(index!==null){const expected=state().queue[index]?.id;if(!expected)throw Error('The show queue is empty. Refresh the selected inbox before pressing Play.');await command('load',{index});if(coordinator!==owner||state()?.current?.id!==expected)throw Error('The show selection changed before playback could start.');}
+      return command(action);
+    })().catch(displayError);
+    return true;
+  }
+  window.addEventListener('click',routeNativeControl,true);window.addEventListener('keydown',routeNativeControl,true);
+  globalThis.CatnapManagedShow={SCRIPT_VERSION,get active(){return active;},snapshot:state,command,render,progress,seek,metadata,closed:closedTheatre,routeNativeControl};
   setInterval(()=>{
     const stage=root();if(!stage)return;
     if(!stage.querySelector('.ct-inbox-controls')){

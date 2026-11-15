@@ -1,5 +1,13 @@
 # Changes
 
+## 0.6.3 development — November 15, 2026
+
+- Verify the live Theatre/page lease and native guard instead of showing a stale Manual advance status after a page reload. Explicit Load/Next/Previous/Play can reconnect the selected Theatre without rebinding during inbox imports or setup changes.
+- Start the first FIFO entry from an explicit Play on a fresh show; Load and advance remain silent, and a held first entry is not skipped.
+- Route known native Suno playback controls through an active managed show and harden native media boundaries, including detached media and earlier native event handlers.
+- Add an optional whole-operation coordination hook for the advanced controller, while keeping native callbacks under their existing exact show/tab lease.
+- Keep the Inbox-only package explicit about its playlist-only role. Preserve Suno profile-scope authorization and existing native companion compatibility.
+
 ## 0.6.2 development — November 15, 2026
 
 - Host confirmed 0.6.2 authorization, playlist creation, Suno playlist playback and clean HQ rebroadcast together. Mixed-source/manual-warning/AP behavior remains separately pending live acceptance.

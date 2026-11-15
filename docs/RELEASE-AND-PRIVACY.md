@@ -1,6 +1,6 @@
-# Release and privacy · 0.5.0 early access
+# Release and privacy · 0.6.3 preview
 
-Published source and an unpacked-extension download are available through the [0.5.0 release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0). There is no Chrome Web Store listing or supported Firefox package. Ina has reported successful standalone 0.5.0 use in Brave; isolated checks cover the toolbar icons and presentation controls. See [acceptance](ACCEPTANCE.md) for the remaining broader rehearsal.
+The [0.6.3 preview](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.6.3-preview) packages combined Theatre + Inbox and a separate Inbox-only creator. The older [0.5.0 presentation release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) remains available. The submitted 0.5.0 Chrome Store beta is pending review; this preview is an unpacked development download, not a Store update. There is no supported Firefox package. A host confirmed 0.6.2 authorization, playlist creation and clean HQ rebroadcast; 0.6.3 fixes subsequent reload/manual-playback failures and still needs live mixed-source rehearsal. See [managed shows](MANAGED-SHOW.md) and [acceptance](ACCEPTANCE.md).
 
 ## Local presentation
 
@@ -9,6 +9,16 @@ Catnap Theatre reads current song information, artwork, lyrics, visible playlist
 Display preferences live in the extension's browser-profile storage. Settings can be exported as a small JSON file when requested. Selected image/GIF/video files remain in page memory rather than being uploaded by Catnap. A page refresh forgets those files. Anything displayed in Theatre can be visible in a screen share.
 
 The optional lounge connects to AIU Radio when the host presses Play. Remote Suno artwork/video uses ordinary requests to Suno's services. External links contact their named service when opened.
+
+## Optional Inbox and playlist access
+
+These features require an explicit host choice. The extension reads Pending submissions through the selected signed-in AIU uploader tab using same-origin GET requests. Submission names, notes, source URLs and disclaimer/radio flags are retained in browser-profile storage for the local show. It does not accept, release, decline or delete uploader submissions. New show resets that local queue, not the uploader or Suno playlist.
+
+Playlist operations use the host's own Suno OAuth consent, including required basic profile and library read/write permissions. Access/refresh tokens stay in session-scoped extension storage and go only to Suno's fixed authorization service and the restricted native companion. The helper supports four playlist tools; it cannot generate songs, fetch arbitrary URLs, run shell commands, or create a public listener. No login/password/cookie is exported. Optional incident logs are disabled by default; when deliberately enabled they contain only fixed error/status/scope categories, never tokens or playlist contents.
+
+Uploader notes stay in the host window. Copy assistant context includes them only after the host selects its include-notes checkbox; this puts text on the clipboard and sends no chat message. The playback tab receives a reduced queue without uploader notes/names/IDs or credentials. YouTube staging contacts its embed and image services; provider availability and embedding rules apply. Spotify/Mureka playback is not included.
+
+The Inbox-only package does not capture audio or enforce playback/manual advance. Its LP/AP setting chooses the submission inbox; playback stays with Suno or a separately managed Theatre.
 
 ## Optional publishing
 
@@ -22,11 +32,14 @@ The bundled extension has no Catnap-operated telemetry service or AI integration
 
 ## Permissions
 
-- `storage`: local preferences, relay endpoint and session-scoped publishing state.
+- `storage`: local preferences, show queue/host context, relay endpoint and session-scoped authorization/publishing state.
+- `tabs` and `scripting`: choose the intended uploader/Suno tab, perform the optional same-origin inbox read and install/verify its native playback guard.
+- `identity` and `nativeMessaging`: explicit Suno OAuth sign-in and fixed-endpoint playlist transport through the optional helper.
+- `alarms`: optional bounded AP inbox/playlist updates; stopped on restart or error.
 - `activeTab` and `tabCapture`: host-initiated capture of the selected music tab.
 - `offscreen`: the extension's audio publishing/monitor document.
 - Suno content-script matches: local presentation and guarded native playback delegation.
-- Optional HTTP/HTTPS host access: approval for the host-selected relay when publishing; public relay URLs require HTTPS. Broad optional declarations do not pregrant access to every site.
+- Optional HTTP/HTTPS host access: approval for the host-selected relay when publishing; public relay URLs require HTTPS. Broad optional declarations do not pregrant access to every site. Inbox/Suno authorization hosts are requested when those features are enabled.
 
 No cookie, browser-history, debugger, microphone or Discord-account permission is requested.
 

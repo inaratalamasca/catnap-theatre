@@ -43,7 +43,9 @@ Version 0.5.0 development, November 12, 2026. Run in a separate test profile bef
 
 A short capture showing cold start → next song → lyric recovery; two layout screenshots with real Suno data; one animated-art example; one long/virtualized playlist; and Chrome version/OS. Record observed results with dates and exact extension version. A failed case is useful evidence; do not relabel it as passed from source inspection.
 
-## Release gates
+## General-release gates
+
+The explicitly labeled unpacked development preview retains the narrower verification limits in MANAGED-SHOW.md. The following are gates for broad support/Store/general availability, not claims that every preview checklist item has passed.
 
 - [ ] Live Suno checklist complete and blockers fixed.
 - [ ] AIU logo / all redistributed asset usage confirmed.

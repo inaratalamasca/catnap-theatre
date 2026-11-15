@@ -9,15 +9,15 @@ const extension = path.join(__dirname,'../extension');
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function settle() { await tick(); await tick(); }
 
-async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false}={}) {
+async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
   const w=dom.window, messages=[],copies=[],permissions=[];
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
-  let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:22,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
+  let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:playerInitiallySelected?22:null,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
   let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant;
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
-  const snapshot=()=>({state:structuredClone(state),tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
+  const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
   w.setInterval=()=>0;
   w.CatnapPackage={inboxOnly};
   w.chrome={permissions:{request:async value=>{permissions.push(value);return permissionGranted;}},runtime:{sendMessage:async message=>{
@@ -114,6 +114,8 @@ test('Inbox-only flavor hides playback, current-song copying and per-row Load co
   assert.equal([...f.w.document.querySelectorAll('#queue button')].every(button=>button.hidden),true);
   assert.equal(f.w.document.querySelector('h1').textContent,'Inbox → playlist');
   assert.match(f.w.document.title,/playlist creator/);
+  assert.equal(f.element('mode').querySelector('[value=lp]').textContent,'Listening party');
+  assert.match(f.element('queue-help').textContent,/Suno controls playback/);
 });
 
 test('playlist membership result uses numeric confirmed count and stays distinct from playback',async t=>{
@@ -162,4 +164,26 @@ test('an older grant prompts updated consent and clears that prompt after succes
   await f.click('connect-suno');
   assert.match(f.element('suno-status').textContent,/Suno connected/);
   assert.doesNotMatch(f.element('suno-status').textContent,/updated permissions/);
+});
+
+
+test('stale page connection does not display saved Manual advance or enable stale song copying',async t=>{
+  const f=await fixture({linked:false});t.after(()=>f.dom.window.close());
+  assert.match(f.element('playback-status').textContent,/reloaded.*reconnect/);
+  assert.doesNotMatch(f.element('playback-status').textContent,/Manual advance/);
+  assert.equal(f.element('copy-playing').disabled,true);
+  assert.equal(f.element('current-title').textContent,'No song loaded');
+  await f.click('play');assert.equal(f.messages.find(m=>m.action==='play').tabId,22);
+  f.w.document.querySelector('#queue button').click();await settle();
+  assert.equal(f.messages.find(m=>m.action==='load').tabId,22);
+});
+
+
+test('choosing a source tab enables first row Load without an extra binding action',async t=>{
+  const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  assert.equal(f.w.document.querySelector('#queue button').disabled,true);
+  await f.change('player-tab','22');
+  assert.equal(f.w.document.querySelector('#queue button').disabled,false);
+  f.w.document.querySelector('#queue button').click();await settle();
+  assert.equal(f.messages.find(m=>m.action==='load').tabId,22);
 });

@@ -5,12 +5,14 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.0';
+  const SCRIPT_VERSION = '0.6.3';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
   const text = (value, max = 200) => String(value || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, max);
   let tasks = Promise.resolve(), reading = false;
+  const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning']);
+  const coordinate=(action,fn)=>globalThis.CatnapShowCoordination?.runExclusive?globalThis.CatnapShowCoordination.runExclusive(action,fn):fn();
   const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',uploaderTabId:null,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
   const get = async () => (await chrome.storage.local.get(KEY))[KEY] || initial();
   const save = async state => {await chrome.storage.local.set({[KEY]:state}); return state;};
@@ -102,6 +104,64 @@
     latest.entries=latest.entries.map(entry=>{const clip=metadata.get(entry.sunoId);return clip?{...entry,durationSeconds:clip.durationSeconds,artworkUrl:entry.preferredSource==='youtube'?entry.artworkUrl:clip.artworkUrl||entry.artworkUrl}:entry;});
     latest.lastPlaylistSync={at:Date.now(),...result};await save(latest);await publishState(latest);return result;
   }
+  async function playerHealth(state) {
+    if(!Number.isInteger(state.playerTabId))return {linked:false,reason:'Choose a Suno tab, then Load or Play to connect the show.'};
+    try{
+      const tab=await chrome.tabs.get(state.playerTabId);
+      if(!SUNO.test(tab.url||''))return {linked:false,reason:'The selected tab is no longer a Suno page.'};
+      const response=await chrome.tabs.sendMessage(tab.id,{target:'catnap-show-tab',action:'status',showId:state.id,bindingId:state.playerLease},{frameId:0});
+      const exact=response?.enabled===true&&response.showId===state.id&&response.bindingId===state.playerLease;
+      const guarded=exact&&response.guard?.ready===true&&response.guard.enabled===true&&response.guard.integrity===true;
+      return guarded?{linked:true,stageOpen:response.stageOpen===true,phase:response.playback?.phase||'idle'}:{linked:false,reason:'Theatre reloaded or its playback connection changed. Load or Play to reconnect.'};
+    }catch(_){return {linked:false,reason:'Theatre is not responding. Load or Play to reconnect; refresh only the intended Suno tab if the extension was changed.'};}
+  }
+  async function stopBinding(state){
+    if(!Number.isInteger(state.playerTabId))return;
+    const tab=await chrome.tabs.get(state.playerTabId).catch(()=>null);
+    if(!tab||!SUNO.test(tab.url||''))return; // Its prior document/media is gone.
+    try{
+      const reply=await playerCommand(state,'disable');
+      if(reply?.enabled===false)return;
+    }catch(_){/* A reloaded/invalidated isolated-world show may be absent. */}
+    const results=await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:'MAIN',func:async()=>{
+      const gate=globalThis.CatnapManagedNative;if(!gate?.command||!gate?.status)return {disabled:false};
+      await gate.command({action:'disable'});
+      if(gate.status().enabled!==false)return {disabled:false};
+      // These are our own managed iframe elements. Explicitly returning to
+      // ordinary playback must not leave an old, disconnected video audible.
+      for(const frame of document.querySelectorAll('#catnap-theater-root .ct-managed-youtube')){
+        try{const origin=new URL(frame.src).origin;if(origin==='https://www.youtube-nocookie.com')frame.contentWindow?.postMessage(JSON.stringify({event:'command',func:'pauseVideo',args:[]}),origin);}catch(_){}
+        frame.remove();
+      }
+      return {disabled:true};
+    }});
+    if(results[0]?.result?.disabled!==true)throw Error('The old player could not be stopped safely. Refresh that Suno tab between broadcasts, then return to ordinary playback.');
+  }
+  async function bindPlayer(state,tabId) {
+    const tab=await chrome.tabs.get(Number(tabId));
+    if(!SUNO.test(tab.url||''))throw Error('Choose an open Suno tab.');
+    await stopBinding(state);
+    await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:'MAIN',files:['managed-native-guard.js']});
+    state.playerTabId=tab.id;state.playerLease=crypto.randomUUID();state.playback=null;await save(state);
+    try{
+      const response=await chrome.tabs.sendMessage(tab.id,{target:'catnap-show-tab',action:'enable',show:showForPlayer(state)},{frameId:0});
+      if(!response?.enabled)throw Error(response?.error||'The managed Theatre is not loaded in this tab. Refresh the intended Suno tab between broadcasts.');
+      const health=await playerHealth(state);
+      if(!health.linked)throw Error(health.reason);
+      return {state,response};
+    }catch(error){
+      try{await chrome.tabs.sendMessage(tab.id,{target:'catnap-show-tab',action:'disable'},{frameId:0});}catch(_){}
+      await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:'MAIN',func:()=>globalThis.CatnapManagedNative?.command({action:'disable'})}).catch(()=>{});
+      state.playerTabId=null;state.playerLease=null;state.playback=null;await save(state);throw error;
+    }
+  }
+  async function ensurePlayer(state,tabId){
+    const chosen=Number(tabId)||state.playerTabId;
+    if(!Number.isInteger(chosen))throw Error('Choose the Suno / Theatre tab first.');
+    const health=chosen===state.playerTabId?await playerHealth(state):{linked:false};
+    if(health.linked)return state;
+    return (await bindPlayer(state,chosen)).state;
+  }
   async function playerCommand(state,action,extra={}) {
     if(!Number.isInteger(state.playerTabId))throw Error('Link this show to your Suno Theatre tab first.');
     const tab=await chrome.tabs.get(state.playerTabId);if(!SUNO.test(tab.url||''))throw Error('The linked Suno tab has changed.');
@@ -135,7 +195,7 @@
     }
     if(!await trustedPage(sender))throw Error('Untrusted show controls.');
     if(globalThis.CatnapPackage?.inboxOnly&&['bind-player','unbind-player','load','next','previous','play','pause','stop','repeat-warning','announcement'].includes(message.action))throw Error('The standalone Inbox package creates playlists. Use Catnap Theatre for managed playback.');
-    if(message.action==='status')return {state:await get(),tabs:await tabs(),suno:await CatnapSuno.status(),suggestedTabId:(await chrome.storage.session.get('catnapShowSuggestedTabId')).catnapShowSuggestedTabId,version:SCRIPT_VERSION};
+    if(message.action==='status'){const state=await get();return {state,playbackHealth:await playerHealth(state),tabs:await tabs(),suno:await CatnapSuno.status(),suggestedTabId:(await chrome.storage.session.get('catnapShowSuggestedTabId')).catnapShowSuggestedTabId,version:SCRIPT_VERSION};}
     if(message.action==='configure'){
       const state=await get(), changes=message.settings||{};
       if(changes.mode!==undefined){if(!['lp','ap'].includes(changes.mode))throw Error('Choose LP or AP.');if(state.entries.length&&changes.mode!==state.mode)throw Error('Start a new show before changing party type.');state.mode=changes.mode;if(state.mode==='lp')state.autoplay=false;}
@@ -157,31 +217,16 @@
       const state=await get();state.playlistId=playlist.id;await save(state);return playlist;
     }
     if(message.action==='sync-playlist')return syncPlaylist();
-    if(message.action==='bind-player'){
-      const state=await get(),tab=await chrome.tabs.get(Number(message.tabId));
-      if(!SUNO.test(tab.url||''))throw Error('Choose an open Suno tab.');
-      // End the old lease before issuing a new one, including a same-tab rebind.
-      // Otherwise the old adapter's final guard commands would be rejected by
-      // the newly stored lease and leave its media resources half disposed.
-      if(Number.isInteger(state.playerTabId)){
-        const previous=await chrome.tabs.get(state.playerTabId).catch(()=>null);
-        if(previous&&SUNO.test(previous.url||''))await playerCommand(state,'disable');
-      }
-      await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:'MAIN',files:['managed-native-guard.js']});
-      state.playerTabId=tab.id;state.playerLease=crypto.randomUUID();state.playback=null;await save(state);
-      try{
-        const result=await chrome.tabs.sendMessage(tab.id,{target:'catnap-show-tab',action:'enable',show:showForPlayer(state)},{frameId:0});
-        if(!result?.enabled)throw Error(result?.error||'The managed Theatre is not loaded in this tab. Open it in the development profile before linking.');return result;
-      }catch(error){
-        try{await chrome.tabs.sendMessage(tab.id,{target:'catnap-show-tab',action:'disable'},{frameId:0});}catch(_){}
-        await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},world:'MAIN',func:()=>globalThis.CatnapManagedNative?.command({action:'disable'})}).catch(()=>{});
-        state.playerTabId=null;state.playerLease=null;state.playback=null;await save(state);throw error;
-      }
-    }
+    if(message.action==='bind-player')return (await bindPlayer(await get(),message.tabId)).response;
     if(message.action==='unbind-player'){
-      const state=await get();if(state.playerTabId)await playerCommand(state,'disable');state.playerTabId=null;state.playback=null;await save(state);return state;
+      const state=await get();await stopBinding(state);state.playerTabId=null;state.playerLease=null;state.playback=null;await save(state);return state;
     }
-    if(['load','next','previous','play','pause','stop','repeat-warning'].includes(message.action))return playerCommand(await get(),message.action,{index:Number(message.index)});
+    if(['load','next','previous','play','pause','stop','repeat-warning'].includes(message.action)){
+      let state=await get();
+      if(['load','next','previous','play'].includes(message.action))state=await ensurePlayer(state,message.tabId);
+      else if(!(await playerHealth(state)).linked)throw Error('The show connection is inactive. Load or Play to reconnect first.');
+      return playerCommand(state,message.action,{index:Number(message.index)});
+    }
     if(message.action==='watch'){
       const state=await get();if(state.mode!=='ap'&&message.enabled)throw Error('Automatic inbox updates are for AP mode. Use Refresh inbox for LP.');
       state.watch={enabled:message.enabled===true,until:message.enabled?Date.now()+12*3600000:0};await save(state);
@@ -189,11 +234,11 @@
       return get();
     }
     if(message.action==='new-show'){
-      const old=await get();if(old.playerTabId)await playerCommand(old,'disable');await chrome.alarms.clear(ALARM);
+      const old=await get();await stopBinding(old);await chrome.alarms.clear(ALARM);
       return save({...initial(),uploaderTabId:old.uploaderTabId});
     }
     if(message.action==='announcement'){
-      const state=await get(),current=state.entries.find(e=>e.id===state.playback?.current?.id);
+      const state=await get();if(!(await playerHealth(state)).linked)throw Error('Reconnect Theatre before copying current-song information.');const current=state.entries.find(e=>e.id===state.playback?.current?.id);
       if(!current)throw Error('Load a show entry in Theatre first.');
       const source=state.playback.source||current.preferredSource;
       const url=source==='youtube'?current.youtubeUrl:current.sunoUrl;
@@ -204,6 +249,23 @@
     throw Error('Unknown show control.');
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
+    if(message?.target==='catnap-show-intent'){
+      serial(async()=>{
+        if(sender.id!==chrome.runtime.id||sender.frameId!==0||!Number.isInteger(sender.tab?.id)||!SUNO.test(sender.url||''))throw Error('Untrusted Theatre playback request.');
+        if(!['toggle','next','previous'].includes(message.action))throw Error('Unknown Theatre playback request.');
+        let state=await get();
+        const path=new URL(sender.url).pathname;
+        const matchingPlaylist=state.playlistId&&path.replace(/\/$/,'').toLowerCase()==='/playlist/'+state.playlistId.toLowerCase();
+        // Never steal a show already bound to another tab just because the
+        // same playlist is visible there. Unrelated tabs retain normal Theatre.
+        const intended=state.playerTabId===sender.tab.id||(!state.playerTabId&&matchingPlaylist);
+        if(!intended||!state.entries.length)return {ok:true,handled:false};
+        return coordinate(message.action==='toggle'?'play':message.action,async()=>{
+          state=await ensurePlayer(state,sender.tab.id);
+          await playerCommand(state,message.action);return {ok:true,handled:true};
+        });
+      }).then(reply,error=>reply({ok:false,handled:true,error:error.message}));return true;
+    }
     if(message?.target==='managed-native'){
       (async()=>{
         const state=await get();if(sender.id!==chrome.runtime.id||sender.tab?.id!==state.playerTabId||sender.frameId!==0||!SUNO.test(sender.url||'')||message.showId!==state.id||message.bindingId!==state.playerLease)throw Error('Unbound managed player.');
@@ -224,14 +286,15 @@
     }
     if(message?.target!=='catnap-show-worker')return;
     const run=()=>handle(message,sender);
-    (message.action==='status'?run():serial(run)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.'}));return true;
+    const controlled=async()=>await trustedPage(sender)&&coordinatedActions.has(message.action)?coordinate(message.action,run):run();
+    (message.action==='status'?run():serial(controlled)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.'}));return true;
   });
   chrome.alarms.onAlarm.addListener(alarm=>{
     if(alarm.name!==ALARM)return;
-    void serial(async()=>{
+    void serial(()=>coordinate('watch-tick',async()=>{
       const state=await get();if(!state.watch.enabled||state.mode!=='ap'||Date.now()>=state.watch.until){state.watch={enabled:false,until:0};await save(state);await chrome.alarms.clear(ALARM);return;}
       try{await importInbox();if(state.playlistId)await syncPlaylist();}catch(error){const latest=await get();latest.error=text(error.message,300);latest.watch={enabled:false,until:0};await save(latest);await chrome.alarms.clear(ALARM);}
-    });
+    })).catch(async error=>{const state=await get();state.watch={enabled:false,until:0};state.error=text(error.message,300);await save(state);await chrome.alarms.clear(ALARM);});
   });
   chrome.runtime.onStartup.addListener(()=>{void serial(async()=>{await chrome.alarms.clear(ALARM);const state=await get();state.watch={enabled:false,until:0};state.playerTabId=null;state.playback=null;await save(state);});});
   globalThis.CatnapShowWorker={version:SCRIPT_VERSION,open};

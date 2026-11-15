@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.2 development
+# Inbox playlists and managed shows · 0.6.3 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -17,7 +17,7 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
 
-Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.2 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.3 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
 
 For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
 
@@ -31,14 +31,16 @@ AP inbox/playlist updates are optional, every two minutes while the browser is r
 
 ## Manual LP and optional AP autoplay
 
-In the combined package, open the destination playlist in Suno and choose that tab under Theatre playback. Press Use this Theatre for the show. Native playback is held before a managed entry is selected.
+In the combined package, open the destination playlist in Suno and choose that tab under Theatre playback. Press Use this Theatre for the show, or select the intended tab and use Load/Play. Explicit Load/Play reconnects a stale or reloaded page before acting. Merely selecting LP/AP, reading the inbox or creating a playlist never stops a currently playing source. Native playback is held before a managed entry is selected.
 
 - **Load next / Load previous / a queue row's Load:** update the loaded entry, artwork and warning without starting audio.
-- **Play:** start the loaded source. **Pause:** hold it.
+- **Play:** start the loaded source; on a fresh show it loads and starts the first FIFO entry. It does not skip a held first entry. **Pause:** hold it.
 - **LP:** autoplay is off and cannot be enabled. The song ends and stays ended until the host loads another entry.
 - **AP:** autoplay starts off; the host may turn it on or off. When on, the managed queue—not Suno's native next/repeat setting—chooses the following entry. A blocked entry holds for a host decision.
 
 Native Suno playback uses an exact rendered song row and a source-bound audio guard. It fails visibly if the native row/audio cannot be identified safely; it does not navigate/reload the playing tab or guess a source. Suno may need to render new playlist rows before they can play. Native looping is suppressed in managed mode and restored on return to ordinary Suno. A separately managed YouTube iframe stays in the same Theatre tab; opening a different tab would not automatically enter a Discord tab share.
+
+The controls verify the actual page/show lease and native guard before displaying manual playback status. Reloaded/inactive pages show a reconnect prompt, and current-song copy is unavailable until that connection is valid. Known native Suno playback buttons are routed through the managed show while it is active; this does not turn ordinary unlinked Suno playback into a managed show.
 
 Closing Theatre pauses a managed song. Reopening re-stages the current entry quietly; it does not resume audio automatically. Returning to ordinary Suno ends managed playback and restores ordinary controls.
 
@@ -88,3 +90,5 @@ bash scripts/build-dev.sh --output /absolute/path/to/a/new/output-folder
 ```
 
 The builder refuses overwrites and emits both unpacked folders, root-manifest ZIPs and SHA-256 files. Each contains first-party licensing, setup instructions and the optional companion source/installers. No event CSVs, private identity records, browser configuration or runtime credentials are included.
+
+The Inbox-only creator does not enforce manual playback: its LP/AP choice selects the submission inbox, and playback stays with Suno or a separately managed Theatre.

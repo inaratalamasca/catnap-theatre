@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Inbox &amp; show controls</title><link rel="stylesheet" href="presentation-panel.css"><link rel="stylesheet" href="show.css"></head>
-<body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.2</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
+<body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.3</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
 <p id="status" role="status" aria-live="polite">Loading show…</p>
 <main>
 <section><h2>Show setup</h2><div class="columns"><label>Party type<select id="mode"><option value="lp">Listening party · manual</option><option value="ap">Afterparty</option></select></label><label>Show name<input id="show-name" maxlength="100" placeholder="Tonight’s show"></label></div>
@@ -18,7 +18,7 @@
 <section id="current-card"><h2>Loaded / playing song</h2><h3 id="current-title">No song loaded</h3><p id="current-credit"></p><p id="current-warning" class="warning-badge"></p><label>Uploader note<pre id="current-note">No uploader note.</pre></label>
 <div class="row"><button id="copy-playing" class="primary" type="button">Copy now playing</button><button id="copy-link" type="button">Copy song link</button></div>
 <details><summary>Assistant / bot context</summary><p>Copy the bound song and prepared announcement for a helper. This does not post to chat.</p><label class="check"><input id="include-notes" type="checkbox">Include the host-only uploader note in the copied context</label><button id="copy-context" type="button">Copy assistant context</button><textarea id="copy-fallback" rows="5" readonly aria-label="Copy text fallback" hidden></textarea></details></section>
-<section><h2>Running order <span id="queue-count"></span></h2><small>Suno and YouTube share one FIFO show order. Selecting Load never starts the song.</small><ol id="queue"></ol></section>
+<section><h2>Running order <span id="queue-count"></span></h2><small id="queue-help">Suno and YouTube share one FIFO show order. Selecting Load never starts the song.</small><ol id="queue"></ol></section>
 <section><h2>Suno playlist</h2><p>The show works from its own running order. A Suno playlist contains the Suno songs; YouTube-only entries remain in Theatre.</p>
 <div class="row"><button id="connect-suno" type="button">Connect Suno</button><button id="disconnect-suno" type="button">Disconnect</button><button id="playlists" type="button">Load my playlists</button></div><small id="suno-status" role="status" aria-live="polite">Connect Suno to authorize playlist changes.</small>
 <label>Destination playlist<select id="playlist"><option value="">Choose a playlist</option></select></label>

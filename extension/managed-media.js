@@ -1,11 +1,13 @@
-/* Catnap managed browser-media adapter, version 0.6.0.
- * Change summary: exact-row Suno playback behind the MAIN-world native guard;
+/* Catnap managed browser-media adapter, version 0.6.3.
+ * Change summary: exact-row Suno playback behind the MAIN-world native guard,
+ * including privately observed detached audio; source keys never leave that
+ * bound extension transport. Selected media is checked atomically before play.
  * same-tab YouTube embeds are staged paused and controlled by postMessage.
  * This file never fetches/duplicates audio, navigates tabs or owns credentials.
  */
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./managed-player.js'):root.CatnapManagedPlayer);if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedMedia=api;})(typeof globalThis!=='undefined'?globalThis:this,function(core){
   'use strict';
-  const SCRIPT_VERSION='0.6.0',NATIVE_CHANNEL='catnap-managed-native-v1';
+  const SCRIPT_VERSION='0.6.3',NATIVE_CHANNEL='catnap-managed-native-v1';
   const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   function sunoId(value){try{const u=new URL(value);const match=/^\/song\/([^/]+)\/?$/.exec(u.pathname);return ['suno.com','www.suno.com'].includes(u.hostname)&&match&&UUID.test(match[1])?match[1].toLowerCase():null;}catch{return null;}}
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
@@ -85,13 +87,13 @@
       const id=sunoId(source.url);if(!id)throw Error('This Suno song needs a canonical song link.');
       nativeTransition=token;
       try{
-      await guard({action:'block',generation});
+      const held=await guard({action:'block',generation});
       if(token!==generation)throw Error('The selected show entry changed.');
       const nativeAudio=()=>Array.from(doc.querySelectorAll('audio')).find(el=>!el.closest('#catnap-theater-root')&&(el.currentSrc||el.src));
-      const changingSong=nativeCurrentId()!==id,previousSource=nativeAudio()?.currentSrc||nativeAudio()?.src||'';
+      const changingSong=nativeCurrentId()!==id,previousSource=Object.hasOwn(held,'nativeAudio')?held.nativeAudio?.sourceKey||'':nativeAudio()?.currentSrc||nativeAudio()?.src||'';
       if(changingSong){const button=nativeButton(id);if(!button)throw Error('Open the destination Suno playlist and render this song before playing it. No safe native Play button was found.');button.click();}
       const deadline=Date.now()+7000;
-      while(token===generation&&Date.now()<deadline){const audio=nativeAudio(),key=audio?.currentSrc||audio?.src||'';if(nativeCurrentId()===id&&audio?.readyState>=2&&(!changingSong||key!==previousSource)){const status=await guard({action:'play',songId:id,sourceKey:key,restart:startedGeneration!==token,generation});if(!status?.permitted)throw Error('Suno playback was not authorized by the native guard.');startedGeneration=token;return;}await delay(80);}
+      while(token===generation&&Date.now()<deadline){const health=await guard({action:'status',generation}),audio=nativeAudio(),prepared=Object.hasOwn(health,'nativeAudio')?health.nativeAudio:audio?{sourceKey:audio.currentSrc||audio.src,readyState:audio.readyState}:null,key=prepared?.sourceKey||'';if(token!==generation)throw Error('The selected show entry changed.');if(nativeCurrentId()===id&&prepared?.readyState>=2&&(!changingSong||key!==previousSource)){const status=await guard({action:'play',songId:id,sourceKey:key,restart:startedGeneration!==token,generation});if(!status?.permitted)throw Error('Suno playback was not authorized by the native guard.');startedGeneration=token;return;}await delay(80);}
       throw Error('Suno did not load the selected song. It remains held.');
       }finally{if(nativeTransition===token)nativeTransition=-1;}
     }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.6.0
+// @version      0.6.3
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.6.0 development
+ * CATNAP THEATRE · v0.6.3 development
  * Change: optional managed-show hooks for quiet Load/Play and queue rendering.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
@@ -327,8 +327,8 @@
       aiuLogo.style.display = 'none';
       query('.ct-aiu-fallback', root).style.display = 'block';
     });
-    state.ui.previous.addEventListener('click', () => globalThis.CatnapManagedShow?.active ? managedCommand('previous') : clickNative(LABELS.prev));
-    state.ui.next.addEventListener('click', () => globalThis.CatnapManagedShow?.active ? managedCommand('next') : clickNative(LABELS.next));
+    state.ui.previous.addEventListener('click', () => theatreStep('previous'));
+    state.ui.next.addEventListener('click', () => theatreStep('next'));
     state.ui.play.addEventListener('click', () => toggleNativePlayback());
     state.ui.progress.addEventListener('input', (event) => {
       const ratio = Number(event.target.value) / 1000;
@@ -403,8 +403,25 @@
     return true;
   }
 
-  function toggleNativePlayback() {
+  async function requestShowIntent(action){
+    if(!globalThis.CatnapManagedShow||!globalThis.chrome?.runtime?.sendMessage)return false;
+    const result=await chrome.runtime.sendMessage({target:'catnap-show-intent',action});
+    if(result?.ok===false)throw Error(result.error||'The show could not reconnect.');
+    return result?.handled===true;
+  }
+  async function theatreStep(action){
+    try{
+      if(globalThis.CatnapManagedShow?.active){managedCommand(action);return;}
+      if(globalThis.CatnapManagedShow&&await requestShowIntent(action))return;
+      clickNative(action==='previous'?LABELS.prev:LABELS.next);
+    }catch(error){if(state.ui.desc)state.ui.desc.textContent=error.message;}
+  }
+  async function toggleNativePlayback() {
     if(globalThis.CatnapManagedShow?.active){managedCommand('toggle');return;}
+    // A visible native Pause remains Pause. Recover a show only for an
+    // explicit start, never turn pausing an ordinary song into Play entry zero.
+    if (clickNative(LABELS.pause)) return;
+    try{if(globalThis.CatnapManagedShow&&await requestShowIntent('toggle'))return;}catch(error){if(state.ui.desc)state.ui.desc.textContent=error.message;return;}
     // If Suno is already playing, always use its own Pause button.
     if (clickNative(LABELS.pause)) return;
     // Cold start: playlist Play must take priority over the idle Playbar Play.
@@ -914,9 +931,9 @@
     if (event.code === 'Space') {
       event.preventDefault(); event.stopPropagation(); toggleNativePlayback();
     } else if (event.code === 'ArrowLeft' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); globalThis.CatnapManagedShow?.active?managedCommand('previous'):clickNative(LABELS.prev);
+      event.preventDefault(); event.stopPropagation(); theatreStep('previous');
     } else if (event.code === 'ArrowRight' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); globalThis.CatnapManagedShow?.active?managedCommand('next'):clickNative(LABELS.next);
+      event.preventDefault(); event.stopPropagation(); theatreStep('next');
     } else if (event.code === 'ArrowLeft') {
       event.preventDefault(); event.stopPropagation(); seekBy(-5);
     } else if (event.code === 'ArrowRight') {
