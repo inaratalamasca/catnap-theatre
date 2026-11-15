@@ -2,6 +2,8 @@
 
 ## 0.6.2 development — November 15, 2026
 
+- Host confirmed 0.6.2 authorization, playlist creation, Suno playlist playback and clean HQ rebroadcast together. Mixed-source/manual-warning/AP behavior remains separately pending live acceptance.
+
 - Add `profile:read` to Suno sign-in: a live playlist-read error identified it as required. Older grants need an explicit Connect Suno and fresh approval.
 - Migrate the cached OAuth client registration during explicit connection; old-grant automatic refresh must not pair an old refresh token with a newly registered client.
 - Preserve queue data, pinned development identities and existing native protocol compatibility. The Store beta and production aliases are unchanged.

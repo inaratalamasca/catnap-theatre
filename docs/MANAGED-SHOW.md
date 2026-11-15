@@ -75,7 +75,9 @@ The existing public audio listener's v1 metadata schema accepts Suno identities 
 
 Automated checks cover FIFO/source/flag handling, exact sender/tab/lease checks, stale events, private-note filtering, MCP OAuth/membership/readback, native helper framing, clipboard controls, manual/AP transitions, native source/loop guards and packaging. An actual browser synthetic-media fixture verifies that native ended handlers cannot auto-start a following tone and that changing its source revokes permission before another play.
 
-Those checks are not a claim of live Suno compatibility or measured zero audio leakage on every current Suno player. Before using this build for a show, rehearse a flagged Load without sound, manual ending, AP autoplay, a YouTube insertion and return to Suno in an isolated profile. Actual own-account Suno OAuth/playlist writes, YouTube embed/gesture behavior and simultaneous Discord/HQ capture need that rehearsal. Windows/macOS browser installation needs platform verification in addition to any isolated helper/CI checks.
+On November 15, the host confirmed loading 0.6.2, connecting through Suno authorization, creating a playlist and rebroadcasting that playing playlist with clean audio. This is a successful host-reported combined rehearsal of authorization, playlist creation, Suno playback and HQ publishing; it is not an instrumented latency or audio-quality measurement.
+
+Remaining acceptance includes exact inbox-to-playlist membership/order and ongoing additions, a flagged Load without sound, manual ending, AP autoplay, YouTube insertion/return and embed/gesture behavior, token renewal, and simultaneous Discord/HQ capture. The report does not establish those separate behaviors. Windows/macOS browser installation needs platform verification in addition to the isolated helper/CI checks.
 
 ## Building
 
