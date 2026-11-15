@@ -39,5 +39,6 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self' data:; media-src 'none'; frame-src 'none'; connect-src https://suno.com https://www.suno.com https://studio-api-prod.suno.com"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzvDmLcVeHZBybMA+lXNJt/Y++8mzYxFY0KNJ3xF+RTTYKoKy6Jwfch5Bq9xX45vDgQpge6afbUv7CCg6GDPcevOZg5lJ2mb8Hal9ldXW1PKIVfgSvOOQVIW1zg1c7WIi1gLJiIprVejOZ9eJNI5/zedjG3rwEB+FHSwLU+lPMn0Ohot7gkC5uzpltDkZQB+PwDso1ESxkciSDPy3F6NIouDOLToJjhUrALTPgIZkrhxjJiZndRcc4XnCc2oEUnWfmQCWAfgYtyRMTtV7iwl7H44AZWMR+XeAmf7Ne3IQnw5lxUMjwuDBnFkEm2MYi9/KNDAYtyAnc4q5Bt9xJKJ9uwIDAQAB"
 }

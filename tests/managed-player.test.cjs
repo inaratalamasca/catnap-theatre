@@ -45,6 +45,15 @@ test('staged warning clears on its configured timeout, not another entry timer',
  await f.player.load(0);f.advance(1000);await f.player.load(1);f.advance(3000);assert.equal(f.player.snapshot().warning,null);assert.equal(f.player.snapshot().index,1);
  assert.equal(Player.flagged({disclaimer:'unknown'}),false);assert.equal(Player.flagged({disclaimer:'no'}),false);
 });
+test('supplied clock functions retain their owner as receiver',async()=>{
+ const clock={now(){assert.equal(this,clock);return 1000;},setTimeout(fn,ms){assert.equal(this,clock);this.pending=fn;return 17;},clearTimeout(id){assert.equal(this,clock);assert.equal(id,17);this.cleared=true;}};
+ const player=Player.create({clock,adapter:{stopAll:async()=>{},stage:async()=>{},play:async()=>{}}});await player.setQueue(entries);await player.load(0);assert.equal(player.snapshot().phase,'ready');assert.ok(player.snapshot().warning);await player.load(1);assert.equal(clock.cleared,true);
+});
+test('default browser timers are bound to Window rather than the coordinator clock wrapper',async()=>{
+ const fs=require('node:fs'),path=require('node:path'),dom=new JSDOM('',{url:'https://suno.com/playlist/test',runScripts:'outside-only'}),win=dom.window;let timer;
+ win.setTimeout=function(fn,ms){assert.equal(this,win,'setTimeout needs its Window receiver');timer=fn;return 9;};win.clearTimeout=function(id){assert.equal(this,win,'clearTimeout needs its Window receiver');assert.equal(id,9);};win.eval(fs.readFileSync(path.join(__dirname,'../extension/managed-player.js'),'utf8'));
+ const player=win.CatnapManagedPlayer.create({adapter:{stopAll:async()=>{},stage:async()=>{},play:async()=>{}}});await player.setQueue(entries);await player.load(0);assert.equal(player.snapshot().phase,'ready');assert.equal(player.snapshot().error,'');assert.equal(typeof timer,'function');timer();assert.equal(player.snapshot().warning,null);dom.window.close();
+});
 test('failed source holds the current slot and never silently switches YouTube to Suno',async()=>{
  const f=fixture({stage:async entry=>{if(entry.preferredSource==='youtube')throw Error('Embedding unavailable');}});await f.player.setQueue(entries,{mode:'ap',autoplay:true});await f.player.load(1);assert.equal(f.player.snapshot().phase,'error');assert.match(f.player.snapshot().error,/Embedding/);assert.equal(f.calls.some(x=>x[0]==='play'),false);
 });

@@ -19,6 +19,8 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 
 The playlist writer lists actual membership, adds missing unique Suno song IDs and reads membership back. Uncertain writes are not blindly retried. YouTube-only entries remain visible in the show order but are not fabricated as Suno songs. New playlists are private unless the host explicitly chooses Public. Only one synchronizer should write the show's playlist; stop an older advanced-controller watcher before using this one.
 
+The unpacked development manifests pin separate public-key identities, so moving an extracted folder does not change its companion authorization ID. Theatre development: `jkcldbeopgdnodmnpdiilpcogikpkion`; Inbox development: `ehklfhbajedidchegigboembbcikambb`. These are development IDs, not the submitted Store beta ID. Register either or both exact IDs with the companion; no wildcard is needed. Only the public keys are included; no private signing key is stored or distributed.
+
 AP inbox/playlist updates are optional, every two minutes while the browser is running, bounded to twelve hours. They stop on restart or an error. This is separate from playback autoplay. LP uses an explicit Read Pending action.
 
 ## Manual LP and optional AP autoplay

@@ -17,8 +17,13 @@
   "options_page": "lounge.html",
   "content_scripts": [
     {
-      "matches": ["https://suno.com/*", "https://www.suno.com/*"],
-      "js": ["managed-native-guard.js"],
+      "matches": [
+        "https://suno.com/*",
+        "https://www.suno.com/*"
+      ],
+      "js": [
+        "managed-native-guard.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
@@ -82,5 +87,6 @@
     "32": "assets/icons/theatre-32.png",
     "48": "assets/icons/theatre-48.png",
     "128": "assets/icons/theatre-128.png"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA03Fq8RiDoKLGVRlETNv/snogOZifa0ScXdxRxavPxZ5C5e9mwgSLQvuj7k7/OBaJl2IGyzj4DMDahYQ5m2vIB8TE1QjKrWj0y6iRZ7oXR0a1zcLMeaJ0WZzk8JCkPo/bl60Jd0IMOuLt/SqtJZE7SyMTagZC+0ZYgahJ0UxO7cZapSpTdkpHY3cr1Aj7ggEahXo+B9q6UCzs4qFkJBoRdsHGLOt45VgJb2uPidi50GHJ0saYw9HkId65gUNtWMAw4k6bUayDvTHZatcEuzQpT2ZieNpvQ6OOslKyMgWJmATSK1GqGfkCklJLULEytyaQq9oro8I7W8DhZZhoOyam+QIDAQAB"
 }

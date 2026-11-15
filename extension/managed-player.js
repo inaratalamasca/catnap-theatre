@@ -29,7 +29,10 @@
     constructor({adapter,onState=()=>{},onWarning=()=>{},clock={},warningSeconds=10}={}){
       if(!adapter||typeof adapter.stopAll!=='function'||typeof adapter.stage!=='function'||typeof adapter.play!=='function')throw Error('A guarded media adapter is required.');
       this.adapter=adapter;this.onState=onState;this.onWarning=onWarning;
-      this.clock={now:clock.now||Date.now,setTimeout:clock.setTimeout||setTimeout,clearTimeout:clock.clearTimeout||clearTimeout};
+      // Window timers require their owning Window as receiver in real Chrome;
+      // storing an unbound function then calling clock.setTimeout() is illegal.
+      const timerHost=globalThis;
+      this.clock={now:clock.now?clock.now.bind(clock):Date.now,setTimeout:clock.setTimeout?clock.setTimeout.bind(clock):timerHost.setTimeout.bind(timerHost),clearTimeout:clock.clearTimeout?clock.clearTimeout.bind(clock):timerHost.clearTimeout.bind(timerHost)};
       this.queue=[];this.showId='';this.mode='lp';this.autoplay=false;this.index=-1;this.phase='idle';this.generation=0;this.occurrenceId='';this.error='';this.warning=null;this.warningTimer=null;this.warningSeconds=warningDuration(warningSeconds);this.disposed=false;this.started=0;this.playAttempt=0;this.needsStage=true;this.playPreviousPhase='ready';
     }
     snapshot(){return {version:SCRIPT_VERSION,showId:this.showId,mode:this.mode,autoplay:this.autoplay,index:this.index,current:this.queue[this.index]||null,queue:this.queue.slice(),phase:this.phase,generation:this.generation,occurrenceId:this.occurrenceId,error:this.error,warning:this.warning?{...this.warning}:null,warningSeconds:this.warningSeconds};}
