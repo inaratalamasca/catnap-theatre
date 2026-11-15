@@ -46,6 +46,7 @@
       if (status === 401) throw Error('Suno authorization expired. Reconnect Suno.');
       if (status === 403) throw Error('Suno denied MCP access for this account.');
       if (status === 429) throw Error('Suno rate limit reached. Retry later.');
+      if (response?.error === 'network_failure') throw Error('The Suno companion could not reach the MCP service. Check the host network and retry.');
       throw Error(response?.error === 'companion_unavailable' ? 'Install the Catnap Suno companion first.' : 'The Suno companion could not complete the request.');
     }
     const body = String(response.body || '');
@@ -84,11 +85,16 @@
     async function readAuth() { available(); return (await browser.storage.session.get(AUTH_KEY))[AUTH_KEY]; }
     const bytes64 = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const nonce = length => bytes64(cryptoApi.getRandomValues(new Uint8Array(length)));
-    async function jsonFetch(url, init) {
-      const response = await network(url, {...init, redirect:'error', credentials:'omit', signal:AbortSignal.timeout(15000)});
-      if (!response.ok) throw Error('Suno authorization request failed (HTTP ' + response.status + ').');
-      const data = await response.json();
-      if (!data || typeof data !== 'object') throw Error('Suno returned invalid authorization data.');
+    async function jsonFetch(url, init, stage) {
+      let response;
+      try { response = await network(url, {...init, redirect:'error', credentials:'omit', signal:AbortSignal.timeout(15000)}); }
+      catch (error) {
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') throw Error(stage + ' timed out or was interrupted. Check the network and retry.');
+        throw Error(stage + ' could not reach Suno from this browser. Enable inbox & Suno access first; if access is already enabled, check browser network blocking.');
+      }
+      if (!response.ok) throw Error(stage + ' failed (HTTP ' + response.status + ').');
+      let data;try { data = await response.json(); } catch (_) { throw Error(stage + ' returned an unreadable response.'); }
+      if (!data || typeof data !== 'object') throw Error(stage + ' returned invalid authorization data.');
       return data;
     }
     async function registration() {
@@ -98,13 +104,13 @@
       if (existing?.redirectUri === redirectUri && typeof existing.clientId === 'string') return existing;
       const body = {client_name:'Catnap Theatre Inbox', redirect_uris:[redirectUri], response_types:['code'],
         grant_types:['authorization_code','refresh_token'], token_endpoint_auth_method:'none', scope:SCOPE};
-      const result = await jsonFetch(ISSUER + 'register/', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      const result = await jsonFetch(ISSUER + 'register/', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}, 'Suno client registration');
       if (typeof result.client_id !== 'string' || !result.client_id || result.client_id.length > 1000) throw Error('Suno did not register this extension.');
       const client = {clientId:result.client_id, redirectUri};
       await browser.storage.local.set({[CLIENT_KEY]:client}); return client;
     }
     async function exchange(fields, previousRefresh) {
-      const result = await jsonFetch(ISSUER + 'token/', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({...fields, resource:RESOURCE})});
+      const result = await jsonFetch(ISSUER + 'token/', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({...fields, resource:RESOURCE})}, fields.grant_type==='refresh_token'?'Suno token refresh':'Suno token exchange');
       if (typeof result.access_token !== 'string' || !result.access_token || /[\r\n]/.test(result.access_token)) throw Error('Suno returned no usable access token.');
       const auth = {accessToken:result.access_token, refreshToken:result.refresh_token || previousRefresh || '',
         expiresAt:clock() + (Math.max(1, Number(result.expires_in) || 3600) * 1000)};

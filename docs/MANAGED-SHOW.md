@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.0 development
+# Inbox playlists and managed shows · 0.6.1 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -16,6 +16,10 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 3. Open the uploader and sign in normally in the same browser profile. Open Inbox & show from Theatre's controls/toolbar, or click the standalone Inbox icon. Enable the optional inbox/Suno access, select the uploader tab, then Find my inboxes.
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
+
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.1 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+
+For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
 
 The playlist writer lists actual membership, adds missing unique Suno song IDs and reads membership back. Uncertain writes are not blindly retried. YouTube-only entries remain visible in the show order but are not fabricated as Suno songs. New playlists are private unless the host explicitly chooses Public. Only one synchronizer should write the show's playlist; stop an older advanced-controller watcher before using this one.
 

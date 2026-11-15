@@ -9,20 +9,23 @@ const extension = path.join(__dirname,'../extension');
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function settle() { await tick(); await tick(); }
 
-async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false}={}) {
+async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError=''}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
   const w=dom.window, messages=[],copies=[],permissions=[];
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:22,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
+  let sunoConnected=true;
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
-  const snapshot=()=>({state:structuredClone(state),tabs,suno:{connected:true},version:'0.6.0'});
+  const snapshot=()=>({state:structuredClone(state),tabs,suno:{connected:sunoConnected},version:'0.6.0'});
   w.setInterval=()=>0;
   w.CatnapPackage={inboxOnly};
-  w.chrome={permissions:{request:async value=>{permissions.push(value);return true;}},runtime:{sendMessage:async message=>{
+  w.chrome={permissions:{request:async value=>{permissions.push(value);return permissionGranted;}},runtime:{sendMessage:async message=>{
     messages.push(structuredClone(message));let data;
     switch(message.action) {
       case 'status':data=snapshot();break;
+      case 'connect-suno':if(connectError)return {ok:false,error:connectError};sunoConnected=true;data={connected:true};break;
+      case 'disconnect-suno':sunoConnected=false;data={connected:false};break;
       case 'configure':Object.assign(state,message.settings);data=structuredClone(state);break;
       case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};break;
       case 'load':state.playback={current:{id:state.entries[message.index].id},phase:'ready',source:state.entries[message.index].preferredSource};data={loaded:true};break;
@@ -39,7 +42,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false}={}) {
   }}};
   Object.defineProperty(w.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{if(clipboardDenied)throw Error('Clipboard permission denied');copies.push(value);}}});
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
-  return {dom,w,messages,copies,permissions,state:()=>state,element:id=>w.document.getElementById(id),async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
+  return {dom,w,messages,copies,permissions,setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
 }
 
 test('LP starts with autoplay off and disabled; AP permits a separate explicit toggle',async t=>{
@@ -122,4 +125,32 @@ test('playlist membership result uses numeric confirmed count and stays distinct
   const request=f.messages.find(message=>message.action==='create-playlist');
   assert.equal(request.name,'AP fixture');assert.equal(request.visibility,'private');
   assert.equal(f.messages.some(message=>message.action==='play'),false);
+});
+
+
+test('Connect Suno requests only its authorization host and does not attempt login after a denied grant',async t=>{
+  const f=await fixture({permissionGranted:false});t.after(()=>f.dom.window.close());
+  await f.click('connect-suno');
+  assert.deepEqual(JSON.parse(JSON.stringify(f.permissions)),[{origins:['https://studio-api-prod.suno.com/*']}]);
+  assert.equal(f.messages.some(message=>message.action==='connect-suno'),false);
+  assert.match(f.element('suno-status').textContent,/not granted/);
+});
+
+test('authorization error stays beside Connect Suno after background status refresh',async t=>{
+  const f=await fixture({connectError:'Suno client registration could not reach Suno.'});t.after(()=>f.dom.window.close());
+  await f.click('connect-suno');
+  assert.equal(f.messages.filter(message=>message.action==='connect-suno').length,1);
+  assert.equal(f.element('suno-status').textContent,'Suno client registration could not reach Suno.');
+  assert.equal(f.element('status').textContent,f.element('suno-status').textContent);
+  await f.change('show-name','Another fixture name');
+  assert.equal(f.element('suno-status').textContent,'Suno client registration could not reach Suno.');
+  await f.click('disconnect-suno');assert.match(f.element('suno-status').textContent,/Suno not connected/);
+});
+
+
+test('successful connection status follows later worker authorization loss',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  await f.click('connect-suno');assert.match(f.element('suno-status').textContent,/Suno connected/);
+  f.setConnected(false);await f.change('show-name','Refresh fixture');
+  assert.match(f.element('suno-status').textContent,/Suno not connected/);
 });

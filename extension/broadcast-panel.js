@@ -1,5 +1,7 @@
 /* Catnap broadcast toolbar panel, version 0.3.0. Endpoint persistent; token session-only. */
 'use strict';
+const buildVersion = document.querySelector('#build-version');
+if (buildVersion) buildVersion.textContent = 'DEV ' + chrome.runtime.getManifest().version;
 const endpoint = document.querySelector('#endpoint'), token = document.querySelector('#token');
 const statusLine = document.querySelector('#status'), start = document.querySelector('#start'), stop = document.querySelector('#stop');
 let busy = false, panelError = '';

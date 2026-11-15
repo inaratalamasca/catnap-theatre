@@ -1,10 +1,10 @@
-/* Catnap host-only Inbox & show window, version 0.6.0.
+/* Catnap host-only Inbox & show window, version 0.6.1.
  * Change summary: explicit queue commands and clipboard-only announcements.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.0', $=id=>document.getElementById(id);
-  let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='';
+  const SCRIPT_VERSION='0.6.1', $=id=>document.getElementById(id);
+  let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;}
   const status=value=>{$('status').textContent=value;};
   async function send(action,extra={}){const reply=await chrome.runtime.sendMessage({target:'catnap-show-worker',action,...extra});if(!reply?.ok)throw Error(reply?.error||'Show controls unavailable.');return reply.data;}
@@ -32,7 +32,7 @@
     $('current-warning').textContent=entry?entry.disclaimer==='yes'?'⚠ Uploader requested a content disclaimer':entry.disclaimer==='no'?'Uploader disclaimer: No':'Uploader disclaimer: Unavailable':'';
     $('current-warning').dataset.warning=entry?.disclaimer||'unknown';
     for(const id of ['copy-playing','copy-link','copy-context','repeat-warning'])$(id).disabled=!entry;
-    $('suno-status').textContent=data.suno.connected?'Suno connected. Playlist changes require your explicit action.':'Suno not connected. Install the optional Catnap Suno connector, then Connect Suno.';
+    $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno connected. Playlist changes require your explicit action.':'Suno not connected. Connect Suno to authorize playlist changes.');
     $('playlist-status').textContent=s.lastPlaylistSync?`Last verified: ${s.lastPlaylistSync.confirmed?.length??s.lastPlaylistSync.confirmed??0} confirmed · ${s.lastPlaylistSync.missing?.length||0} missing`:'';
     $('queue-count').textContent=`(${s.entries.length})`;
     const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason]),entry?.id,s.playerTabId]);
@@ -68,8 +68,17 @@
   $('watch').onchange=()=>action(()=>send('watch',{enabled:$('watch').checked}),'Inbox update setting saved.');
   $('new-show').onclick=()=>action(async()=>{await send('new-show');inboxes={lp:[],ap:[]};queueSignature='';},'New local show. Existing Suno playlists and uploader submissions are unchanged.');
   for(const id of ['previous','next','play','pause','repeat-warning'])$(id).onclick=()=>action(()=>send(id),['next','previous'].includes(id)?'Loaded quietly. Press Play when ready.':undefined);
-  $('connect-suno').onclick=()=>action(()=>send('connect-suno'),'Suno connected.');
-  $('disconnect-suno').onclick=()=>action(()=>send('disconnect-suno'),'Suno disconnected.');
+  $('connect-suno').onclick=()=>action(async()=>{
+    // Request from this click before the worker attempts its authorization fetch.
+    // A missing optional host grant otherwise looks like a generic CORS error.
+    sunoMessage='Connecting to Suno…';$('suno-status').textContent=sunoMessage;
+    try{
+      const granted=await chrome.permissions.request({origins:['https://studio-api-prod.suno.com/*']});
+      if(!granted)throw Error('Suno connection access was not granted. Click Connect Suno to try again.');
+      await send('connect-suno');sunoMessage='';
+    }catch(error){sunoMessage=error.message;throw error;}
+  },'Suno connected.');
+  $('disconnect-suno').onclick=()=>action(async()=>{await send('disconnect-suno');sunoMessage='';},'Suno disconnected.');
   $('playlists').onclick=()=>action(async()=>{playlists=await send('playlists');},'Choose a destination playlist.');
   $('playlist').onchange=()=>action(()=>configure({playlistId:$('playlist').value}));
   $('create-playlist').onclick=()=>action(async()=>{const playlist=await send('create-playlist',{name:$('new-playlist-name').value,visibility:$('visibility').value});playlists.unshift(playlist);},'Playlist created and selected.');

@@ -44,6 +44,19 @@ test('connect checks companion before creating any OAuth client', async()=>{
   assert.equal(networkCalls,0);
 });
 
+test('browser registration network errors identify the failing stage without exposing data',async()=>{
+  const client=library.createClient({chrome:fixture({authorized:false}),crypto:webcrypto,transport:async()=>({ok:true,ready:true}),fetch:async()=>{throw new TypeError('Failed to fetch');}});
+  await assert.rejects(client.connect(),/Suno client registration could not reach Suno from this browser/);
+});
+
+test('token exchange network errors remain distinct from registration or companion health',async()=>{
+  const chrome=fixture({authorized:false});
+  chrome.identity.launchWebAuthFlow=async({url})=>chrome.identity.getRedirectURL()+'?code=demo-code&state='+new URL(url).searchParams.get('state');
+  const client=library.createClient({chrome,crypto:webcrypto,transport:async()=>({ok:true,ready:true}),fetch:async url=>{if(url.endsWith('/register/'))return Response.json({client_id:'public-client-fixture'});throw new TypeError('Failed to fetch');}});
+  await assert.rejects(client.connect(),/Suno token exchange could not reach Suno from this browser/);
+  assert.equal(chrome.storage.session.values[AUTH_KEY],undefined);
+});
+
 test('PKCE OAuth validates callback and retains credentials only in session storage', async()=>{
   const chrome = fixture({authorized:false}), requests = [];
   chrome.identity.launchWebAuthFlow = async({url})=>{

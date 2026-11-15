@@ -1,5 +1,13 @@
 # Changes
 
+## 0.6.1 development — November 15, 2026
+
+- Request Suno authorization-site access when Connect Suno is clicked, before any sign-in request. Declining the grant leaves the account disconnected.
+- Keep connection failures beside Connect Suno; identify registration, token exchange and network failures without exposing credentials or provider response bodies.
+- Show the actual extension version in broadcast controls instead of the old component label.
+- Uses the existing restricted 0.6.0 native companion/protocol. No companion reinstall, new MCP tools or wider access is required.
+- Live OAuth rehearsal remains pending; this patch fixes a missing permission flow and improves diagnosis, without claiming the reported connection failure is resolved.
+
 ## 0.6.0 development — 2026-11-15
 
 - Added optional read-only AIU LP/AP Pending intake with FIFO ordering, separate submission identities, uploader notes and tri-state disclaimer/radio flags. New arrivals append without restarting a playing entry.
