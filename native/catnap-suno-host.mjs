@@ -5,6 +5,7 @@
  */
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
+import {realpathSync} from 'node:fs';
 
 export const SCRIPT_VERSION = '0.6.0';
 const ENDPOINT = 'https://api.suno.com/mcp';
@@ -101,4 +102,9 @@ export function runNativeHost(input = process.stdin, output = process.stdout) {
   input.on('error',()=>{ stopped = true; });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) runNativeHost();
+// Node canonicalizes import.meta.url but argv may retain a symlinked parent.
+// macOS commonly spells its temporary directory /var/... while the ESM URL
+// resolves to /private/var/...; compare actual files, not path spelling.
+let isMain = false;
+try { isMain = Boolean(process.argv[1]) && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1])); } catch (_) { /* Imported from a synthetic test entry point. */ }
+if (isMain) runNativeHost();

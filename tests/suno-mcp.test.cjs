@@ -187,3 +187,18 @@ test('native framing handles a split header and payload without exposing extra t
   const reply=Buffer.concat(buffers),size=reply.readUInt32LE(0),data=JSON.parse(reply.subarray(4,4+size));
   assert.equal(reply.length,size+4);assert.equal(data.ready,true);input.destroy();output.destroy();
 });
+
+test('native host starts when the launcher uses a symlinked script path',()=>{
+  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'catnap native alias '));
+  try {
+    const alias=path.join(temporary,'host-alias.mjs');
+    // File symlink creation can require Windows developer mode. The observed
+    // production failure is macOS /var -> /private/var, so test this Unix path.
+    if(process.platform==='win32')return;
+    fs.symlinkSync(path.join(__dirname,'../native/catnap-suno-host.mjs'),alias);
+    const body=Buffer.from('{"operation":"health"}'),header=Buffer.alloc(4);header.writeUInt32LE(body.length);
+    const result=spawnSync(process.execPath,[alias],{input:Buffer.concat([header,body]),timeout:5000});
+    assert.equal(result.status,0,String(result.stderr));assert.ok(result.stdout.length>=4,'symlinked native entry point must start');
+    assert.equal(JSON.parse(result.stdout.subarray(4)).ready,true);
+  } finally { fs.rmSync(temporary,{recursive:true,force:true}); }
+});

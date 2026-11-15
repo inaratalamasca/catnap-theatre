@@ -20,7 +20,10 @@ if ($PSVersionTable.PSEdition -ne 'Desktop') {
 }
 if (-not $ExtensionId) { $ExtensionId = Read-Host 'Paste the exact Catnap extension ID from your browser extensions page' }
 if ($ExtensionId -notmatch '^[a-p]{32}$') { throw 'The extension ID must be exactly 32 lowercase letters a-p.' }
-$node = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+# More than one Node installation can be present on PATH (including hosted CI).
+# Get-Command may return an array; use the first resolved executable explicitly.
+$nodeCommand = Get-Command node.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
+$node = $nodeCommand.Source
 $nodeMajor = & $node -p 'process.versions.node.split(".")[0]'
 if ($LASTEXITCODE -ne 0 -or [int]$nodeMajor -lt 22) { throw 'Install Node.js 22 or later first (Node.js 24 LTS is recommended).' }
 $sourceDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path

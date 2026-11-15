@@ -26,7 +26,11 @@ async function health(launcher) {
     child.stdout.on('data',chunk=>{received+=chunk.length;if(received>1024*1024){child.kill();reject(Error('Unexpectedly large health output.'));}else chunks.push(chunk);});
     child.stderr.on('data',chunk=>{errors=(errors+chunk.toString()).slice(0,1000);});
     child.on('error',error=>{clearTimeout(timer);reject(error);});
-    child.on('close',code=>{clearTimeout(timer);if(code!==0)reject(Error('Native launcher failed: '+code+' '+errors));else resolve(Buffer.concat(chunks));});
+    child.on('close',code=>{
+      clearTimeout(timer);
+      if(code!==0 || received<4)reject(Error('Native health failed: '+JSON.stringify({exitCode:code,stdoutBytes:received,stderr:errors,platform:process.platform,node:process.versions.node})));
+      else resolve(Buffer.concat(chunks));
+    });
     child.stdin.end(Buffer.concat([header,data]));
   });
   assert.ok(output.length>=4,'Expected native binary frame');
