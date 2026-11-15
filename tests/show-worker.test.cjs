@@ -19,7 +19,7 @@ const song = id => 'https://suno.com/song/' + id;
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const baseState = () => ({version:1,id:'fixture-show',mode:'lp',showName:'Fixture show',inboxId:'fixture-inbox',inboxName:'Fixture LP',
-  uploaderTabId:8,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
+  uploaderTabId:8,playerTabId:null,playerLease:'fixture-lease',playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
 const row = (id, values = {}) => ({id,status:'pending',deleted:false,submission_type:'LP',submitted_at:'2026-11-15 10:00:00',
   title:'Fixture '+id,artist:'Fixture artist',uploader_name:'fixture-uploader',uploader_id:'fixture-id',message:'PRIVATE-UPLOADER-NOTE',
   disclaimer_needed:'yes',suno_url:song(SONG),...values});
@@ -160,18 +160,21 @@ test('LP never accepts autoplay and AP autoplay can be explicitly enabled then d
 
 test('only the bound top-level Suno player can report playback or invoke native commands', async () => {
   const f=fixture({state:{playerTabId:7,entries:[entry()]}});
-  const observed={target:'catnap-show-observed',showId:'fixture-show',playback:{phase:'playing',index:0,generation:1,occurrenceId:'fixture-occurrence',source:'suno',current:{id:'fixture-inbox:one',note:'FORGED-NOTE'}}};
+  const observed={target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:1,playback:{phase:'playing',index:0,generation:1,occurrenceId:'fixture-occurrence',source:'suno',current:{id:'fixture-inbox:one',note:'FORGED-NOTE'}}};
+  const native={target:'managed-native',showId:'fixture-show',bindingId:'fixture-lease',action:'play'};
   for(const sender of [{...f.player,tab:{id:8}},{...f.player,frameId:1},{...f.player,id:'foreign'},{...f.player,url:'https://suno.com.evil.invalid/'}]) {
     assert.equal((await f.send(observed,sender)).ok,false);
-    assert.equal((await f.send({target:'managed-native',action:'play'},sender)).ok,false);
+    assert.equal((await f.send(native,sender)).ok,false);
   }
   assert.equal(f.calls.scripts.length,0);assert.equal(f.state().playback,null);
   assert.equal((await f.send({...observed,showId:'wrong-show'},f.player)).ok,false);
   assert.equal((await f.send(observed,f.player)).ok,true);
   assert.equal(f.state().playback.current.id,'fixture-inbox:one');
   assert.equal(JSON.stringify(f.state().playback).includes('FORGED-NOTE'),false);
-  assert.equal((await f.send({target:'managed-native',action:'play',generation:1,songId:SONG},f.player)).ok,true);
+  assert.equal((await f.send({...native,generation:1,songId:SONG,sourceKey:'fixture-media-source',restart:true},f.player)).ok,true);
   assert.equal(f.calls.scripts[0].target.tabId,7);assert.equal(f.calls.scripts[0].world,'MAIN');
+  assert.equal(f.calls.scripts[0].args[0].sourceKey,'fixture-media-source');
+  assert.equal(f.calls.scripts[0].args[0].restart,true);
 });
 
 test('player binding targets only an open Suno tab and public player updates exclude host-only data', async () => {
@@ -195,7 +198,7 @@ test('manual announcement uses actual active source and uploader credit without 
   const paired=entry('one',{youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12',preferredSource:'youtube',uploaderName:'@everyone-example'});
   const f=fixture({state:{playerTabId:7,entries:[paired]}});
   assert.equal((await f.control('announcement')).ok,false);
-  const observed={target:'catnap-show-observed',showId:'fixture-show',playback:{phase:'playing',index:0,generation:1,occurrenceId:'actual-source-occurrence',source:'suno',current:{id:paired.id}}};
+  const observed={target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:1,playback:{phase:'playing',index:0,generation:1,occurrenceId:'actual-source-occurrence',source:'suno',current:{id:paired.id}}};
   assert.equal((await f.send(observed,f.player)).ok,true);
   const announcement=await f.control('announcement');assert.equal(announcement.ok,true);
   assert.match(announcement.data.text,/Now playing:/);
@@ -207,6 +210,48 @@ test('manual announcement uses actual active source and uploader credit without 
   assert.equal(JSON.stringify(announcement).includes('PRIVATE-UPLOADER-NOTE'),false);
   assert.equal((await f.control('announcement',{includeNotes:true})).data.context.uploaderNote,'PRIVATE-UPLOADER-NOTE');
   assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
+});
+
+test('late playback observations cannot roll back current credit, source or phase',async()=>{
+  const first=entry('first',{title:'First song',uploaderName:'first-uploader'});
+  const second=entry('second',{title:'Second video',uploaderName:'second-uploader',sunoUrl:song(SECOND),sunoId:SECOND,
+    youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12',preferredSource:'youtube'});
+  const f=fixture({state:{playerTabId:7,entries:[first,second]}});
+  const newest={target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:10,
+    playback:{phase:'playing',index:1,generation:4,occurrenceId:'second-occurrence',source:'youtube',current:{id:second.id}}};
+  assert.equal((await f.send(newest,f.player)).ok,true);
+  // A delayed older load can arrive after a later load despite having a newer
+  // delivery revision. Both the generation and revision protect the snapshot.
+  const oldLoad={...newest,revision:11,playback:{phase:'playing',index:0,generation:3,occurrenceId:'first-occurrence',source:'suno',current:{id:first.id}}};
+  assert.equal((await f.send(oldLoad,f.player)).ok,false);
+  const oldPhase={...newest,revision:9,playback:{...newest.playback,phase:'ready',occurrenceId:''}};
+  assert.equal((await f.send(oldPhase,f.player)).ok,false);
+  assert.equal((await f.send(newest,f.player)).ok,false);
+  assert.equal((await f.send({...newest,bindingId:'expired-lease',revision:100},f.player)).ok,false);
+  const text=(await f.control('announcement')).data;
+  assert.match(text.text,/Now playing: Second video/);assert.match(text.text,/second-uploader/);
+  assert.equal(text.context.url,second.youtubeUrl);assert.equal(text.context.occurrenceId,'second-occurrence');
+  assert.equal(f.state().playback.phase,'playing');assert.equal(f.state().playback.revision,10);
+  const nextPhase={...newest,revision:12,playback:{...newest.playback,phase:'paused'}};
+  assert.equal((await f.send(nextPhase,f.player)).ok,true);assert.equal(f.state().playback.phase,'paused');
+});
+
+test('rebinding the same player revokes the previous lease for observations and native commands',async()=>{
+  const queued=entry();
+  const f=fixture({state:{playerTabId:7,entries:[queued]}});
+  const oldObservation={target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:1,
+    playback:{phase:'playing',index:0,generation:1,occurrenceId:'previous-binding',source:'suno',current:{id:queued.id}}};
+  assert.equal((await f.send(oldObservation,f.player)).ok,true);
+  assert.equal((await f.control('bind-player',{tabId:7})).ok,true);
+  const nextLease=f.state().playerLease;
+  assert.notEqual(nextLease,'fixture-lease');assert.equal(f.state().playback,null);
+  assert.equal((await f.send({...oldObservation,revision:100},f.player)).ok,false);
+  const scriptsBefore=f.calls.scripts.length;
+  assert.equal((await f.send({target:'managed-native',action:'play',showId:'fixture-show',bindingId:'fixture-lease',generation:100,songId:SONG},f.player)).ok,false);
+  assert.equal(f.calls.scripts.length,scriptsBefore);
+  const observed={...oldObservation,bindingId:nextLease,playback:{...oldObservation.playback,phase:'ready',occurrenceId:''}};
+  assert.equal((await f.send(observed,f.player)).ok,true);
+  assert.equal(f.state().playback.phase,'ready');assert.equal(f.state().playback.revision,1);
 });
 
 test('playlist writes require explicit sync, exclude held/external-only items and deduplicate Suno IDs', async () => {
