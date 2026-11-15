@@ -11,6 +11,6 @@ OUTPUT_DIR="$(cd -- "$OUTPUT_DIR" && pwd)"
 cd -- "$PROJECT_DIR"
 bash scripts/check.sh
 PACKAGE_NAME="Catnap-Theatre-Controls-Dev-v${SCRIPT_VERSION}.zip"
-zip -qr "$OUTPUT_DIR/$PACKAGE_NAME" extension README.md CHANGELOG.md docs
+zip -qr "$OUTPUT_DIR/$PACKAGE_NAME" extension README.md CHANGELOG.md docs LICENSE NOTICE LICENSING.md
 (cd -- "$OUTPUT_DIR" && sha256sum "$PACKAGE_NAME" > "$PACKAGE_NAME.sha256")
 printf 'Saved development package: %s\n' "$OUTPUT_DIR/$PACKAGE_NAME"

@@ -1,10 +1,12 @@
 # Catnap Theatre
 
-**Development build 0.5.0 puts Theatre options in a persistent control window and adds optional music-reactive background bars.** Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
+**Catnap Theatre 0.5.0 · early access for Chrome and Brave.** Theatre options live in a persistent control window, with optional music-reactive background bars. Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
 
 A simple theatre overlay for people hosting Suno listening parties. Suno plays the music; Catnap displays the artwork, lyrics, visible playlist and host messages. No AI, Discord bot, uploader account, SSH tunnel or backend service is required.
 
-**This is a separate development package, not a store release.** Version 0.5.0 is tested in an isolated Chromium profile with synthetic Suno fixtures. The working Dev1 standalone 0.5.0 folder stays untouched by this separate icon revision. Install or switch builds between shows, because extension reloads interrupt active capture.
+[Download 0.5.0](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) · [Project overview](https://github.com/inaratalamasca/catnap-studio) · [Listen](https://listen.catnapradio.com/)
+
+**Early access, not a browser-store release.** Ina has used standalone 0.5.0 successfully in Brave. The integrated companion and compatible controller were also loaded and connected in the primary profile. The toolbar icon revision passed isolated browser checks. These observations do not complete every item in the [acceptance checklist](docs/ACCEPTANCE.md). Install or switch builds between shows, because extension reloads interrupt active capture.
 
 ![Music-reactive background bars in an isolated rehearsal](docs/screenshots/visualizer-fixture.png)
 
@@ -14,7 +16,7 @@ A simple theatre overlay for people hosting Suno listening parties. Suno plays t
 
 ## Try it between shows
 
-1. Use a separate Chrome profile for testing. Do not enable the older Catnap Theatre extension in the same test profile.
+1. Download and extract the ZIP from the [0.5.0 release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0). Use a separate Chrome/Brave profile for your first test. Do not enable the older Catnap Theatre extension in the same test profile.
 2. Open `chrome://extensions`, enable Developer mode and choose **Load unpacked**.
 3. Select this repository’s **extension** folder.
 4. Open a Suno playlist and sign in through Suno as usual. Press **Catnap Theater** near the lower right.
@@ -66,4 +68,10 @@ The tests verify storage validation, identity guards, shared control settings, s
 
 ## Project family
 
-This is the standalone presentation project. `catnap-radio-hosting` contains the privileged host workflow and prepared browser controllers. Studio and simulcast plans belong to their own research projects. A failure or absence of the hosting backend must not stop this standalone presentation layer.
+This is the public standalone presentation project. The [Catnap project overview](https://github.com/inaratalamasca/catnap-studio#projects) explains the separate advanced hosting/control panel, listener pilot and future Studio. Advanced hosting and simulcast source remain private during development. The standalone display works without those services. Optional publishing requires an authorized compatible relay.
+
+For inbox-to-playlist assistance, use the separate [simple AIU walkthrough](https://github.com/inaratalamasca/aiu-inbox-playlist-guide). It is not a dependency of Theatre.
+
+## Use and sharing
+
+First-party code and documentation use [PolyForm Noncommercial 1.0.0](LICENSE). You may use, change and share them for the license's permitted purposes. Commercial use outside those purposes needs separate written permission from Ina. Branding and third-party material have [separate rights](LICENSING.md).

@@ -1,39 +1,39 @@
-# Release and privacy draft
+# Release and privacy · 0.5.0 early access
 
-**Draft only. No Chrome Web Store submission, Firefox release or production-readiness claim has been made.** Version 0.2.0 alpha is for local testing.
+Published source and an unpacked-extension download are available through the [0.5.0 release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0). There is no Chrome Web Store listing or supported Firefox package. Ina has reported successful standalone 0.5.0 use in Brave; isolated checks cover the toolbar icons and presentation controls. See [acceptance](ACCEPTANCE.md) for the remaining broader rehearsal.
 
-## Suggested listing
+## Local presentation
 
-**Name:** Catnap Theatre for Suno
+Catnap Theatre reads current song information, artwork, lyrics, visible playlist rows and playback state from the signed-in Suno page. Suno supplies playback and its account session. Catnap does not export Suno passwords or cookies, use analytics, require a Catnap account, or send the local presentation to an AI service.
 
-**Short description:** A clean listening-party view for native Suno playback: artwork, lyrics, visible playlist and host messages.
+Display preferences live in the extension's browser-profile storage. Settings can be exported as a small JSON file when requested. Selected image/GIF/video files remain in page memory rather than being uploaded by Catnap. A page refresh forgets those files. Anything displayed in Theatre can be visible in a screen share.
 
-**Description:** Catnap Theatre gives hosts a readable stage for Suno listening parties without an AI subscription or server bot. Choose artwork-and-lyrics, a compact playlist layout or artwork focus. Follow lyrics approximately, adjust their size and hide section tags. Show warning graphics and text, and open a separate waiting lounge with explicitly started AIU Radio. Suno remains responsible for playback and its queue. The playlist preview shows rendered page rows only; lyrics and native controls depend on Suno’s current website markup.
+The optional lounge connects to AIU Radio when the host presses Play. Remote Suno artwork/video uses ordinary requests to Suno's services. External links contact their named service when opened.
 
-**Support:** Use repository issues with the extension/browser/OS versions and reproduction steps. Never attach credentials, private connection files, whole browser storage exports or private submissions without permission.
+## Optional publishing
 
-## Privacy statement draft
+Publishing is explicitly started from the toolbar control window for a selected Suno tab. It captures that tab's audio, sends music to the relay chosen by the host, and restores a local monitor. It does not request microphone audio. Relay access requires a separate publish credential supplied by an authorized operator; no credential is distributed with the extension.
 
-Catnap Theatre does not require a Catnap account. It reads song information, artwork, lyrics and playback state from the Suno page to build the local theatre display. It does not collect those details on a Catnap server, run analytics or send them to an AI service.
+The publishing worker retains the token in browser-session extension storage. The relay endpoint persists in local extension storage. Suno page scripts and public listeners do not receive the token. The relay can observe the broadcaster/listener network connections as part of serving audio.
 
-Display preferences are stored locally in this extension’s browser-profile storage. Settings can be exported as a small JSON file at the host’s request. User-selected graphics and videos remain in the current page’s memory and are not uploaded by Catnap. Refreshing the Suno page forgets those files. Messages and graphics displayed in Theatre can be seen by viewers of a screen share.
+While publishing, bounded public metadata can include the current song title/artist, allowlisted artwork, available native timing, recent track context and up to 100 following rendered playlist rows. This is intentionally public broadcast information. The pilot metadata service expires stale metadata after 30 seconds; audio does not depend on metadata. Do not broadcast a private playlist if you do not want its visible song context shared. See the [broadcast guide](BROADCAST-PILOT.md).
 
-The optional lounge connects directly to `streaming.aiu.fm` only when the host presses Play. AIU Radio receives an ordinary network/media request. Suno artwork/video remains subject to Suno’s own requests and services. The bundled AIU logo requires no runtime request to AIU. External links open their named services when selected.
+The bundled extension has no Catnap-operated telemetry service or AI integration. Ordinary local presentation sends no metadata to the optional relay. Publishing and screen sharing are separate host choices.
 
-The `storage` permission saves display preferences. Suno URL matches let the overlay read and present the page and delegate user playback actions to native controls. No cookie-reading, password collection, broad browsing history access, privileged Discord access or backend connection is requested.
+## Permissions
 
-Before submission, reconcile this prose with actual final code and the store’s data-use form. A draft privacy policy is not a completed store disclosure or a legal determination.
+- `storage`: local preferences, relay endpoint and session-scoped publishing state.
+- `activeTab` and `tabCapture`: host-initiated capture of the selected music tab.
+- `offscreen`: the extension's audio publishing/monitor document.
+- Suno content-script matches: local presentation and guarded native playback delegation.
+- Optional HTTP/HTTPS host access: approval for the host-selected relay when publishing; public relay URLs require HTTPS. Broad optional declarations do not pregrant access to every site.
 
-## Distribution choice
+No cookie, browser-history, debugger, microphone or Discord-account permission is requested.
 
-Start with a **private trusted-tester** pilot. Chrome’s dashboard supports trusted testers or a managed Google Group. “Unlisted” means anyone with the listing URL may install, so it does not establish AIU membership. All visibility options still face the same store policy and review requirements. See the [official Chrome distribution documentation](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution).
+## Distribution and rights
 
-Choose the intended AIU tester group, owner/support contact and an approved asset set before submission. Preserve package IDs/keys securely once the listing exists; do not invent or commit them during setup. Store screenshots should come from the accepted release and clearly reflect actual behavior. The included fixture screenshot demonstrates layout and is not evidence of live site compatibility.
+Use the unpacked download between shows. Reloading extensions or Suno can interrupt a live broadcast. Browser-store distribution and Firefox remain separate acceptance tasks.
 
-Firefox is a planned port. Follow Mozilla’s [Chrome-extension porting guide](https://extensionworkshop.com/documentation/develop/porting-a-google-chrome-extension/) and run a Firefox-specific acceptance pass. A compatible-looking manifest is insufficient evidence.
+First-party code/docs use [PolyForm Noncommercial](../LICENSE), with [required notices](../NOTICE) and separate commercial permission from Ina. AIU branding inclusion was confirmed by the maintainer on November 15, 2026. Logos, music and third-party assets retain their respective rights; see [licensing](../LICENSING.md). Original fictional artwork/lyrics are used in the example screenshots. No private inbox or name spreadsheet is distributed.
 
-## Media and identity rights
-
-The AIU logo was bundled from the same URL already used by Catnap’s existing extension. This establishes provenance, not permission to redistribute. Confirm AIU approval before a store package or broad distribution. Catnap’s creator credit remains in every prepared layout and lounge. Song/video rights, broadcaster rights and community policy decisions remain distinct from this display tool.
-
-No Kraesk/Nightwire source or assets are included. The fixture art, titles and lyrics are original sample material created for the project’s layout test.
+Report bugs through [GitHub issues](https://github.com/inaratalamasca/catnap-theatre/issues), including browser/extension version and reproduction steps. Remove credentials, private submissions and browser storage exports from reports. Store data-use disclosures must be reconciled with the final package before any store submission.
