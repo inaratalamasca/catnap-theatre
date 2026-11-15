@@ -5,7 +5,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.3';
+  const SCRIPT_VERSION = '0.6.4';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';

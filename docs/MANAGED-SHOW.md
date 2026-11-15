@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.3 development
+# Inbox playlists and managed shows · 0.6.4 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -17,7 +17,7 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
 
-Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.3 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.4 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
 
 For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
 
@@ -72,6 +72,10 @@ Suno OAuth requests basic account profile access (`profile:read`) required by th
 Theatre content scripts receive a reduced playback/presentation queue without uploader notes/IDs or credentials. Messages are bound to a selected tab, show and fresh player lease; observations include monotonic revisions so stale events cannot overwrite the current song credit. The standalone Inbox package does not expose playback commands.
 
 The existing public audio listener's v1 metadata schema accepts Suno identities only. This build clears that metadata during a YouTube entry instead of incorrectly reporting the paused Suno song. Extending listener metadata for external sources is separate work; raw uploader notes are never sent there. Same-tab YouTube audio in Discord and HQ broadcasting still needs a live rehearsal.
+
+## Current Suno row controls
+
+A live 0.6.3 trial staged the song successfully but could not find its native Play control. Read-only inspection of the real playlist confirmed that Suno uses a DIV with role=button and a Play label, inside a deeper role=group song row. Version 0.6.4 matches that actual accessible control while retaining exact song identity, row scope, ambiguity and disabled-state checks. It does not click the playlist-wide Play button to get around a missing row. The native guard remains in force.
 
 ## Verification and remaining acceptance
 

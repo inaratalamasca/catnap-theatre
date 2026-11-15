@@ -1,5 +1,11 @@
 # Changes
 
+## 0.6.4 development — November 15, 2026
+
+- Match Suno's actual accessible row Play control: current markup uses a labelled DIV with role=button inside a deeper song group. Keep exact song/row scoping and reject disabled or ambiguous controls.
+- Apply the same lookup to managed native-control routing. Preserve the 0.6.3 quiet-load, stale-session recovery and LP end guards without changing OAuth scopes or companion protocol.
+- The host confirmed quiet staging in 0.6.3; real 0.6.4 Play and end-of-track behavior still need confirmation.
+
 ## 0.6.3 development — November 15, 2026
 
 - Verify the live Theatre/page lease and native guard instead of showing a stale Manual advance status after a page reload. Explicit Load/Next/Previous/Play can reconnect the selected Theatre without rebinding during inbox imports or setup changes.

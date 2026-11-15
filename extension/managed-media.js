@@ -1,4 +1,4 @@
-/* Catnap managed browser-media adapter, version 0.6.3.
+/* Catnap managed browser-media adapter, version 0.6.4.
  * Change summary: exact-row Suno playback behind the MAIN-world native guard,
  * including privately observed detached audio; source keys never leave that
  * bound extension transport. Selected media is checked atomically before play.
@@ -7,27 +7,43 @@
  */
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./managed-player.js'):root.CatnapManagedPlayer);if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedMedia=api;})(typeof globalThis!=='undefined'?globalThis:this,function(core){
   'use strict';
-  const SCRIPT_VERSION='0.6.3',NATIVE_CHANNEL='catnap-managed-native-v1';
+  const SCRIPT_VERSION='0.6.4',NATIVE_CHANNEL='catnap-managed-native-v1';
   const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   function sunoId(value){try{const u=new URL(value);const match=/^\/song\/([^/]+)\/?$/.exec(u.pathname);return ['suno.com','www.suno.com'].includes(u.hostname)&&match&&UUID.test(match[1])?match[1].toLowerCase():null;}catch{return null;}}
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
+  function findNativePlay(doc,id){
+    if(!UUID.test(id||''))return null;id=id.toLowerCase();const candidates=new Set(),root=doc.querySelector('#catnap-theater-root');
+    function eligible(scope){
+      if(!scope||['BODY','HTML','MAIN'].includes(scope.tagName)||scope.contains(root))return [];
+      const ids=new Set(Array.from(scope.querySelectorAll('a[href*="/song/"]')).map(anchor=>sunoId(anchor.href)).filter(Boolean));if(ids.size!==1||!ids.has(id))return [];
+      return Array.from(scope.querySelectorAll('button,[role="button"]')).filter(button=>{
+        const label=(button.getAttribute('aria-label')||button.title||'').trim();
+        return !button.disabled&&!button.hasAttribute('disabled')&&button.getAttribute('aria-disabled')!=='true'&&!button.closest('[hidden],[inert],[aria-hidden="true"]')&&/^play(?:\s|$)/i.test(label)&&!/\bplaylist\b/i.test(label);
+      });
+    }
+    for(const anchor of doc.querySelectorAll('a[href*="/song/"]')){
+      if(anchor.closest('#catnap-theater-root')||anchor.matches('[aria-label^="Playbar:"]')||sunoId(anchor.href)!==id)continue;
+      // Suno currently exposes its exact clip row as role=group, and its Play
+      // control is a DIV role=button. The title link sits six levels below the
+      // row; shallow HTML-button-only scans never reach that control.
+      const group=anchor.closest('[role="group"]');let found=eligible(group);
+      if(!found.length){let parent=anchor.parentElement;for(let depth=0;parent&&depth<12;parent=parent.parentElement,depth++){
+        if(['BODY','HTML','MAIN'].includes(parent.tagName)||parent.contains(root))break;
+        const ids=new Set(Array.from(parent.querySelectorAll('a[href*="/song/"]')).map(a=>sunoId(a.href)).filter(Boolean));if(ids.size>1)break;
+        found=eligible(parent);if(found.length)break;
+      }}
+      // Duplicate title/cover links within one row resolve to the same node.
+      // Two eligible controls or duplicate rendered rows remain ambiguous.
+      for(const button of found)candidates.add(button);
+    }
+    return candidates.size===1?[...candidates][0]:null;
+  }
   function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{},onPlaying=()=>{},onPaused=()=>{},onAutoplayBlocked=()=>{}}={}){
     if(typeof guard!=='function')throw Error('A MAIN-world native media guard is required.');
     let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1,nativeTransition=-1;
     const delay=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
     function nativeCurrentId(){return sunoId(doc.querySelector('a[aria-label^="Playbar: Title for "]')?.href);}
-    function nativeButton(id){
-      for(const anchor of doc.querySelectorAll('a[href*="/song/"]')){
-        if(anchor.closest('#catnap-theater-root')||anchor.matches('[aria-label^="Playbar:"]')||sunoId(anchor.href)!==id)continue;
-        let parent=anchor.parentElement;
-        for(let depth=0;parent&&depth<5;parent=parent.parentElement,depth++){
-          if(['BODY','HTML','MAIN'].includes(parent.tagName)||parent.contains(doc.querySelector('#catnap-theater-root')))break;
-          const ids=new Set(Array.from(parent.querySelectorAll('a[href*="/song/"]')).map(a=>sunoId(a.href)).filter(Boolean));if(ids.size!==1)break;
-          const button=Array.from(parent.querySelectorAll('button')).find(b=>!b.disabled&&/^play(?:\s|$)/i.test(b.getAttribute('aria-label')||b.title||'')&&!/playlist/i.test(b.getAttribute('aria-label')||b.title||''));if(button)return button;
-        }
-      }
-      return null;
-    }
+    const nativeButton=id=>findNativePlay(doc,id);
     function post(command,args=[]){if(frame?.contentWindow)frame.contentWindow.postMessage(JSON.stringify({event:'command',func:command,args,id:'catnap-managed-youtube'}),frameOrigin);}
     function listen(){if(frame?.contentWindow)frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:'catnap-managed-youtube'}),frameOrigin);}
     function cancelPending(message){if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.reject(Error(message));pendingPlay=null;}for(const waiter of readyWaiters){win.clearTimeout(waiter.timer);waiter.reject(Error(message));}readyWaiters=[];}
@@ -101,5 +117,5 @@
     async function dispose(){if(destroyed)return;await stopAll({generation:generation+1});destroyed=true;win.removeEventListener('message',onMessage);await guard({action:'disable',generation});}
     return {stopAll,stage,play,pause,dispose,getCurrent:()=>current,getGeneration:()=>generation};
   }
-  return {SCRIPT_VERSION,create,sunoId,youtubeId};
+  return {SCRIPT_VERSION,create,sunoId,youtubeId,findNativePlay};
 });

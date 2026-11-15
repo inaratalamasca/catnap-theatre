@@ -1,9 +1,9 @@
-/* Catnap host-only Inbox & show window, version 0.6.3.
+/* Catnap host-only Inbox & show window, version 0.6.4.
  * Change summary: explicit queue commands and clipboard-only announcements.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.3', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.6.4', $=id=>document.getElementById(id);
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
   const status=value=>{$('status').textContent=value;};

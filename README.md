@@ -1,6 +1,6 @@
 # Catnap Theatre
 
-**0.6.3 development branch:** optional Inbox & Playlists, a separately packaged Catnap Inbox creator, mixed Suno/YouTube show order, uploader context/warnings and explicit manual Load/Play controls. See [managed show setup and verification limits](docs/MANAGED-SHOW.md). This branch does not replace the submitted 0.5.0 Store beta or activate a user's installed extension. Use a separate test profile.
+**0.6.4 development branch:** optional Inbox & Playlists, a separately packaged Catnap Inbox creator, mixed Suno/YouTube show order, uploader context/warnings and explicit manual Load/Play controls. See [managed show setup and verification limits](docs/MANAGED-SHOW.md). This branch does not replace the submitted 0.5.0 Store beta or activate a user's installed extension. Use a separate test profile.
 
 **Catnap Theatre 0.5.0 · early access for Chrome and Brave.** Theatre options live in a persistent control window, with optional music-reactive background bars. Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
 

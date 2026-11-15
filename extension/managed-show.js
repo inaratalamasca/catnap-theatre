@@ -1,11 +1,11 @@
-/* Catnap Theatre managed-show presentation, version 0.6.3.
+/* Catnap Theatre managed-show presentation, version 0.6.4.
  * Change summary: reload-safe binding status, first-entry Play, trusted native
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. Host-only notes remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.3';
+  const SCRIPT_VERSION='0.6.4';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -158,8 +158,8 @@
   }
   function songId(url){try{const value=new URL(url,location.href);return ['suno.com','www.suno.com'].includes(value.hostname)?/^\/song\/([a-f0-9-]{36})\/?$/i.exec(value.pathname)?.[1]?.toLowerCase()||null:null;}catch{return null;}}
   function rowSong(button){
-    let parent=button.parentElement;
-    for(let depth=0;parent&&depth<5;parent=parent.parentElement,depth++){
+    let parent=button.closest('[role="group"]')||button.parentElement;
+    for(let depth=0;parent&&depth<12;parent=parent.parentElement,depth++){
       if(['BODY','HTML','MAIN'].includes(parent.tagName)||parent.contains(root()))break;
       const ids=new Set(Array.from(parent.querySelectorAll('a[href*="/song/"]')).map(anchor=>songId(anchor.href)).filter(Boolean));
       if(ids.size===1)return [...ids][0];if(ids.size>1)break;
@@ -174,13 +174,14 @@
     let action=null,index=null,error='';
     if(event.type==='click'){
       if(event.button!==undefined&&event.button!==0)return false;
-      const button=target.closest('button');if(!button)return false;
+      const button=target.closest('button,[role="button"]');if(!button)return false;
       const label=(button.getAttribute('aria-label')||button.title||'').trim();
       const exact={'Playbar: Play button':'play','Playbar: Pause button':'pause','Playbar: Next Song button':'next','Playbar: Previous Song button':'previous'};
       action=exact[label]||null;
       if(!action&&/^play playlist$/i.test(label)){action='play';index=0;}
       else if(!action&&/^(?:play|pause)(?:\s|$)/i.test(label)&&!/playlist/i.test(label)){
         const id=rowSong(button);if(!id)return false;
+        if(/^play/i.test(label)&&globalThis.CatnapManagedMedia?.findNativePlay(document,id)!==button)return false;
         const matches=state().queue.map((entry,at)=>({entry,at})).filter(value=>value.entry.sunoId===id);
         const current=matches.find(value=>value.at===state().index),chosen=current||(matches.length===1?matches[0]:null);
         if(!chosen)error=matches.length?'This song has multiple show submissions. Choose the intended entry in the show controls.':'This song is outside the active show queue. Choose a show entry or return to ordinary Suno.';
@@ -189,7 +190,7 @@
       }
     }else if(event.type==='keydown'){
       if(event.ctrlKey||event.altKey||event.metaKey||target.closest('input,textarea,select,[contenteditable="true"]'))return false;
-      if(target.closest('button')&&!/Playbar:/.test(target.closest('button').getAttribute('aria-label')||''))return false;
+      if(target.closest('button,[role="button"]')&&!/Playbar:/.test(target.closest('button,[role="button"]').getAttribute('aria-label')||''))return false;
       if(event.key===' '||event.code==='Space'||event.key==='MediaPlayPause')action='toggle';
       else if(event.key==='MediaTrackNext'||event.key==='ArrowRight'&&event.shiftKey)action='next';
       else if(event.key==='MediaTrackPrevious'||event.key==='ArrowLeft'&&event.shiftKey)action='previous';
