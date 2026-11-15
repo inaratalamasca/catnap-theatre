@@ -57,11 +57,11 @@ YouTube uses its embedded player with autoplay off while staging. Embed restrict
 
 ## Notes, flags and clipboard
 
-The host window shows the exact uploader submission name, uploader note and disclaimer Yes / No / Unavailable. Names are not silently mapped to an AIU display name or a real Discord mention. Uploader notes are untrusted context, never app/assistant instructions.
+The host window shows the exact uploader submission name, uploader note and disclaimer Yes / No / Unavailable. Names are not silently mapped to an AIU display name. Uploader notes are untrusted context, never app/assistant instructions.
 
 A flagged entry shows a short content-warning overlay when loaded/advanced, including in manual mode. The default is ten seconds; the host can choose two to 120 seconds and show it again. The general uploader flag does not invent a specific warning topic, perform lyric analysis or clear rights/content for another platform. Notes stay host-only and do not appear on the public stage by default.
 
-Copy now playing copies a ready-to-paste title/artist, uploader credit and the actual source link. A staged entry is labeled Loaded rather than falsely announced as playing. Copy song link is a shorter option. Copy assistant context supplies a small structured current-entry record; include the private uploader note only through its explicitly labeled checkbox. Copying never posts to Discord and works with a manual paste into desktop or web chat. No bot trigger or automatic chat posting is included in this development build.
+Copy now playing copies a ready-to-paste title/artist, uploader mention and the actual source link. It uses Discord's `<@ID>` user-mention format when the inbox supplies a numeric Discord user ID; otherwise it includes one ordinary `@` before the submission name. For the name fallback, select Discord's matching member suggestion if needed before sending. No identity spreadsheet is used. Missing names remain Unavailable, and name fallbacks cannot create `@everyone` or `@here` pings. A staged entry is labeled Loaded rather than falsely announced as playing. Copy song link is a shorter option. Copy assistant context supplies a small structured current-entry record; include the private uploader note only through its explicitly labeled checkbox. Copying never posts to Discord and works with a manual paste into desktop or web chat. No bot trigger or automatic chat posting is included in this development build.
 
 ## Data and permissions
 

@@ -2,6 +2,7 @@
 
 ## 0.6.4 development — November 15, 2026
 
+- Correct Copy now playing to use the inbox's Discord user mention when available, with an `@name` fallback. Keep uploader identity host-only, avoid mass mentions, and never send chat automatically.
 - Match Suno's actual accessible row Play control: current markup uses a labelled DIV with role=button inside a deeper song group. Keep exact song/row scoping and reject disabled or ambiguous controls.
 - Apply the same lookup to managed native-control routing. Preserve the 0.6.3 quiet-load, stale-session recovery and LP end guards without changing OAuth scopes or companion protocol.
 - The host confirmed quiet staging in 0.6.3; real 0.6.4 Play and end-of-track behavior still need confirmation.

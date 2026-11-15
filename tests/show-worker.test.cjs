@@ -241,6 +241,29 @@ test('manual announcement uses actual active source and uploader credit without 
   assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
 });
 
+test('copied uploader credit uses inbox Discord ID or one ASCII @ without mass mentions',async()=>{
+  const cases=[
+    {uploaderName:'fixture-uploader',uploaderId:'123456789012345678',expected:'<@123456789012345678>'},
+    {uploaderName:'fixture-uploader',uploaderId:'fixture-id',expected:'@fixture-uploader'},
+    {uploaderName:'@fixture-uploader',uploaderId:'',expected:'@fixture-uploader'},
+    {uploaderName:'＠fixture-uploader',uploaderId:'',expected:'@fixture-uploader'},
+    {uploaderName:'@everyone',uploaderId:'',expected:'＠everyone'},
+    {uploaderName:'here',uploaderId:'',expected:'＠here'},
+    {uploaderName:'',uploaderId:'',expected:'Unavailable'},
+    {uploaderName:'fixture-uploader',uploaderId:'<@&123456789012345678>',expected:'@fixture-uploader'}
+  ];
+  for(const values of cases){
+    const current=entry('one',{...values,title:'Song @everyone'});
+    const f=fixture({state:{playerTabId:7,entries:[current]}});
+    await f.send({target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:1,playback:{phase:'playing',index:0,generation:1,occurrenceId:'fixture-occurrence',source:'suno',current:{id:current.id}}},f.player);
+    const result=await f.control('announcement');assert.equal(result.ok,true);
+    assert.equal(result.data.text.split('\n')[1],'Submitted by: '+values.expected);
+    assert.match(result.data.text,/Song ＠everyone/);
+    assert.equal(result.data.text.includes('@everyone'),false);
+    assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
+  }
+});
+
 test('late playback observations cannot roll back current credit, source or phase',async()=>{
   const first=entry('first',{title:'First song',uploaderName:'first-uploader'});
   const second=entry('second',{title:'Second video',uploaderName:'second-uploader',sunoUrl:song(SECOND),sunoId:SECOND,

@@ -1,4 +1,4 @@
-/* Catnap managed show worker, version 0.6.0.
+/* Catnap managed show worker, version 0.6.4.
  * Change summary: optional read-only uploader intake, private show queue,
  * explicit player binding, verified MCP playlist writes and bounded AP polling.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
@@ -10,6 +10,15 @@
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
   const text = (value, max = 200) => String(value || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, max);
+  function uploaderMention(entry) {
+    // The uploader supplies this Discord ID; no private identity map is used.
+    const id=text(entry.uploaderId,100);
+    if(/^[1-9]\d{16,19}$/.test(id))return '<@'+id+'>';
+    const name=text(entry.uploaderName,200).replace(/^[@＠]+\s*/,'').replace(/\s+/g,' ').replace(/@/g,'＠');
+    if(!name)return 'Unavailable';
+    // A name fallback must not turn a manual song announcement into a mass ping.
+    return (/^(?:everyone|here)(?:$|\W)/i.test(name)?'＠':'@')+name;
+  }
   let tasks = Promise.resolve(), reading = false;
   const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning']);
   const coordinate=(action,fn)=>globalThis.CatnapShowCoordination?.runExclusive?globalThis.CatnapShowCoordination.runExclusive(action,fn):fn();
@@ -243,7 +252,7 @@
       const source=state.playback.source||current.preferredSource;
       const url=source==='youtube'?current.youtubeUrl:current.sunoUrl;
       const safe=value=>text(value,200).replace(/@/g,'＠');
-      return {text:`${state.playback.phase==='playing'?'Now playing':'Loaded'}: ${safe(current.title)}${current.artist?' — '+safe(current.artist):''}\nSubmitted by: ${safe(current.uploaderName||'Unavailable')}\n${url||''}`,
+      return {text:`${state.playback.phase==='playing'?'Now playing':'Loaded'}: ${safe(current.title)}${current.artist?' — '+safe(current.artist):''}\nSubmitted by: ${uploaderMention(current)}\n${url||''}`,
         context:{version:1,showId:state.id,entryId:current.id,occurrenceId:state.playback.occurrenceId,phase:state.playback.phase,title:current.title,artist:current.artist,source,url,uploaderName:current.uploaderName,disclaimer:current.disclaimer,...(message.includeNotes===true?{uploaderNote:current.note}:{})}};
     }
     throw Error('Unknown show control.');
