@@ -1,5 +1,11 @@
 # Changes
 
+## 0.6.6 development — November 15, 2026
+
+- Recognize Suno's explicit `active-audio-play` music element beside its `silent-audio` helper. Actual native music uses a blob URL without the song UUID; the helper made the former generic audio lookup ambiguous.
+- Prefer exactly one identified native music element; duplicate/empty identified elements and ambiguous unknown sources remain held. Never treat the silent helper as a song.
+- Retain muted preparation, quiet Load, manual ending, source checks and cancellation. The actual 0.6.5 trial selected the song but reported audio not found; this focused DOM correction still needs host confirmation.
+
 ## 0.6.5 development — November 15, 2026
 
 - Add a bounded, muted native preparation step only after explicit Play, so a cold Suno player can finish loading without an audible lead-in. Quiet Load never enters preparation. Pause, stop, a different entry and timeout close preparation.

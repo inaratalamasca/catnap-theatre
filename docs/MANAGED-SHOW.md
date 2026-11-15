@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.5 development
+# Inbox playlists and managed shows · 0.6.6 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -17,7 +17,7 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
 
-Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.5 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.6 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
 
 For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
 
@@ -40,7 +40,9 @@ In the combined package, open the destination playlist in Suno and choose that t
 
 Native Suno playback uses an exact rendered song row and a source-bound audio guard. It fails visibly if the native row/audio cannot be identified safely; it does not navigate/reload the playing tab or guess a source. Suno may need to render new playlist rows before they can play. Native looping is suppressed in managed mode and restored on return to ordinary Suno. A separately managed YouTube iframe stays in the same Theatre tab; opening a different tab would not automatically enter a Discord tab share.
 
-On explicit Play, a cold native player may need to begin loading before Suno updates its current-song state. The 0.6.5 guard permits a bounded preparation interval with native audio forced muted, then checks the selected song and source before allowing audible playback. Load never prepares or starts audio. Pause, stop, a changed selection and timeout cancel preparation. A readiness failure remains held and includes only short diagnostic facts, not private media URLs.
+Current Suno has a blob-backed `active-audio-play` music element alongside a separate `silent-audio` helper. The adapter uses exactly one identified music element and excludes the helper from generic fallback selection. Duplicate or source-less identified elements remain held; it does not guess by DOM order, duration or the blob's random identifier.
+
+On explicit Play, a cold native player may need to begin loading before Suno updates its current-song state. The 0.6.6 guard permits a bounded preparation interval with native audio forced muted, then checks the selected song and source before allowing audible playback. Load never prepares or starts audio. Pause, stop, a changed selection and timeout cancel preparation. A readiness failure remains held and includes only short diagnostic facts, not private media URLs.
 
 The controls verify the actual page/show lease and native guard before displaying manual playback status. Reloaded/inactive pages show a reconnect prompt, and current-song copy is unavailable until that connection is valid. Known native Suno playback buttons are routed through the managed show while it is active; this does not turn ordinary unlinked Suno playback into a managed show.
 
@@ -77,7 +79,7 @@ The existing public audio listener's v1 metadata schema accepts Suno identities 
 
 ## Current Suno row controls
 
-A live 0.6.3 trial staged the song successfully but could not find its native Play control. Read-only inspection of the real playlist confirmed that Suno uses a DIV with role=button and a Play label, inside a deeper role=group song row. Version 0.6.5 matches that actual accessible control while retaining exact song identity, row scope, ambiguity and disabled-state checks. It does not click the playlist-wide Play button to get around a missing row. The native guard remains in force.
+A live 0.6.3 trial staged the song successfully but could not find its native Play control. Read-only inspection of the real playlist confirmed that Suno uses a DIV with role=button and a Play label, inside a deeper role=group song row. Version 0.6.6 matches that actual accessible control while retaining exact song identity, row scope, ambiguity and disabled-state checks. It does not click the playlist-wide Play button to get around a missing row. The native guard remains in force.
 
 ## Verification and remaining acceptance
 

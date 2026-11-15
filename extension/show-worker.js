@@ -1,11 +1,11 @@
-/* Catnap managed show worker, version 0.6.5.
+/* Catnap managed show worker, version 0.6.6.
  * Change summary: optional read-only uploader intake, private show queue,
  * explicit player binding, verified MCP playlist writes and bounded AP polling.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.5';
+  const SCRIPT_VERSION = '0.6.6';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';

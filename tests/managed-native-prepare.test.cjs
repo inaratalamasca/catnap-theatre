@@ -1,5 +1,5 @@
 'use strict';
-/* Muted native preparation regressions, version 0.6.5.
+/* Muted native preparation regressions, version 0.6.6.
  * Synthetic media methods and a deterministic clock; never contacts Suno.
  */
 const {test}=require('node:test');
@@ -137,4 +137,46 @@ test('a known different UUID audio filename cannot gain a lease merely because t
   await assert.rejects(f.guard.command({action:'play',generation:1,songId:NEXT,sourceKey:source(FIRST)}),/different song/);
   assert.equal(f.guard.status().permitted,false);assert.equal(f.audio.muted,true);
   assert.equal(f.calls.filter(call=>call.method==='play'&&!call.muted).length,0);
+});
+
+test('Suno explicit blob-backed music is selected alongside its silent helper without guessing a song URL',async t=>{
+  const f=fixture(t);f.audio.id='active-audio-play';f.audio.src='blob:https://suno.com/synthetic-music';
+  const helper=f.doc.createElement('audio');helper.id='silent-audio';helper.src='https://cdn-o.suno.com/synthetic-silence.mp3';f.doc.body.append(helper);
+  await f.guard.command({action:'enable',generation:1});
+  assert.equal(f.guard.status().nativeAudioCount,2);
+  assert.equal(f.guard.status().nativeAudio.sourceKey,f.audio.src);
+  await f.guard.command({action:'play',generation:1,songId:FIRST,sourceKey:f.audio.src});
+  assert.equal(f.guard.status().permitted,true);assert.equal(f.audio.muted,false);assert.equal(helper.muted,true);
+  assert.equal(f.calls.filter(call=>call.method==='play').every(call=>call.el===f.audio),true);
+});
+
+test('duplicate or empty explicit music elements stay held rather than using an unknown audio',async t=>{
+  const f=fixture(t);f.audio.id='active-audio-play';f.audio.src='blob:https://suno.com/synthetic-first';
+  const second=f.doc.createElement('audio');second.id='active-audio-play';second.src='blob:https://suno.com/synthetic-second';f.doc.body.append(second);
+  await f.guard.command({action:'enable',generation:1});
+  assert.equal(f.guard.status().nativeAudio,null);
+  await assert.rejects(f.guard.command({action:'play',generation:1,songId:FIRST}),/usable native audio/);
+  second.id='unknown-audio';f.audio.removeAttribute('src');
+  assert.equal(f.guard.status().nativeAudio,null);
+  await assert.rejects(f.guard.command({action:'play',generation:1,songId:FIRST}),/usable native audio/);
+  assert.equal(f.calls.some(call=>call.method==='play'&&!call.muted),false);
+});
+
+test('the silent helper alone is never mistaken for a playable song',async t=>{
+  const f=fixture(t);f.audio.id='silent-audio';
+  await f.guard.command({action:'enable',generation:1});assert.equal(f.guard.status().nativeAudio,null);
+  await assert.rejects(f.guard.command({action:'play',generation:1,songId:FIRST}),/usable native audio/);
+  assert.equal(f.calls.some(call=>call.method==='play'),false);
+});
+
+test('a silent helper ending cannot cancel music preparation or signal the music ending',async t=>{
+  const f=fixture(t);f.audio.id='active-audio-play';
+  const helper=f.doc.createElement('audio');helper.id='silent-audio';helper.src='https://cdn-o.suno.com/synthetic-silence.mp3';f.doc.body.append(helper);
+  let helperNativeEnds=0;helper.addEventListener('ended',()=>helperNativeEnds++);
+  await f.guard.command({action:'enable',generation:1});
+  await f.guard.command({action:'prepare',generation:1,songId:FIRST});
+  helper.dispatchEvent(new f.win.Event('ended'));assert.equal(f.guard.status().preparing,true);
+  await f.guard.command({action:'play',generation:1,songId:FIRST,sourceKey:f.audio.src});
+  helper.dispatchEvent(new f.win.Event('ended'));assert.equal(f.guard.status().permitted,true);
+  assert.equal(helperNativeEnds,0);assert.equal(helper.muted,true);
 });

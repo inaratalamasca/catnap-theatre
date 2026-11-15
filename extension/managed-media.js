@@ -1,5 +1,6 @@
-/* Catnap managed browser-media adapter, version 0.6.5.
- * Change summary: explicit Play may prepare native audio while forcibly muted,
+/* Catnap managed browser-media adapter, version 0.6.6.
+ * Change summary: identify Suno's active audio separately from its silent
+ * helper, with ambiguity held. Explicit Play may prepare native audio muted,
  * then grant exact-source playback; Pause also cancels same-generation starts.
  * Source keys never leave the bound extension transport. Selected media is
  * checked atomically before play, and quiet Load never prepares native audio.
@@ -8,13 +9,23 @@
  */
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./managed-player.js'):root.CatnapManagedPlayer);if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedMedia=api;})(typeof globalThis!=='undefined'?globalThis:this,function(core){
   'use strict';
-  const SCRIPT_VERSION='0.6.5',NATIVE_CHANNEL='catnap-managed-native-v1';
+  const SCRIPT_VERSION='0.6.6',NATIVE_CHANNEL='catnap-managed-native-v1';
   const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   function sunoId(value){try{const u=new URL(value);const match=/^\/song\/([^/]+)\/?$/.exec(u.pathname);return ['suno.com','www.suno.com'].includes(u.hostname)&&match&&UUID.test(match[1])?match[1].toLowerCase():null;}catch{return null;}}
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
   // A narrow positive identity check, not a generic URL/content classifier.
   // Only a canonical UUID audio filename counts; query text is never proof.
   function nativeAudioSongId(key){try{return /^([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\.(?:mp3|m4a|aac|wav|ogg|opus|flac|webm)$/i.exec(new URL(key).pathname.split('/').pop())?.[1]?.toLowerCase()||null;}catch{return null;}}
+  function findNativeAudio(doc){
+    const audio=Array.from(doc.querySelectorAll('audio')).filter(el=>!el.closest('#catnap-theater-root'));
+    const active=audio.filter(el=>el.id==='active-audio-play');
+    // Observed Suno DOM has a blob-backed music element plus a source-bearing
+    // silent helper. Multiple active IDs, or an unprepared known active player,
+    // must not redirect playback to an unrelated source.
+    if(active.length)return active.length===1&&(active[0].currentSrc||active[0].src)?active[0]:null;
+    const candidates=audio.filter(el=>el.id!=='silent-audio'&&(el.currentSrc||el.src));
+    return candidates.length===1?candidates[0]:null;
+  }
   function findNativePlay(doc,id){
     if(!UUID.test(id||''))return null;id=id.toLowerCase();const candidates=new Set(),root=doc.querySelector('#catnap-theater-root');
     function eligible(scope){
@@ -112,7 +123,7 @@
       try{
       const held=await guard({action:'block',generation});
       ensureCurrent();if(!held?.ready||!held.enabled||held.permitted)throw Error('Native audio could not be held safely.');
-      const nativeAudio=()=>Array.from(doc.querySelectorAll('audio')).find(el=>!el.closest('#catnap-theater-root')&&(el.currentSrc||el.src));
+      const nativeAudio=()=>findNativeAudio(doc);
       const observed=health=>{const audio=nativeAudio();return Object.hasOwn(health,'nativeAudio')?health.nativeAudio:audio?{sourceKey:audio.currentSrc||audio.src,readyState:audio.readyState}:null;};
       const initial=observed(held),changingSong=nativeCurrentId()!==id,previousSource=initial?.sourceKey||'',needsPreparation=changingSong||!initial||initial.readyState<2;
       if(needsPreparation){
@@ -149,5 +160,5 @@
     async function dispose(){if(destroyed)return;await stopAll({generation:generation+1});destroyed=true;win.removeEventListener('message',onMessage);await guard({action:'disable',generation});}
     return {stopAll,stage,play,pause,dispose,getCurrent:()=>current,getGeneration:()=>generation};
   }
-  return {SCRIPT_VERSION,create,sunoId,youtubeId,findNativePlay};
+  return {SCRIPT_VERSION,create,sunoId,youtubeId,findNativePlay,findNativeAudio};
 });

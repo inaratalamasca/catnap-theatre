@@ -1,4 +1,4 @@
-/* Catnap native audio guard, version 0.6.5. MAIN world, document_start.
+/* Catnap native audio guard, version 0.6.6. MAIN world, document_start.
  * Change summary: native playback is inert until explicitly enabled, then each
  * audible lease is bound to an exact song, media element and current source.
  * Source/load changes revoke the lease synchronously. Detached Audio elements
@@ -12,7 +12,7 @@
  */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else if(!root.CatnapManagedNative)root.CatnapManagedNative=api.install(root);})(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const SCRIPT_VERSION='0.6.5',CHANNEL='catnap-managed-native-v1',PREPARE_MS=8000;
+  const SCRIPT_VERSION='0.6.6',CHANNEL='catnap-managed-native-v1',PREPARE_MS=8000;
   function install(win){
     const doc=win.document,proto=win.HTMLMediaElement?.prototype;
     if(!doc||!proto)return {command:()=>({ready:false,error:'Native media controls are unavailable.'})};
@@ -40,7 +40,18 @@
     }
     function changing(el){if(!enabled||!native(el))return;if(preparing(el)){lease=null;forceMuted(el);return;}if(lease?.media===el)block('The native audio source changed.',true);else silence(el);}
     function expectedSong(){const anchor=doc.querySelector('a[aria-label^="Playbar: Title for "]');try{return /^\/song\/([a-f0-9-]{36})\/?$/i.exec(new URL(anchor?.href||'',win.location.href).pathname)?.[1]?.toLowerCase()||'';}catch{return '';}}
-    function candidateAudio(){const candidates=media().filter(el=>el.tagName==='AUDIO'&&source(el)),id=expectedSong();const matching=id?candidates.filter(el=>source(el).toLowerCase().includes(id)):[];if(matching.length===1)return matching[0];if(matching.length>1)return null;return candidates.length===1?candidates[0]:null;}
+    function candidateAudio(){
+      const audio=media().filter(el=>el.tagName==='AUDIO'&&el.id!=='silent-audio');
+      // Current Suno exposes a blob-backed music element alongside a separate
+      // silent helper. Neither URL names the song. Its explicit active ID is
+      // the source of truth; never choose by DOM order or duration guesses.
+      const identified=audio.filter(el=>el.isConnected&&el.id==='active-audio-play');
+      if(identified.length)return identified.length===1&&source(identified[0])?identified[0]:null;
+      const candidates=audio.filter(el=>source(el)),id=expectedSong();
+      const matching=id?candidates.filter(el=>source(el).toLowerCase().includes(id)):[];
+      if(matching.length===1)return matching[0];if(matching.length>1)return null;
+      return candidates.length===1?candidates[0]:null;
+    }
     function audioSongId(value){try{const name=new URL(value,win.location.href).pathname.split('/').pop();return /^([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\.(?:mp3|m4a|aac|wav|ogg|opus|flac|webm)$/i.exec(name)?.[1]?.toLowerCase()||null;}catch{return null;}}
     function denied(){return Promise.reject(new win.DOMException('Managed show is holding native audio. Use Theatre Play.','NotAllowedError'));}
     const guardedPlay=function(...args){
@@ -82,7 +93,7 @@
     };
     function onPlay(event){if(enabled&&native(event.target)&&!valid(event.target)){if(preparing(event.target)){forceMuted(event.target);return;}silence(event.target);event.stopImmediatePropagation();}}
     function onLoadStart(event){if(!enabled||!native(event.target))return;if(preparing(event.target)){forceMuted(event.target);return;}if(lease?.media===event.target&&!valid(event.target))block('The native audio source changed.',true);}
-    function onEnded(event){if(!enabled||!native(event.target))return;const current=lease?.media===event.target;if(current){block();emit('ended');}else if(preparation)block();else silence(event.target);event.stopImmediatePropagation();}
+    function onEnded(event){if(!enabled||!native(event.target))return;if(event.target.id==='silent-audio'){silence(event.target);event.stopImmediatePropagation();return;}const current=lease?.media===event.target;if(current){block();emit('ended');}else if(preparation)block();else silence(event.target);event.stopImmediatePropagation();}
     // Window capture precedes document/React capture regardless of listener
     // registration order. Prototype source/load guards remain the backstop if
     // an older window-level listener attempts to advance first.
