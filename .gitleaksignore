@@ -1,0 +1,2 @@
+# Reviewed false positives: extension storage namespace and explicit dummy test keys.
+2a82b4de12fe76a8bd7082ebac5cad0f17fef22c:extension/lounge.js:generic-api-key:7

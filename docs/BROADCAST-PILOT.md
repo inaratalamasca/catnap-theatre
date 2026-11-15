@@ -10,7 +10,7 @@ This development build is deliberately isolated in a new worktree and release ZI
 
 1. Stop any current show and finish the stream before changing extensions.
 2. In the chosen test profile's extensions page, disable the existing Catnap Theatre. **Never enable this and the older Theatre together**: they share page element IDs/content-script behavior.
-3. Extract `Catnap-Theatre-Controls-Dev-v0.5.0.zip` into a new folder and Load unpacked its `extension` folder. The previous extension's files remain intact. Settings are held per extension/profile; export them before switching if needed.
+3. Extract `Catnap-Theatre-v0.5.0.zip` into a new folder and Load unpacked its `extension` folder. The previous extension's files remain intact. Settings are held per extension/profile; export them before switching if needed.
 4. Open a test Suno song/playlist. If needed, refresh that tab before a show; a refresh can interrupt music.
 5. Pin the new Catnap toolbar action. Click it from the actual Suno music tab.
 6. Relay address defaults to `https://listen.catnapradio.com/live/whip`. Enter the private publish token supplied separately. It is never bundled in the extension, written into the Suno page or sent to listeners.
@@ -69,7 +69,7 @@ the active audio or metadata source.
 
 The publisher sends one audio-only Opus stream, negotiating stereo and a 256 kbps maximum/target. Browser congestion control can send less; the displayed bitrate is a target, not a measured throughput guarantee. Microphone capture is never requested. There is no automatic reconnect or silent recapture; an interrupted connection reports its state and the host can Stop/Start deliberately.
 
-Armin is the local pilot relay. Public player: `https://listen.catnapradio.com/`. The private LAN fallback is `http://192.168.1.15:4355/live/whip`; port 4355 serves HTTP, not HTTPS. Public listener connectivity depends on the deployment's TLS and media-port configuration. The same WHIP client can later target a VPS by changing its endpoint and token; no Theatre rebuild is required.
+The Catnap pilot player is `https://listen.catnapradio.com/`. Other hosts must use a relay they are authorized to publish to. A LAN-only pilot endpoint has the form `http://YOUR-LAN-HOST:4355/live/whip`; public endpoints require HTTPS. Public listener connectivity depends on the deployment's TLS and media-port configuration. The same WHIP client can later target a VPS by changing its endpoint and token; no Theatre rebuild is required.
 
 ## Automated evidence
 

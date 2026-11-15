@@ -29,7 +29,7 @@ The lyric module’s internal 0.2.11 label remains unchanged because its algorit
 
 ## Bundled asset
 
-`extension/assets/aiu-logo.png` was fetched November 8, 2026 from `https://home.aiu.fm/Assets/AI%20Underground%20White%20Logo.png`, the URL referenced by the existing Catnap extension. Confirm redistribution permission with AIU before publishing. It is not a newly created Catnap-owned logo.
+`extension/assets/aiu-logo.png` was fetched November 8, 2026 from `https://home.aiu.fm/Assets/AI%20Underground%20White%20Logo.png`, the URL referenced by the existing Catnap extension. The maintainer confirmed permission on November 15, 2026 to include this branding in public Catnap source/downloads. It remains AIU-owned; the software license grants no general branding rights.
 
 `tests/fixtures/sample-art.svg` and the sample lyrics/titles are original test material. The screenshot contains no real inbox/creator identity or private submission.
 
@@ -38,3 +38,7 @@ The lyric module’s internal 0.2.11 label remains unchanged because its algorit
 `npm run check` performs JavaScript syntax checks, manifest/script-reference and permission checks, and eight Node/jsdom tests. The first validation used the already available local jsdom 26.0.0; the repository also includes a locked development dependency for a reproducible fresh install. No runtime package or build system is required by the extension.
 
 An isolated headless Chrome profile rendered the supplied fixture at 1600×900; the screenshot was visually inspected. It establishes layout only. Live Suno, extension-store approval, browser capture/audio behavior and Firefox compatibility remain pending the acceptance checklist.
+
+## November 15 release housekeeping
+
+The existing 0.4.0, 0.5.0 and toolbar-icon changes were merged into main without changing runtime JavaScript. The public early-access release includes refreshed installation/privacy guidance, noncommercial licensing, required notices and publication guards. Previously recorded evidence retains its original date and scope.

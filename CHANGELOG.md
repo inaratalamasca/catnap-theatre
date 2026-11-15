@@ -1,5 +1,12 @@
 # Changes
 
+## 0.5.0 early-access publication — 2026-11-15
+
+- Consolidated the existing broadcast, controls/visualizer and toolbar-icon changes into main.
+- Added a versioned download, current installation/privacy notes and project links.
+- Applied PolyForm Noncommercial terms to first-party code/docs, with separate commercial permission and branding notices.
+- Added tracked-file privacy guards and repository checks. No playback, audio capture or installed extension was changed by this housekeeping revision.
+
 ## 0.5.0 toolbar icon revision — 2026-11-12
 
 - Added the Catnap headphone cat as explicit toolbar/extension icons in four sizes; existing toolbar behavior and presentation features are unchanged.

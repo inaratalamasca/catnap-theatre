@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_VERSION='0.5.0'
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+bash "$SCRIPT_DIR/check-repository.sh" "$PROJECT_DIR"
 printf 'Catnap Theatre checks %s\n' "$SCRIPT_VERSION"
 cd -- "$PROJECT_DIR"
 for script_file in extension/*.js; do node --check "$script_file"; done
