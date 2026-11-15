@@ -27,7 +27,7 @@ const entry = (id = 'one', values = {}) => ({...Core.normalizeRows([row(id)],{in
 
 function fixture(options = {}) {
   const local = {[STATE_KEY]:clone({...baseState(),...options.state})}, session = {};
-  const calls = {messages:[],scripts:[],fetch:[],mcp:[],alarms:[],windows:[],permissions:[]};
+  const calls = {messages:[],scripts:[],native:[],fetch:[],mcp:[],alarms:[],windows:[],permissions:[]};
   const tabMap = new Map([
     [7,{id:7,url:'https://suno.com/playlist/'+PLAYLIST,title:'Synthetic Suno playlist'}],
     [8,{id:8,url:'https://uploader.aiu.fm/',title:'Synthetic AIU Uploader'}],
@@ -52,10 +52,23 @@ function fixture(options = {}) {
         if(message.action==='discover')return {ok:true,data:{inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP',mode:'lp'}],ap:[{id:'fixture-inbox',name:'Fixture AP',mode:'ap'}]}}};
         if(message.action==='read')return {ok:true,data:options.inboxData?clone(options.inboxData):{inbox:{id:'fixture-inbox',name:'Fixture '+message.mode.toUpperCase(),mode:message.mode},summary:{pending:(options.rows||[]).length},rows:clone(options.rows||[])}};
       }
-      if(message.target==='catnap-show-tab')return options.playerResponse || {ok:true};
+      if(message.target==='catnap-show-tab') {
+        if(message.action==='enable') {
+          if(options.rejectEnable)throw Error('Synthetic managed player could not start');
+          return Object.hasOwn(options,'enableResponse')?options.enableResponse:{enabled:true};
+        }
+        return options.playerResponse || {ok:true};
+      }
       throw Error('Unexpected tab message');
     }},
-    scripting:{executeScript:async script=>{calls.scripts.push(script);return [{result:{ok:true}}];}},
+    scripting:{executeScript:async script=>{
+      calls.scripts.push(script);
+      if(script.func) {
+        const result=vm.runInNewContext('('+script.func.toString()+')(...args)',{args:script.args||[],CatnapManagedNative:{command:command=>{calls.native.push(clone(command));return {ok:true};}}});
+        return [{result}];
+      }
+      return [{result:{ok:true}}];
+    }},
     permissions:{contains:async spec=>{calls.permissions.push(clone(spec));return options.permission!==false;}},
     alarms:{create:async(name,spec)=>{calls.alarms.push({action:'create',name,...spec});},clear:async name=>{calls.alarms.push({action:'clear',name});return true;},onAlarm:{addListener:fn=>{alarm=fn;}}},
     windows:{create:async spec=>{calls.windows.push(clone(spec));return {id:100};},update:async()=>({id:100})}
@@ -192,6 +205,18 @@ test('player binding targets only an open Suno tab and public player updates exc
   f.tabMap.set(7,{id:7,url:'https://unrelated.invalid/'});
   assert.equal((await f.control('play')).ok,false);
   assert.equal(f.calls.messages.some(call=>call.tabId===9),false);
+});
+
+test('missing or rejected managed-player startup rolls back its binding and disables the native guard',async()=>{
+  for(const failure of [{enableResponse:undefined},{enableResponse:{enabled:false,error:'Synthetic player rejection'}},{rejectEnable:true}]) {
+    const f=fixture({...failure,state:{entries:[entry()]}});
+    const result=await f.control('bind-player',{tabId:7});
+    assert.equal(result.ok,false);
+    assert.equal(f.state().playerTabId,null);assert.equal(f.state().playerLease,null);assert.equal(f.state().playback,null);
+    assert.equal(f.calls.messages.some(call=>call.tabId===7&&call.message.target==='catnap-show-tab'&&call.message.action==='disable'),true);
+    assert.equal(f.calls.native.some(command=>command.action==='disable'),true);
+    assert.equal(f.calls.mcp.length,0);
+  }
 });
 
 test('manual announcement uses actual active source and uploader credit without notes unless explicitly requested', async () => {
