@@ -143,3 +143,14 @@ Primary implementation references:
 - https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging
 - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/add-type?view=powershell-5.1
 - https://chromium.googlesource.com/chromium/src/+/main/chrome/browser/extensions/api/messaging/launch_context_win.cc
+
+
+## Temporary local failure diagnostics
+
+Normal operation does not log provider requests, responses or account data. For a specific connection incident on Linux/macOS, the first-party helper supports an optional **sanitized category log**. This is not needed for playlist use and does not grant any new Suno access.
+
+With the browser idle from playlist synchronization, create an empty `catnap-suno-diagnostics.jsonl` beside the installed `catnap-suno-host.mjs` and set its permissions to `0600`. Add `export CATNAP_SUNO_DIAGNOSTICS=1` before the launcher's `exec` line, then retry only the failed read. The helper runs on demand, so an extension or playing-tab reload is not needed. The helper never creates the file itself, rejects symlinks and incorrect ownership/permissions, and stops logging at 64 KiB.
+
+Records contain only the fixed MCP operation/tool name, HTTP status, known schema key names, allowlisted error/scope labels and fixed diagnostic hints. They do not contain free provider text, URLs, playlist/song/account identifiers, authorization tokens or MCP session values. Error categories are evidence for investigation, not permission to expand OAuth scopes automatically.
+
+Remove the environment line after the sample, then inspect or remove the local category file. The process still returns the original provider response to the extension. Windows native operation is unchanged; this opt-in file logging requires a platform with user-ID ownership checks.

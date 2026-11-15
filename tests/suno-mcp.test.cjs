@@ -236,3 +236,28 @@ test('native host starts when the launcher uses a symlinked script path',()=>{
     assert.equal(JSON.parse(result.stdout.subarray(4)).ready,true);
   } finally { fs.rmSync(temporary,{recursive:true,force:true}); }
 });
+
+test('native diagnostic summary keeps only protocol keys, known codes and public scope names',async()=>{
+  const {diagnosticSummary}=await nativeModule();
+  const token='never-log-this-token-123',privateName='Private person and playlist name';
+  const body=JSON.stringify({jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:{code:'insufficient_scope',message:'Missing scope profile:read; Bearer '+token,required_scopes:['profile:read','private:'+privateName]},[privateName]:token})}]}});
+  const result=diagnosticSummary({method:'tools/call',params:{name:'playlists-list'},id:1},{status:200,contentType:'application/json',body});
+  assert.equal(result.isError,true);assert.deepEqual(result.errorCodes,['insufficient_scope']);assert.deepEqual(result.requiredScopes,['profile:read']);
+  assert.ok(result.hints.includes('scope'));assert.equal(JSON.stringify(result).includes(token),false);assert.equal(JSON.stringify(result).includes(privateName),false);
+  assert.deepEqual(result.toolJsonKeys,['error']);
+});
+
+test('native diagnostics are opt-in, owner-only, no-follow and bounded',async()=>{
+  const {recordDiagnostic}=await nativeModule();if(process.platform==='win32')return;
+  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'catnap diagnostics '));
+  try {
+    const filename=path.join(temporary,'diagnostics.jsonl'),summary={method:'tools/call',tool:'playlists-list',status:200,isError:true,errorCodes:['insufficient_scope']};
+    assert.equal(recordDiagnostic(summary,{enabled:true,filename}),false,'must not create a file implicitly');
+    fs.writeFileSync(filename,'',{mode:0o600});
+    assert.equal(recordDiagnostic(summary,{enabled:false,filename}),false);assert.equal(fs.readFileSync(filename,'utf8'),'');
+    assert.equal(recordDiagnostic(summary,{enabled:true,filename}),true);assert.equal(JSON.parse(fs.readFileSync(filename,'utf8')).tool,'playlists-list');
+    fs.chmodSync(filename,0o644);assert.equal(recordDiagnostic(summary,{enabled:true,filename}),false);
+    fs.chmodSync(filename,0o600);const alias=path.join(temporary,'alias.jsonl');fs.symlinkSync(filename,alias);assert.equal(recordDiagnostic(summary,{enabled:true,filename:alias}),false);
+    fs.writeFileSync(filename,'x'.repeat(65536));assert.equal(recordDiagnostic(summary,{enabled:true,filename}),false);
+  } finally {fs.rmSync(temporary,{recursive:true,force:true});}
+});
