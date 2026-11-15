@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Theatre controls</title><link rel="stylesheet" href="presentation-panel.css"></head>
+<body>
+<header><p class="eyebrow">CATNAP THEATRE</p><h1>Presentation controls</h1><p id="source">Linking to your Suno tab…</p></header>
+<p id="status" role="status" aria-live="polite">Ready.</p>
+<main>
+<section><h2>Layout &amp; lyrics</h2>
+<label>Layout<select id="layout"><option value="duet">Artwork + lyrics</option><option value="lineup">Playlist + artwork + lyrics</option><option value="art">Artwork focus</option></select></label>
+<label>Lyrics size<span class="row"><button id="font-down" type="button" aria-label="Smaller lyrics">A−</button><output id="font-value">21 px</output><button id="font-up" type="button" aria-label="Larger lyrics">A+</button></span></label>
+<label class="check"><input id="stripTags" type="checkbox">Hide [section / metadata] lines</label>
+<div class="row"><button id="auto-scroll" type="button" aria-pressed="true">Auto-scroll</button><button id="reload-lyrics" type="button">Reload lyrics</button></div>
+</section>
+<section><h2>Background visualizer</h2>
+<label class="check"><input id="visualizerEnabled" type="checkbox" checked>Music-reactive background bars</label>
+<label>Opacity<span class="row"><input id="visualizerOpacity" type="range" min="5" max="40" step="1" value="20"><output id="visualizer-opacity-value">20%</output></span></label>
+<small id="visualizer-status">Waiting for a supported music source.</small>
+</section>
+<section><h2>Host &amp; background</h2>
+<label>Host name<input id="brand" maxlength="50"></label>
+<label class="colour">Background colour<input id="background" type="color" value="#090b14"></label>
+<label>Host logo<input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>PNG, JPEG, WebP or GIF · up to 20 MB</small></label>
+<label>Background image<input id="background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>PNG, JPEG, WebP or GIF · up to 20 MB</small></label>
+<button id="clear-images" type="button">Clear local images</button>
+</section>
+<section><h2>Visuals &amp; quick banners</h2>
+<label class="check"><input id="video-enabled" type="checkbox" checked>Play available song video</label>
+<div id="presets" class="presets" aria-label="Quick banners"></div>
+<label>Banner text<textarea id="banner-text" maxlength="240" rows="3" placeholder="Content warning, announcement, silliness…"></textarea></label>
+<label>Local image / GIF / video<input id="overlay-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"><small>Images, GIF, MP4 or WebM · up to 100 MB · video stays muted</small></label>
+<label>Recently used<select id="recent"><option value="">Choose a recent file…</option></select></label>
+<button id="forget-files" type="button">Forget recent files</button>
+<div class="columns"><label>Media placement<select id="placement"><option value="art">Over artwork</option><option value="corner">Corner</option><option value="stage">Across theatre</option></select></label>
+<label>Clear after<select id="expiry"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="0">Until cleared</option></select></label></div>
+<div class="row"><button id="show-overlay" class="primary" type="button">Show overlay</button><button id="clear-overlay" type="button">Clear overlay</button></div>
+<small id="visual-status">Local files stay in the linked Suno tab.</small>
+</section>
+<section><h2>Saved settings</h2>
+<div class="row"><button id="export" type="button">Save settings file</button><button id="reset" type="button">Reset settings</button></div>
+<label>Load settings file<input id="import" type="file" accept="application/json,.json"></label>
+<a id="lounge" target="_blank" rel="noopener">Open waiting / pre-show / after-show lounge ↗</a>
+<small>Presentation settings stay in this browser profile. Local media stays in the linked Suno tab until it is cleared or closed. Closing this window leaves Theatre running.</small>
+</section>
+</main>
+<script src="helpers.js"></script><script src="presentation-panel.js"></script>
+</body></html>

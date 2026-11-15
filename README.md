@@ -1,8 +1,14 @@
 # Catnap Theatre
 
+**Development build 0.5.0 puts Theatre options in a persistent control window and adds optional music-reactive background bars.** Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
+
 A simple theatre overlay for people hosting Suno listening parties. Suno plays the music; Catnap displays the artwork, lyrics, visible playlist and host messages. No AI, Discord bot, uploader account, SSH tunnel or backend service is required.
 
-**Version 0.2.0 is a prepared alpha preview, not a store release.** The source passes focused automated tests and its sample screen was inspected in an isolated headless Chrome. The new build has not been activated in Ina’s installed browser or tested against a live signed-in Suno session. Keep the current show setup until the acceptance checklist is complete.
+**This is a separate development package, not a store release.** Version 0.5.0 is tested in an isolated Chromium profile with synthetic Suno fixtures. The working Dev1 standalone 0.5.0 folder stays untouched by this separate icon revision. Install or switch builds between shows, because extension reloads interrupt active capture.
+
+![Music-reactive background bars in an isolated rehearsal](docs/screenshots/visualizer-fixture.png)
+
+*Original fixture artwork/lyrics in an isolated Chromium rehearsal. Bars sit behind the presentation at the default 20% opacity.*
 
 ![Three-column preview with original sample material](docs/screenshots/lineup-fixture.png)
 
@@ -12,7 +18,7 @@ A simple theatre overlay for people hosting Suno listening parties. Suno plays t
 2. Open `chrome://extensions`, enable Developer mode and choose **Load unpacked**.
 3. Select this repository’s **extension** folder.
 4. Open a Suno playlist and sign in through Suno as usual. Press **Catnap Theater** near the lower right.
-5. Start the playlist with its ordinary Play control. Open **Settings** to switch layouts; open **Visuals** for warnings, files and messages.
+5. Start the playlist with its ordinary Play control. Open **Controls ↗** for the persistent control window. Playback, playlist navigation and Close remain on Theatre.
 
 Installing in an already open Suno tab requires a safe page refresh. A refresh can interrupt music. Test before a show, never during a live track.
 
@@ -25,13 +31,27 @@ Installing in an already open Suno tab requires a safe page refresh. A refresh c
 - Local warning/message/image/GIF/video overlays, expiry and recent-file reuse.
 - Host name, background colour and tab-local logo/background-image customization; required AIU branding and Catnap creator credit remain visible.
 - Extension-local preference storage and a small JSON settings import/export.
+- One Controls entry opens a reusable presentation control window linked to its originating Suno tab, including layout, lyrics, branding, banners and local media.
+- Optional translucent music-reactive bars behind foreground panels, using the existing HQ broadcast audio or safely exposed stream audio, with enable/opacity controls. URL-only playback without broadcasting stays quiet.
+- Optional music-only broadcasting and bounded public now-playing metadata, independent of whether Theatre is open.
 - A separate waiting/pre-show/after-show lounge with explicit Play/Stop AIU Radio, manual next-party text and an optional Suno playlist link.
 
 The visible list is not Suno’s internal playback queue. It cannot promise unseen rows, a refreshed server-side playlist, true lyric timestamps or automatic external-video placeholders. These limits are part of the product contract, not hidden fallbacks.
 
+When broadcasting with a compatible relay, public metadata includes the native
+song title/artist, allowlisted Suno artwork, available native timing, a visible
+playlist position and up to 100 following visible rows with known durations.
+Unknown timing stays unknown; shuffle hides the following rows. The reader sends a five-second
+heartbeat; the pilot server expires metadata after 30 seconds without a fresh
+update. Audio continues independently if metadata is unavailable. The metadata
+reader receives no publish token and cannot control playback.
+
 ## Read next
 
 - [User guide and storage](docs/USER-GUIDE.md)
+- [Persistent presentation controls](docs/PRESENTATION-CONTROLS.md)
+- [Toolbar identity and pinning](docs/TOOLBAR-ICON.md)
+- [Background music bars](docs/BACKGROUND-VISUALIZER.md)
 - [Every requested feature: status and acceptance](docs/REQUIREMENTS.md)
 - [Architecture and boundaries](docs/ARCHITECTURE.md)
 - [Manual acceptance checklist](docs/ACCEPTANCE.md)
@@ -42,7 +62,7 @@ The visible list is not Suno’s internal playback queue. It cannot promise unse
 
 Install Node.js and npm, run `npm ci --ignore-scripts`, then `npm run check`. No build step is needed to load the extension. The development dependencies are for tests only and are never shipped inside the extension.
 
-The tests verify storage validation, identity guards, layout settings, visible-row native-play delegation, keyboard safety and approximate lyric motion. They do not establish Suno compatibility or store approval. The included screenshot uses original fictional fixture art/lyrics, not a real submission.
+The tests verify storage validation, identity guards, shared control settings, source-tab binding, layout settings, visible-row native-play delegation, keyboard safety, metadata projection and approximate lyric motion. Isolated real-browser checks additionally cover popout reuse, file transfer, visual rendering and close/reopen persistence without capture or playback actions. They do not establish live Suno compatibility or store approval. The included screenshots use original fictional fixture art/lyrics. Actual generated stream audio also verifies signal, silence and preserved native inputs and playback state across visualizer disable, re-enable and source changes. URL-only audio is deliberately not captured by the visualizer.
 
 ## Project family
 

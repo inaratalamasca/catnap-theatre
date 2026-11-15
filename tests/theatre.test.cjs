@@ -55,7 +55,7 @@ test('settings keyboard activation does not toggle native playback',async()=>{
 test('standalone removes controller visual bridge and uses contained artwork',()=>{
   const visual=fs.readFileSync(path.join(extension,'visual-media.js'),'utf8');assert.equal(visual.includes('catnap-visual-command'),false);
   const core=fs.readFileSync(path.join(extension,'content.js'),'utf8');assert.match(core,/\.ct-art \{[^}]*object-fit: contain/);
-  const m=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json')));assert.deepEqual(m.permissions,['storage']);assert.equal(m.host_permissions,undefined);
+  const m=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json')));assert.deepEqual(m.permissions,['storage','activeTab','tabCapture','offscreen']);assert.equal(m.host_permissions,undefined);assert.deepEqual(m.optional_host_permissions,['http://*/*','https://*/*']);
 });
 test('approximate lyric following respects manual correction and pause/disable',async()=>{
   const {w,dom,root,ticks}=await fixture();

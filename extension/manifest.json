@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno \u2014 Preview",
-  "version": "0.2.0",
-  "description": "A local, AI-free theatre overlay for native Suno playback. Preview release for host testing.",
+  "name": "Catnap Theatre for Suno — Visualizer Dev",
+  "version": "0.5.0",
+  "description": "Standalone Theatre with pop-out presentation controls, subtle music-reactive background bars and optional HQ audio broadcasting.",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "tabCapture",
+    "offscreen"
   ],
   "options_page": "lounge.html",
   "content_scripts": [
@@ -18,7 +21,10 @@
         "content.js",
         "lyric-scroll.js",
         "visual-media.js",
-        "standalone.js"
+        "standalone.js",
+        "visualizer.js",
+        "broadcast-metadata.js",
+        "presentation-tab-controller.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
@@ -37,6 +43,29 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'; connect-src https: http:"
+  },
+  "minimum_chrome_version": "116",
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "broadcast-worker.js"
+  },
+  "action": {
+    "default_title": "Catnap Theatre — HQ broadcast controls",
+    "default_icon": {
+      "16": "assets/icons/theatre-16.png",
+      "32": "assets/icons/theatre-32.png",
+      "48": "assets/icons/theatre-48.png",
+      "128": "assets/icons/theatre-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/theatre-16.png",
+    "32": "assets/icons/theatre-32.png",
+    "48": "assets/icons/theatre-48.png",
+    "128": "assets/icons/theatre-128.png"
   }
 }
