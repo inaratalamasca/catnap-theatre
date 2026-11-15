@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.2 development — November 15, 2026
+
+- Add `profile:read` to Suno sign-in: a live playlist-read error identified it as required. Older grants need an explicit Connect Suno and fresh approval.
+- Migrate the cached OAuth client registration during explicit connection; old-grant automatic refresh must not pair an old refresh token with a newly registered client.
+- Preserve queue data, pinned development identities and existing native protocol compatibility. The Store beta and production aliases are unchanged.
+- Include opt-in owner-only sanitized native failure categories for incident diagnosis; logging stays disabled by default and does not record credentials or playlist contents.
+
 ## 0.6.1 development — November 15, 2026
 
 - Request Suno authorization-site access when Connect Suno is clicked, before any sign-in request. Declining the grant leaves the account disconnected.

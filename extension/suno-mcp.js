@@ -11,7 +11,13 @@
   const VERSION = '0.6.0', HOST = 'com.catnap.suno_mcp';
   const RESOURCE = 'https://api.suno.com/mcp';
   const ISSUER = 'https://studio-api-prod.suno.com/api/v2/external/oauth/';
-  const SCOPE = 'api:v0 library:read library:write offline_access';
+  // Profile access is required by Suno's playlist tools in addition to library
+  // access (verified provider insufficient_scope response, November 15, 2026).
+  // This schema is independent of the native wire protocol/version below.
+  const SCOPE_VERSION = 2;
+  const REQUESTED_SCOPES = ['api:v0','library:read','library:write','profile:read','offline_access'];
+  const REQUIRED_API_SCOPES = REQUESTED_SCOPES.filter(scope=>scope!=='offline_access');
+  const SCOPE = REQUESTED_SCOPES.join(' ');
   const AUTH_KEY = 'catnapSunoAuthorization', CLIENT_KEY = 'catnapSunoRegistration';
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   const TOOL_NAMES = ['playlists-list', 'playlists-list-clips', 'playlists-create', 'playlists-add-clips'];
@@ -63,12 +69,39 @@
     if (!frame || frame.error || !Object.hasOwn(frame, 'result')) throw Error('Suno did not confirm this MCP operation.');
     return frame.result;
   }
+  function providerToolError(result) {
+    let insufficient=false;const missing=new Set();
+    function inspect(value,depth=0) {
+      if(depth>4||value===null||value===undefined)return;
+      if(typeof value==='string'){
+        if(/insufficient_scope|missing.{0,30}scope|scope.{0,30}(?:required|missing)/i.test(value))insufficient=true;
+        // Only known public scope labels can enter the user-facing error. Raw
+        // provider strings, identifiers, URLs and credentials are never echoed.
+        if(/scope/i.test(value))for(const scope of REQUESTED_SCOPES)if(value.includes(scope))missing.add(scope);
+        return;
+      }
+      if(typeof value!=='object'||Array.isArray(value))return;
+      for(const key of ['error','code','message','error_description','detail','data','structuredContent'])if(Object.hasOwn(value,key))inspect(value[key],depth+1);
+      for(const key of ['required_scopes','missing_scopes','requiredScopes','missingScopes'])if(Object.hasOwn(value,key)){
+        const scopes=Array.isArray(value[key])?value[key]:typeof value[key]==='string'?value[key].split(/\s+/):[];
+        for(const scope of scopes)if(REQUESTED_SCOPES.includes(scope)){missing.add(scope);insufficient=true;}
+      }
+      if(Array.isArray(value.content))for(const item of value.content.slice(0,4))if(item?.type==='text'&&typeof item.text==='string'){
+        try{inspect(JSON.parse(item.text),depth+1);}catch(_){inspect(item.text.slice(0,4000),depth+1);}
+      }
+    }
+    inspect(result);
+    return Error(insufficient?'Suno playlist access is missing '+([...missing].sort().join(', ')||'required permissions')+'. Choose Connect Suno again and approve the requested access.':'Suno rejected this playlist operation.');
+  }
   function toolData(result) {
-    if (!result || result.isError) throw Error('Suno rejected this playlist operation.');
-    if (result.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
+    if (!result || result.isError) throw providerToolError(result);
+    if (result.structuredContent && typeof result.structuredContent === 'object') {
+      if(result.structuredContent.error)throw providerToolError(result.structuredContent);
+      return result.structuredContent;
+    }
     const chunk = result.content?.find(item => item.type === 'text' && typeof item.text === 'string');
     let data; try { data = JSON.parse(chunk?.text || ''); } catch (_) { throw Error('Suno returned an unsupported tool response.'); }
-    if (!data || typeof data !== 'object' || data.error) throw Error('Suno rejected this playlist operation.');
+    if (!data || typeof data !== 'object' || data.error) throw providerToolError(data);
     return data;
   }
   function createClient(options = {}) {
@@ -97,30 +130,52 @@
       if (!data || typeof data !== 'object') throw Error(stage + ' returned invalid authorization data.');
       return data;
     }
-    async function registration() {
+    function clientCompatible(value,redirectUri) {
+      return value?.scopeVersion===SCOPE_VERSION&&value.redirectUri===redirectUri&&typeof value.clientId==='string'&&value.clientId.length>0&&value.clientId.length<=1000&&
+        Array.isArray(value.requestedScopes)&&value.requestedScopes.join(' ')===SCOPE;
+    }
+    function authorizationCompatible(auth) {
+      if(auth?.scopeVersion!==SCOPE_VERSION||typeof auth.clientId!=='string'||!auth.clientId||!Array.isArray(auth.requestedScopes)||auth.requestedScopes.join(' ')!==SCOPE)return false;
+      // OAuth may omit scope when the complete requested scope was granted.
+      // When it is returned explicitly, use the provider's actual granted list.
+      const effective=Array.isArray(auth.grantedScopes)?auth.grantedScopes:auth.requestedScopes;
+      return REQUIRED_API_SCOPES.every(scope=>effective.includes(scope));
+    }
+    async function registration({allowCreate=false}={}) {
       available();
       const redirectUri = browser.identity.getRedirectURL('suno');
       const existing = (await browser.storage.local.get(CLIENT_KEY))[CLIENT_KEY];
-      if (existing?.redirectUri === redirectUri && typeof existing.clientId === 'string') return existing;
+      if (clientCompatible(existing,redirectUri)) return existing;
+      // Client/scope migration is interactive only. A refresh token must never
+      // be sent to a newly registered client behind the user's back.
+      if(!allowCreate)throw Error('Reconnect Suno to approve the current playlist permissions.');
       const body = {client_name:'Catnap Theatre Inbox', redirect_uris:[redirectUri], response_types:['code'],
         grant_types:['authorization_code','refresh_token'], token_endpoint_auth_method:'none', scope:SCOPE};
       const result = await jsonFetch(ISSUER + 'register/', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}, 'Suno client registration');
       if (typeof result.client_id !== 'string' || !result.client_id || result.client_id.length > 1000) throw Error('Suno did not register this extension.');
-      const client = {clientId:result.client_id, redirectUri};
+      const client = {clientId:result.client_id,redirectUri,scopeVersion:SCOPE_VERSION,requestedScopes:REQUESTED_SCOPES.slice()};
       await browser.storage.local.set({[CLIENT_KEY]:client}); return client;
     }
     async function exchange(fields, previousRefresh) {
       const result = await jsonFetch(ISSUER + 'token/', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({...fields, resource:RESOURCE})}, fields.grant_type==='refresh_token'?'Suno token refresh':'Suno token exchange');
       if (typeof result.access_token !== 'string' || !result.access_token || /[\r\n]/.test(result.access_token)) throw Error('Suno returned no usable access token.');
+      const scopeReturned=typeof result.scope==='string'||Array.isArray(result.scope);
+      const rawGranted=Array.isArray(result.scope)?result.scope:typeof result.scope==='string'?result.scope.split(/\s+/):[];
+      const grantedScopes=scopeReturned?[...new Set(rawGranted.filter(scope=>REQUESTED_SCOPES.includes(scope)))]:null;
+      if(grantedScopes&&REQUIRED_API_SCOPES.some(scope=>!grantedScopes.includes(scope)))throw Error('Suno did not grant all required playlist permissions. Choose Connect Suno again and approve profile and library access.');
       const auth = {accessToken:result.access_token, refreshToken:result.refresh_token || previousRefresh || '',
-        expiresAt:clock() + (Math.max(1, Number(result.expires_in) || 3600) * 1000)};
+        expiresAt:clock() + (Math.max(1, Number(result.expires_in) || 3600) * 1000),clientId:fields.client_id,
+        scopeVersion:SCOPE_VERSION,requestedScopes:REQUESTED_SCOPES.slice(),grantedScopes};
       await browser.storage.session.set({[AUTH_KEY]:auth}); return auth;
     }
     async function connect() {
       available();
       const ready = await transport({operation:'health'});
       if (!ready?.ok || !ready.ready) throw Error('Install the Catnap Suno companion before connecting Suno.');
-      const client = await registration(), verifier = nonce(48), state = nonce(24);
+      // In particular, canceling a scope upgrade must not retain a legacy
+      // token while the cached registration now names a different client.
+      await browser.storage.session.remove(AUTH_KEY);
+      const client = await registration({allowCreate:true}), verifier = nonce(48), state = nonce(24);
       const digest = await cryptoApi.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
       const target = new URL(ISSUER + 'authorize/');
       Object.entries({client_id:client.clientId,redirect_uri:client.redirectUri,response_type:'code',scope:SCOPE,
@@ -136,16 +191,19 @@
     }
     async function status() {
       const auth = await readAuth();
-      return {connected:Boolean(auth?.accessToken && (auth.expiresAt > clock() + 45000 || auth.refreshToken)), expiresAt:auth?.expiresAt || null};
+      const compatible=authorizationCompatible(auth);
+      return {connected:Boolean(compatible&&auth?.accessToken&&(auth.expiresAt>clock()+45000||auth.refreshToken)),expiresAt:compatible?auth.expiresAt:null,reconnectRequired:Boolean(auth&&!compatible)};
     }
     async function disconnect() { available(); await browser.storage.session.remove(AUTH_KEY); return {connected:false, expiresAt:null}; }
     async function accessToken() {
       const auth = await readAuth();
       if (!auth?.accessToken) throw Error('Connect Suno first.');
+      if(!authorizationCompatible(auth))throw Error('Reconnect Suno to approve profile:read and library access for playlist operations.');
       if (auth.expiresAt > clock() + 45000) return auth.accessToken;
       if (!auth.refreshToken) throw Error('Suno authorization expired. Reconnect Suno.');
       try {
         const client = await registration();
+        if(client.clientId!==auth.clientId)throw Error('Reconnect Suno; the authorization belongs to a different client.');
         return (await exchange({grant_type:'refresh_token',client_id:client.clientId,refresh_token:auth.refreshToken}, auth.refreshToken)).accessToken;
       } catch (_) { await disconnect(); throw Error('Suno authorization expired. Reconnect Suno.'); }
     }
@@ -220,5 +278,5 @@
     }
     return {connect,disconnect,status,listPlaylists,readPlaylist,createPlaylist,reconcilePlaylist};
   }
-  return {VERSION,HOST,TOOL_NAMES,createClient,decodeRpc,toolData,ids,clipMetadata};
+  return {VERSION,HOST,TOOL_NAMES,SCOPE_VERSION,REQUESTED_SCOPES,createClient,decodeRpc,toolData,providerToolError,ids,clipMetadata};
 });

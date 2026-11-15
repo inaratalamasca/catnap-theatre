@@ -18,7 +18,9 @@ function area(seed = {}) {
   return {values,async get(key) { return {[key]:values[key]}; },async set(data) {Object.assign(values,structuredClone(data));},async remove(key) {delete values[key];}};
 }
 function fixture({authorized = true} = {}) {
-  const chrome = {storage:{local:area(),session:area(authorized?{[AUTH_KEY]:{accessToken:'demo-access-only',refreshToken:'demo-refresh-only',expiresAt:200000}}:{})},
+  const redirectUri='https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/suno';
+  const metadata={scopeVersion:2,requestedScopes:['api:v0','library:read','library:write','profile:read','offline_access']};
+  const chrome = {storage:{local:area(authorized?{[CLIENT_KEY]:{clientId:'public-client-fixture',redirectUri,...metadata}}:{}),session:area(authorized?{[AUTH_KEY]:{accessToken:'demo-access-only',refreshToken:'demo-refresh-only',expiresAt:200000,clientId:'public-client-fixture',...metadata,grantedScopes:null}}:{})},
     identity:{getRedirectURL:()=> 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/suno',launchWebAuthFlow:async()=>{throw Error('No live login in tests');}}};
   return chrome;
 }
@@ -63,6 +65,7 @@ test('PKCE OAuth validates callback and retains credentials only in session stor
     const target = new URL(url);
     assert.equal(target.searchParams.get('code_challenge_method'),'S256');
     assert.equal(target.searchParams.get('resource'),'https://api.suno.com/mcp');
+    assert.ok(target.searchParams.get('scope').split(' ').includes('profile:read'));
     assert.ok(target.searchParams.get('code_challenge').length >= 43);
     return chrome.identity.getRedirectURL()+'?code=demo-code&state='+encodeURIComponent(target.searchParams.get('state'));
   };
@@ -72,15 +75,88 @@ test('PKCE OAuth validates callback and retains credentials only in session stor
   };
   const client = library.createClient({chrome,crypto:webcrypto,fetch:network,transport:async()=>({ok:true,ready:true}),now:()=>1000});
   const result = await client.connect();
-  assert.deepEqual(result,{connected:true,expiresAt:3601000});
+  assert.deepEqual(result,{connected:true,expiresAt:3601000,reconnectRequired:false});
   assert.equal(chrome.storage.local.values[CLIENT_KEY].clientId,'public-client-fixture');
   assert.equal(JSON.stringify(chrome.storage.local.values).includes('demo-access-only'),false);
   assert.equal(chrome.storage.session.values[AUTH_KEY].accessToken,'demo-access-only');
   assert.equal(requests[1].init.body.get('grant_type'),'authorization_code');
   assert.equal(requests[1].init.body.get('code_verifier').length,64);
+  assert.ok(JSON.parse(requests[0].init.body).scope.split(' ').includes('profile:read'));
   assert.equal(JSON.stringify(result).includes('demo-access-only'),false);
   await client.disconnect();
   assert.equal((await client.status()).connected,false);
+});
+
+test('legacy registration is migrated only by explicit Connect and requests profile read',async()=>{
+  const chrome=fixture({authorized:false});let registrations=0;
+  chrome.storage.local.values[CLIENT_KEY]={clientId:'legacy-client-fixture',redirectUri:chrome.identity.getRedirectURL()};
+  chrome.storage.session.values[AUTH_KEY]={accessToken:'legacy-access-only',refreshToken:'legacy-refresh-only',expiresAt:200000};
+  chrome.identity.launchWebAuthFlow=async({url})=>{
+    const target=new URL(url);assert.equal(target.searchParams.get('client_id'),'upgraded-client-fixture');
+    return chrome.identity.getRedirectURL()+'?code=demo-code&state='+target.searchParams.get('state');
+  };
+  const client=library.createClient({chrome,crypto:webcrypto,now:()=>1000,transport:async()=>({ok:true,ready:true}),fetch:async(url,init)=>{
+    if(url.endsWith('/register/')){registrations++;assert.ok(JSON.parse(init.body).scope.includes('profile:read'));return Response.json({client_id:'upgraded-client-fixture'});}
+    return Response.json({access_token:'upgraded-access-only',expires_in:3600});
+  }});
+  assert.equal((await client.status()).connected,false);assert.equal((await client.status()).reconnectRequired,true);
+  await client.connect();assert.equal(registrations,1);
+  assert.equal(chrome.storage.local.values[CLIENT_KEY].scopeVersion,2);
+  assert.equal(chrome.storage.session.values[AUTH_KEY].clientId,'upgraded-client-fixture');
+  assert.equal((await client.status()).connected,true);
+});
+
+test('current-scope registration is reused for explicit reconnect',async()=>{
+  const chrome=fixture();let registrations=0,exchanges=0;
+  chrome.identity.launchWebAuthFlow=async({url})=>chrome.identity.getRedirectURL()+'?code=demo-code&state='+new URL(url).searchParams.get('state');
+  const client=library.createClient({chrome,crypto:webcrypto,now:()=>1000,transport:async()=>({ok:true,ready:true}),fetch:async(url)=>{
+    if(url.endsWith('/register/'))registrations++;else exchanges++;
+    return Response.json({access_token:'reconnected-access-only',expires_in:3600,scope:'api:v0 library:read library:write profile:read'});
+  }});
+  await client.connect();assert.equal(registrations,0);assert.equal(exchanges,1);assert.equal((await client.status()).connected,true);
+  assert.deepEqual(chrome.storage.session.values[AUTH_KEY].grantedScopes,['api:v0','library:read','library:write','profile:read']);
+});
+
+test('canceling a registration migration cannot retain the old client refresh token',async()=>{
+  const chrome=fixture();
+  chrome.storage.local.values[CLIENT_KEY]={clientId:'legacy-client-fixture',redirectUri:chrome.identity.getRedirectURL()};
+  chrome.storage.session.values[AUTH_KEY]={accessToken:'legacy-access-only',refreshToken:'legacy-refresh-only',expiresAt:1};
+  chrome.identity.launchWebAuthFlow=async()=>{throw Error('Sign-in canceled');};let tokenCalls=0;
+  const client=library.createClient({chrome,crypto:webcrypto,transport:async()=>({ok:true,ready:true}),fetch:async(url)=>{
+    if(url.endsWith('/token/'))tokenCalls++;return Response.json({client_id:'upgraded-client-fixture'});
+  }});
+  await assert.rejects(client.connect(),/canceled/);assert.equal(tokenCalls,0);
+  assert.equal(chrome.storage.session.values[AUTH_KEY],undefined);
+  assert.equal((await client.status()).connected,false);
+});
+
+test('expired legacy grants never register or refresh automatically',async()=>{
+  const chrome=fixture();let requests=0;
+  chrome.storage.local.values[CLIENT_KEY]={clientId:'legacy-client-fixture',redirectUri:chrome.identity.getRedirectURL()};
+  chrome.storage.session.values[AUTH_KEY]={accessToken:'legacy-access-only',refreshToken:'legacy-refresh-only',expiresAt:1};
+  const client=library.createClient({chrome,now:()=>300000,fetch:async()=>{requests++;throw Error('Must not call OAuth');},transport:async()=>{requests++;throw Error('Must not call MCP');}});
+  await assert.rejects(client.listPlaylists(),/Reconnect Suno.*profile:read/);assert.equal(requests,0);
+  assert.equal((await client.status()).reconnectRequired,true);
+});
+
+test('refresh does not migrate a missing current client registration',async()=>{
+  const chrome=fixture();let requests=0;chrome.storage.local.values[CLIENT_KEY]=undefined;
+  const client=library.createClient({chrome,now:()=>300000,fetch:async()=>{requests++;throw Error('Must not register');}});
+  await assert.rejects(client.listPlaylists(),/Reconnect Suno/);assert.equal(requests,0);assert.equal(chrome.storage.session.values[AUTH_KEY],undefined);
+});
+
+test('an explicit token scope omitting profile read is rejected without storing credentials',async()=>{
+  const chrome=fixture();chrome.identity.launchWebAuthFlow=async({url})=>chrome.identity.getRedirectURL()+'?code=demo-code&state='+new URL(url).searchParams.get('state');
+  const client=library.createClient({chrome,crypto:webcrypto,transport:async()=>({ok:true,ready:true}),fetch:async()=>Response.json({access_token:'limited-access-only',scope:'api:v0 library:read library:write',expires_in:3600})});
+  await assert.rejects(client.connect(),/did not grant all required playlist permissions/);assert.equal(chrome.storage.session.values[AUTH_KEY],undefined);
+});
+
+test('insufficient-scope tool errors expose reconnect instructions and known scopes only',()=>{
+  const secret='never-echo-this-token',privateUrl='https://private.invalid/?token='+secret;
+  const result={isError:true,content:[{type:'text',text:JSON.stringify({code:'insufficient_scope',error:'Missing required scope profile:read. '+privateUrl})}]};
+  let message='';try{library.toolData(result);}catch(error){message=error.message;}
+  assert.match(message,/profile:read/);assert.match(message,/Connect Suno again/);assert.equal(message.includes(secret),false);assert.equal(message.includes(privateUrl),false);
+  assert.throws(()=>library.toolData({isError:true,content:[{type:'text',text:'Unknown failure '+secret}]}),error=>!error.message.includes(secret));
 });
 
 test('OAuth rejects a different state before token exchange', async()=>{

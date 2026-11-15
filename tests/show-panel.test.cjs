@@ -9,23 +9,23 @@ const extension = path.join(__dirname,'../extension');
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function settle() { await tick(); await tick(); }
 
-async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError=''}={}) {
+async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
   const w=dom.window, messages=[],copies=[],permissions=[];
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:22,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
-  let sunoConnected=true;
+  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant;
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
-  const snapshot=()=>({state:structuredClone(state),tabs,suno:{connected:sunoConnected},version:'0.6.0'});
+  const snapshot=()=>({state:structuredClone(state),tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
   w.setInterval=()=>0;
   w.CatnapPackage={inboxOnly};
   w.chrome={permissions:{request:async value=>{permissions.push(value);return permissionGranted;}},runtime:{sendMessage:async message=>{
     messages.push(structuredClone(message));let data;
     switch(message.action) {
       case 'status':data=snapshot();break;
-      case 'connect-suno':if(connectError)return {ok:false,error:connectError};sunoConnected=true;data={connected:true};break;
-      case 'disconnect-suno':sunoConnected=false;data={connected:false};break;
+      case 'connect-suno':if(connectError)return {ok:false,error:connectError};sunoConnected=true;sunoReconnectRequired=false;data={connected:true};break;
+      case 'disconnect-suno':sunoConnected=false;sunoReconnectRequired=false;data={connected:false};break;
       case 'configure':Object.assign(state,message.settings);data=structuredClone(state);break;
       case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};break;
       case 'load':state.playback={current:{id:state.entries[message.index].id},phase:'ready',source:state.entries[message.index].preferredSource};data={loaded:true};break;
@@ -153,4 +153,13 @@ test('successful connection status follows later worker authorization loss',asyn
   await f.click('connect-suno');assert.match(f.element('suno-status').textContent,/Suno connected/);
   f.setConnected(false);await f.change('show-name','Refresh fixture');
   assert.match(f.element('suno-status').textContent,/Suno not connected/);
+});
+
+
+test('an older grant prompts updated consent and clears that prompt after successful Connect',async t=>{
+  const f=await fixture({legacyGrant:true});t.after(()=>f.dom.window.close());
+  assert.match(f.element('suno-status').textContent,/updated permissions.*Connect Suno/);
+  await f.click('connect-suno');
+  assert.match(f.element('suno-status').textContent,/Suno connected/);
+  assert.doesNotMatch(f.element('suno-status').textContent,/updated permissions/);
 });

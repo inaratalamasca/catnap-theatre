@@ -1,9 +1,9 @@
-/* Catnap host-only Inbox & show window, version 0.6.1.
+/* Catnap host-only Inbox & show window, version 0.6.2.
  * Change summary: explicit queue commands and clipboard-only announcements.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.1', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.6.2', $=id=>document.getElementById(id);
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;}
   const status=value=>{$('status').textContent=value;};
@@ -32,7 +32,7 @@
     $('current-warning').textContent=entry?entry.disclaimer==='yes'?'⚠ Uploader requested a content disclaimer':entry.disclaimer==='no'?'Uploader disclaimer: No':'Uploader disclaimer: Unavailable':'';
     $('current-warning').dataset.warning=entry?.disclaimer||'unknown';
     for(const id of ['copy-playing','copy-link','copy-context','repeat-warning'])$(id).disabled=!entry;
-    $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno connected. Playlist changes require your explicit action.':'Suno not connected. Connect Suno to authorize playlist changes.');
+    $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno connected. Playlist changes require your explicit action.':data.suno.reconnectRequired?'Suno needs updated permissions. Click Connect Suno and approve account profile and library access.':'Suno not connected. Connect Suno to authorize playlist changes.');
     $('playlist-status').textContent=s.lastPlaylistSync?`Last verified: ${s.lastPlaylistSync.confirmed?.length??s.lastPlaylistSync.confirmed??0} confirmed · ${s.lastPlaylistSync.missing?.length||0} missing`:'';
     $('queue-count').textContent=`(${s.entries.length})`;
     const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason]),entry?.id,s.playerTabId]);

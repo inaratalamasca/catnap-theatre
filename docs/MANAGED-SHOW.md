@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.1 development
+# Inbox playlists and managed shows · 0.6.2 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -17,9 +17,11 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
 
-Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.1 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.2 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
 
 For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
+
+**Updating from 0.6.0/0.6.1:** the original authorization request omitted `profile:read`. A live playlist-read rejection explicitly identified that missing scope. Version 0.6.2 adds it alongside library read/write, requests a compatible registration only during an explicit Connect action, and requires new consent for an old grant. After loading the new development folder between broadcasts, click Connect Suno, approve the corrected permissions, then Load my playlists. Sign-in success alone does not establish playlist access. The migration does not reset queue data or change the exact development IDs; no companion reinstall is required.
 
 The playlist writer lists actual membership, adds missing unique Suno song IDs and reads membership back. Uncertain writes are not blindly retried. YouTube-only entries remain visible in the show order but are not fabricated as Suno songs. New playlists are private unless the host explicitly chooses Public. Only one synchronizer should write the show's playlist; stop an older advanced-controller watcher before using this one.
 
@@ -63,7 +65,7 @@ Copy now playing copies a ready-to-paste title/artist, uploader credit and the a
 
 The uploader reader executes same-origin GET requests through the selected logged-in uploader tab. It does not extract passwords/cookie values or alter submissions. Only required show fields are retained; server storage/reviewer fields are discarded. Queue data and uploader notes stay in extension-profile storage. A new local show clears this local queue, not the actual uploader or Suno playlist.
 
-Suno OAuth uses PKCE; credentials are session-scoped and sent only to the fixed Suno authorization service/MCP transport. The native companion has a fixed official endpoint and a four-playlist-tool allowlist. It cannot run shell commands, accept arbitrary URLs or generate songs. It does not create a public listening service or save account tokens to disk. Browser-direct MCP requests were rejected by Suno during the read-only transport probe, hence this companion.
+Suno OAuth requests basic account profile access (`profile:read`) required by the playlist tool, library read/write and offline refresh. It uses PKCE; credentials are session-scoped and sent only to the fixed Suno authorization service/MCP transport. The native companion has a fixed official endpoint and a four-playlist-tool allowlist. It cannot run shell commands, accept arbitrary URLs or generate songs. It does not create a public listening service or save account tokens to disk. Browser-direct MCP requests were rejected by Suno during the read-only transport probe, hence this companion.
 
 Theatre content scripts receive a reduced playback/presentation queue without uploader notes/IDs or credentials. Messages are bound to a selected tab, show and fresh player lease; observations include monotonic revisions so stale events cannot overwrite the current song credit. The standalone Inbox package does not expose playback commands.
 

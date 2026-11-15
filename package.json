@@ -1,6 +1,6 @@
 {
   "name": "catnap-theatre",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "AI-free Suno theatre overlay, preview for host testing",
   "scripts": {
