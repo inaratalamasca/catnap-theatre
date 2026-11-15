@@ -30,7 +30,7 @@
       if(!adapter||typeof adapter.stopAll!=='function'||typeof adapter.stage!=='function'||typeof adapter.play!=='function')throw Error('A guarded media adapter is required.');
       this.adapter=adapter;this.onState=onState;this.onWarning=onWarning;
       this.clock={now:clock.now||Date.now,setTimeout:clock.setTimeout||setTimeout,clearTimeout:clock.clearTimeout||clearTimeout};
-      this.queue=[];this.showId='';this.mode='lp';this.autoplay=false;this.index=-1;this.phase='idle';this.generation=0;this.occurrenceId='';this.error='';this.warning=null;this.warningTimer=null;this.warningSeconds=warningDuration(warningSeconds);this.disposed=false;this.started=0;this.playAttempt=0;this.needsStage=true;
+      this.queue=[];this.showId='';this.mode='lp';this.autoplay=false;this.index=-1;this.phase='idle';this.generation=0;this.occurrenceId='';this.error='';this.warning=null;this.warningTimer=null;this.warningSeconds=warningDuration(warningSeconds);this.disposed=false;this.started=0;this.playAttempt=0;this.needsStage=true;this.playPreviousPhase='ready';
     }
     snapshot(){return {version:SCRIPT_VERSION,showId:this.showId,mode:this.mode,autoplay:this.autoplay,index:this.index,current:this.queue[this.index]||null,queue:this.queue.slice(),phase:this.phase,generation:this.generation,occurrenceId:this.occurrenceId,error:this.error,warning:this.warning?{...this.warning}:null,warningSeconds:this.warningSeconds};}
     emit(){const state=this.snapshot();this.onState(state);return state;}
@@ -82,12 +82,25 @@
     async play(){
       this.ensure();if(!['ready','paused','ended'].includes(this.phase))throw Error('Load a playable song before pressing Play.');
       const generation=this.generation,attempt=++this.playAttempt,entry=this.queue[this.index],previousPhase=this.phase;if(!entry)throw Error('No song is loaded.');
-      this.phase='starting';this.error='';this.emit();
+      this.playPreviousPhase=previousPhase;this.phase='starting';this.error='';this.emit();
       try{
         if(this.needsStage||previousPhase==='ended'){await this.adapter.stage(entry,{generation});if(generation===this.generation&&attempt===this.playAttempt)this.needsStage=false;}if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();
         await this.adapter.play(entry,{generation});if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();
-        this.phase='playing';if(previousPhase!=='paused'||!this.occurrenceId)this.occurrenceId=this.showId+':'+identity(entry)+':'+(++this.started);return this.emit();
-      }catch(error){if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();await this.adapter.stopAll({generation});if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();this.needsStage=true;this.phase='error';this.error=String(error?.message||error);return this.emit();}
+        if(this.phase!=='playing'){this.phase='playing';if(previousPhase!=='paused'||!this.occurrenceId)this.occurrenceId=this.showId+':'+identity(entry)+':'+(++this.started);}return this.emit();
+      }catch(error){if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();if(error?.code==='AUTOPLAY_BLOCKED')return this.autoplayBlocked(generation,error.message);await this.adapter.stopAll({generation});if(generation!==this.generation||attempt!==this.playAttempt)return this.snapshot();this.needsStage=true;this.phase='error';this.error=String(error?.message||error);return this.emit();}
+    }
+    observedPlaying(token){
+      if(this.disposed||token!==this.generation||!this.queue[this.index]||playback(this.queue[this.index]).provider!=='youtube'||!['ready','starting','paused','playing'].includes(this.phase))return this.snapshot();
+      if(this.phase==='playing')return this.snapshot();const previous=this.phase==='starting'?this.playPreviousPhase:this.phase;
+      this.phase='playing';this.error='';this.needsStage=false;if(previous!=='paused'||!this.occurrenceId)this.occurrenceId=this.showId+':'+identity(this.queue[this.index])+':'+(++this.started);return this.emit();
+    }
+    observedPaused(token){
+      if(this.disposed||token!==this.generation||!this.queue[this.index]||playback(this.queue[this.index]).provider!=='youtube'||!['starting','playing'].includes(this.phase))return this.snapshot();
+      ++this.playAttempt;this.phase='paused';return this.emit();
+    }
+    autoplayBlocked(token,message){
+      if(this.disposed||token!==this.generation||!this.queue[this.index]||playback(this.queue[this.index]).provider!=='youtube'||!['ready','starting','paused'].includes(this.phase))return this.snapshot();
+      ++this.playAttempt;this.phase=this.phase==='paused'?'paused':'ready';this.error=String(message||'YouTube needs a browser gesture. Press Play in the video.');return this.emit();
     }
     async pause(){this.ensure();const generation=this.generation;++this.playAttempt;if(this.adapter.pause)await this.adapter.pause(this.queue[this.index]||null,{generation});else await this.adapter.stopAll({generation});if(generation===this.generation&&this.index>=0)this.phase='paused';return this.emit();}
     async ended(token){

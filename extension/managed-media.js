@@ -9,7 +9,7 @@
   const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   function sunoId(value){try{const u=new URL(value);const match=/^\/song\/([^/]+)\/?$/.exec(u.pathname);return ['suno.com','www.suno.com'].includes(u.hostname)&&match&&UUID.test(match[1])?match[1].toLowerCase():null;}catch{return null;}}
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
-  function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{}}={}){
+  function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{},onPlaying=()=>{},onPaused=()=>{},onAutoplayBlocked=()=>{}}={}){
     if(typeof guard!=='function')throw Error('A MAIN-world native media guard is required.');
     let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1,nativeTransition=-1;
     const delay=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
@@ -31,8 +31,14 @@
     function cancelPending(message){if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.reject(Error(message));pendingPlay=null;}for(const waiter of readyWaiters){win.clearTimeout(waiter.timer);waiter.reject(Error(message));}readyWaiters=[];}
     function removeFrame(){cancelPending('The selected song changed before playback started.');if(handshake!==null)win.clearInterval(handshake);handshake=null;frame?.remove();frame=null;ready=false;wasPlaying=false;frameOrigin='';}
     function notifyError(message){const token=generation;cancelPending(message);post('pauseVideo');onError(token,message);}
+    function notifyBlocked(message){
+      if(wasPlaying)return;
+      if(pendingPlay){const pending=pendingPlay;pendingPlay=null;win.clearTimeout(pending.timer);const error=Error(message);error.code='AUTOPLAY_BLOCKED';pending.reject(error);}
+      onAutoplayBlocked(generation,message);
+    }
     function stateChange(state){
-      if(state===1){wasPlaying=true;if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.resolve();pendingPlay=null;}}
+      if(state===1){wasPlaying=true;onPlaying(generation);if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.resolve();pendingPlay=null;}}
+      if(state===2&&wasPlaying){wasPlaying=false;onPaused(generation);}
       if(state===0&&wasPlaying){wasPlaying=false;post('pauseVideo');onEnded(generation);}
     }
     function onMessage(event){
@@ -46,7 +52,7 @@
       let data=event.data;if(typeof data==='string'){if(data.length>16000)return;try{data=JSON.parse(data);}catch{return;}}if(!data||typeof data!=='object')return;
       if(data.event==='onReady'){ready=true;if(handshake!==null)win.clearInterval(handshake);handshake=null;post('addEventListener',['onStateChange']);post('addEventListener',['onError']);post('addEventListener',['onAutoplayBlocked']);for(const waiter of readyWaiters){win.clearTimeout(waiter.timer);waiter.resolve();}readyWaiters=[];}
       if(data.event==='onStateChange')stateChange(Number(data.info));
-      if(data.event==='onAutoplayBlocked')notifyError('YouTube blocked autoplay. Press Play in the video or choose another source.');
+      if(data.event==='onAutoplayBlocked')notifyBlocked('YouTube blocked autoplay. Press Play inside the video to continue.');
       if(data.event==='onError')notifyError('YouTube could not play this video (code '+Number(data.info)+'). It may be unavailable or disallow embedding.');
       if(data.event==='infoDelivery'&&data.info&&typeof data.info==='object'){
         if(Number.isInteger(data.info.playerState))stateChange(data.info.playerState);
@@ -74,7 +80,7 @@
       const source=core.playback(entry);
       if(source.provider==='youtube'){
         await readyForYoutube();if(token!==generation||!frame)throw Error('The selected show entry changed.');
-        return new Promise((resolve,reject)=>{pendingPlay={resolve,reject,timer:win.setTimeout(()=>{pendingPlay=null;post('pauseVideo');reject(Error('YouTube did not start. Press Play in the video, or check its embed permissions.'));},8000)};post('playVideo');});
+        return new Promise((resolve,reject)=>{pendingPlay={resolve,reject,timer:win.setTimeout(()=>notifyBlocked('YouTube did not start. Press Play inside the video to continue, or check its embed permissions.'),8000)};post('playVideo');});
       }
       const id=sunoId(source.url);if(!id)throw Error('This Suno song needs a canonical song link.');
       nativeTransition=token;
