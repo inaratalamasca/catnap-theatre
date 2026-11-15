@@ -16,18 +16,31 @@ modify any playlist.
 ## Linux host setup
 
 This is a development package; do not install or reload it during a live show.
-Load the intended Theatre development folder in an isolated Chrome/Brave
+Load the intended Catnap development folder in an isolated Chrome/Brave
 profile first. Copy its exact extension ID from the extensions page, then run:
 
 ```bash
 bash native/install-linux.sh YOUR_32_CHARACTER_EXTENSION_ID brave
 ```
 
-Use `chrome`, `chromium` or `all` instead of `brave` if appropriate. The installer
-copies only this companion into your user's data directory and registers its
-exact extension origin in the selected browser's native-host directory. It
+Use `chrome`, `chromium` or `all` instead of `brave` if appropriate. To authorize
+both the Theatre+Inbox extension and the separate Inbox creator, explicitly
+supply **both exact IDs**, separated by a comma:
+
+```bash
+bash native/install-linux.sh THEATRE_EXTENSION_ID,INBOX_EXTENSION_ID brave
+```
+
+The installer copies only this companion into your user's data directory and
+registers only the supplied exact extension origins in the selected browser's
+native-host directory. It
 does not require root or read browser credentials. A different unpacked build
 or Store extension can have a different ID and needs deliberate registration.
+Re-running installation replaces the allowed-ID list with exactly the list
+provided; it never silently retains or trusts another extension. Include both
+IDs on each update if you want both packages to use the same companion. Single
+IDs remain supported, duplicate IDs are collapsed, and wildcards/empty IDs are
+rejected.
 The browser must be running on this Linux host; this does not install on Armin.
 
 Then use **Connect Suno** from Catnap's inbox controls. You authorize your own
@@ -70,6 +83,9 @@ Double-click `native/install-windows.cmd`; it prompts for that ID, or run:
 .\native\install-windows.cmd -ExtensionId YOUR_32_CHARACTER_EXTENSION_ID -Browser brave
 ```
 
+For both packages, use `-ExtensionId THEATRE_EXTENSION_ID,INBOX_EXTENSION_ID`
+or paste the two comma-separated IDs when the installer prompts.
+
 The installer copies the Node script into `%LOCALAPPDATA%\Catnap-Suno-MCP`,
 compiles the supplied, auditable `CatnapSunoLauncher.cs` locally using Windows'
 existing .NET compiler, then registers its exact extension origin in HKCU for
@@ -88,6 +104,9 @@ With Node.js 22+ installed, use the intended extension's exact ID:
 ```bash
 bash native/install-macos.sh YOUR_32_CHARACTER_EXTENSION_ID brave
 ```
+
+The macOS installer accepts the same explicit comma-separated ID list, for
+example `THEATRE_EXTENSION_ID,INBOX_EXTENSION_ID`, when using both packages.
 
 It stores the companion under `~/Library/Application Support/Catnap-Suno-MCP`
 and registers the chosen Chrome/Brave/Chromium user manifest. No root access,

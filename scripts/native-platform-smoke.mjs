@@ -14,7 +14,8 @@ import {promisify} from 'node:util';
 
 const SCRIPT_VERSION='0.6.0', run=promisify(execFile);
 const PROJECT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const EXTENSION_ID='abcdefghijklmnopabcdefghijklmnop';
+const EXTENSION_IDS=['abcdefghijklmnopabcdefghijklmnop','ponmlkjihgfedcbaponmlkjihgfedcba'];
+const ID_ARGUMENT=EXTENSION_IDS.join(',');
 const sandbox=await mkdtemp(path.join(tmpdir(),'Catnap native smoke '));
 
 async function health(launcher) {
@@ -44,26 +45,26 @@ try {
   if(process.platform==='win32') {
     env.LOCALAPPDATA=path.join(sandbox,'Local AppData');
     const powershell=path.join(process.env.SystemRoot || 'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
-    await run(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(PROJECT,'native','install-windows.ps1'),'-ExtensionId',EXTENSION_ID,'-Browser','all','-NoRegister'],{env,timeout:120000});
+    await run(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(PROJECT,'native','install-windows.ps1'),'-ExtensionId',ID_ARGUMENT,'-Browser','all','-NoRegister'],{env,timeout:120000});
     manifests=[path.join(env.LOCALAPPDATA,'Catnap-Suno-MCP','com.catnap.suno_mcp.json')];
   } else if(process.platform==='darwin') {
     env.CATNAP_NATIVE_APPLICATION_SUPPORT=path.join(sandbox,'Application Support');
-    await run('bash',[path.join(PROJECT,'native','install-macos.sh'),EXTENSION_ID,'all'],{env,timeout:30000});
+    await run('bash',[path.join(PROJECT,'native','install-macos.sh'),ID_ARGUMENT,'all'],{env,timeout:30000});
     manifests=['Google/Chrome','BraveSoftware/Brave-Browser','Chromium'].map(browser=>path.join(env.CATNAP_NATIVE_APPLICATION_SUPPORT,browser,'NativeMessagingHosts','com.catnap.suno_mcp.json'));
   } else if(process.platform==='linux') {
     env.XDG_DATA_HOME=path.join(sandbox,'data');env.XDG_CONFIG_HOME=path.join(sandbox,'config');
-    await run('bash',[path.join(PROJECT,'native','install-linux.sh'),EXTENSION_ID,'all'],{env,timeout:30000});
+    await run('bash',[path.join(PROJECT,'native','install-linux.sh'),ID_ARGUMENT,'all'],{env,timeout:30000});
     manifests=['google-chrome','BraveSoftware/Brave-Browser','chromium'].map(browser=>path.join(env.XDG_CONFIG_HOME,browser,'NativeMessagingHosts','com.catnap.suno_mcp.json'));
   } else throw Error('Unsupported smoke-test platform: '+process.platform);
   const launchers=new Set();
   for(const filename of manifests) {
     const manifest=JSON.parse(await readFile(filename,'utf8'));
     assert.equal(manifest.name,'com.catnap.suno_mcp');assert.equal(manifest.type,'stdio');
-    assert.deepEqual(manifest.allowed_origins,['chrome-extension://'+EXTENSION_ID+'/']);
+    assert.deepEqual(manifest.allowed_origins,EXTENSION_IDS.map(id=>'chrome-extension://'+id+'/'));
     assert.ok(path.isAbsolute(manifest.path));
     const relative=path.relative(sandbox,manifest.path);assert.ok(relative&&!relative.startsWith('..')&&!path.isAbsolute(relative),'Launcher must remain inside disposable test directory');
     launchers.add(manifest.path);
   }
   for(const launcher of launchers)await health(launcher);
-  console.log(JSON.stringify({test:'catnap-native-platform',version:SCRIPT_VERSION,platform:process.platform,node:process.versions.node,manifests:manifests.length,framedHealth:'passed',realBrowserRegistration:false,providerRequests:0}));
+  console.log(JSON.stringify({test:'catnap-native-platform',version:SCRIPT_VERSION,platform:process.platform,node:process.versions.node,manifests:manifests.length,explicitOrigins:EXTENSION_IDS.length,framedHealth:'passed',realBrowserRegistration:false,providerRequests:0}));
 } finally { await rm(sandbox,{recursive:true,force:true}); }

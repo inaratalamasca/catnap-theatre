@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # SCRIPT_VERSION: 0.6.0
 # Change summary: register the restricted Catnap Suno stdio companion for one
-# explicit extension ID in the current user's Chrome/Brave/Chromium profiles.
+# explicit extension ID list in the current user's Chrome/Brave/Chromium profiles.
 set -euo pipefail
 SCRIPT_VERSION='0.6.0'
-CATNAP_EXTENSION_ID="${1:-}"
+CATNAP_EXTENSION_IDS="${1:-}"
 CATNAP_BROWSER="${2:-all}"
-if [[ ! "$CATNAP_EXTENSION_ID" =~ ^[a-p]{32}$ ]]; then
-  printf 'Usage: bash install-linux.sh EXTENSION_ID [chrome|brave|chromium|all]\n' >&2
+if [[ ! "$CATNAP_EXTENSION_IDS" =~ ^[[:space:]]*[a-p]{32}[[:space:]]*(,[[:space:]]*[a-p]{32}[[:space:]]*)*$ ]]; then
+  printf 'Usage: bash install-linux.sh EXTENSION_ID[,EXTENSION_ID] [chrome|brave|chromium|all]\nEvery ID must be exactly 32 lowercase letters a-p.\n' >&2
   exit 2
 fi
 case "$CATNAP_BROWSER" in chrome|brave|chromium|all) ;; *) printf 'Unknown browser selection.\n' >&2; exit 2 ;; esac
@@ -31,10 +31,12 @@ for CATNAP_NAME in chrome brave chromium; do
     chromium) CATNAP_MANIFEST_DIR="$CATNAP_CONFIG_ROOT/chromium/NativeMessagingHosts" ;;
   esac
   mkdir -p -- "$CATNAP_MANIFEST_DIR"
-  "$CATNAP_NODE" --input-type=module - "$CATNAP_DATA_ROOT/launch.sh" "$CATNAP_EXTENSION_ID" "$CATNAP_MANIFEST_DIR/com.catnap.suno_mcp.json" <<'NODE'
+  "$CATNAP_NODE" --input-type=module - "$CATNAP_DATA_ROOT/launch.sh" "$CATNAP_EXTENSION_IDS" "$CATNAP_MANIFEST_DIR/com.catnap.suno_mcp.json" <<'NODE'
 import {writeFileSync} from 'node:fs';
-const [launcher, extensionId, target] = process.argv.slice(2);
-const manifest = {name:'com.catnap.suno_mcp',description:'Catnap Theatre restricted Suno playlist MCP client',path:launcher,type:'stdio',allowed_origins:['chrome-extension://'+extensionId+'/']};
+const [launcher, suppliedIds, target] = process.argv.slice(2);
+const extensionIds = [...new Set(suppliedIds.split(',').map(value=>value.trim()))];
+if (!extensionIds.length || extensionIds.some(id=>! /^[a-p]{32}$/.test(id))) throw Error('Invalid extension ID list.');
+const manifest = {name:'com.catnap.suno_mcp',description:'Catnap Theatre restricted Suno playlist MCP client',path:launcher,type:'stdio',allowed_origins:extensionIds.map(id=>'chrome-extension://'+id+'/')};
 writeFileSync(target,JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
 NODE
   printf 'Registered Catnap Suno companion %s for %s.\n' "$SCRIPT_VERSION" "$CATNAP_NAME"

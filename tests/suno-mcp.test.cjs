@@ -178,6 +178,27 @@ test('Linux installer registers only the requested exact extension in isolated t
   } finally { fs.rmSync(temporary,{recursive:true,force:true}); }
 });
 
+test('Linux registration permits both explicitly supplied IDs and rejects wildcards without changing trust',()=>{
+  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'catnap native ids '));
+  try {
+    const config=path.join(temporary,'config'),data=path.join(temporary,'data');
+    const first='abcdefghijklmnopabcdefghijklmnop',second='ponmlkjihgfedcbaponmlkjihgfedcba';
+    const install=ids=>spawnSync('bash',[path.join(__dirname,'../native/install-linux.sh'),ids,'brave'],{env:{...process.env,XDG_CONFIG_HOME:config,XDG_DATA_HOME:data},encoding:'utf8'});
+    const filename=path.join(config,'BraveSoftware/Brave-Browser/NativeMessagingHosts/com.catnap.suno_mcp.json');
+    const installed=install(first+', '+second+', '+first);assert.equal(installed.status,0,installed.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(filename,'utf8')).allowed_origins,[first,second].map(id=>'chrome-extension://'+id+'/'));
+    const before=fs.readFileSync(filename,'utf8');
+    for(const invalid of [first+',*',first+',',','+first,first+',, '+second])assert.notEqual(install(invalid).status,0);
+    assert.equal(fs.readFileSync(filename,'utf8'),before);
+    const one=install(second);assert.equal(one.status,0,one.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(filename,'utf8')).allowed_origins,['chrome-extension://'+second+'/']);
+    const launcher=JSON.parse(fs.readFileSync(filename,'utf8')).path;
+    const body=Buffer.from('{"operation":"health"}'),header=Buffer.alloc(4);header.writeUInt32LE(body.length);
+    const probe=spawnSync(launcher,[],{input:Buffer.concat([header,body]),timeout:5000});
+    assert.equal(probe.status,0,String(probe.stderr));assert.equal(JSON.parse(probe.stdout.subarray(4)).ready,true);
+  } finally { fs.rmSync(temporary,{recursive:true,force:true}); }
+});
+
 test('native framing handles a split header and payload without exposing extra text', async()=>{
   const {runNativeHost} = await nativeModule(), input = new PassThrough(), output = new PassThrough(), buffers=[];
   output.on('data',value=>buffers.push(value));runNativeHost(input,output);

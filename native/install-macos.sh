@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # SCRIPT_VERSION: 0.6.0
-# Change summary: register the exact Catnap extension for this macOS user's
+# Change summary: register exact Catnap extension IDs for this macOS user's
 # Chrome/Brave/Chromium. Node.js 22+ is an explicit prerequisite; no downloads.
 set -euo pipefail
 SCRIPT_VERSION='0.6.0'
-CATNAP_EXTENSION_ID="${1:-}"
+CATNAP_EXTENSION_IDS="${1:-}"
 CATNAP_BROWSER="${2:-all}"
 if [[ "$(uname -s)" != Darwin ]]; then printf 'Use this installer on macOS only.\n' >&2; exit 1; fi
-if [[ ! "$CATNAP_EXTENSION_ID" =~ ^[a-p]{32}$ ]]; then
-  printf 'Usage: bash install-macos.sh EXTENSION_ID [chrome|brave|chromium|all]\n' >&2
+if [[ ! "$CATNAP_EXTENSION_IDS" =~ ^[[:space:]]*[a-p]{32}[[:space:]]*(,[[:space:]]*[a-p]{32}[[:space:]]*)*$ ]]; then
+  printf 'Usage: bash install-macos.sh EXTENSION_ID[,EXTENSION_ID] [chrome|brave|chromium|all]\nEvery ID must be exactly 32 lowercase letters a-p.\n' >&2
   exit 2
 fi
 case "$CATNAP_BROWSER" in chrome|brave|chromium|all) ;; *) printf 'Unknown browser selection.\n' >&2; exit 2 ;; esac
@@ -34,10 +34,12 @@ for CATNAP_NAME in chrome brave chromium; do
     chromium) CATNAP_MANIFEST_DIR="$CATNAP_APPLICATION_SUPPORT/Chromium/NativeMessagingHosts" ;;
   esac
   mkdir -p "$CATNAP_MANIFEST_DIR"
-  "$CATNAP_NODE" --input-type=module - "$CATNAP_DATA_ROOT/launch.sh" "$CATNAP_EXTENSION_ID" "$CATNAP_MANIFEST_DIR/com.catnap.suno_mcp.json" <<'NODE'
+  "$CATNAP_NODE" --input-type=module - "$CATNAP_DATA_ROOT/launch.sh" "$CATNAP_EXTENSION_IDS" "$CATNAP_MANIFEST_DIR/com.catnap.suno_mcp.json" <<'NODE'
 import {writeFileSync} from 'node:fs';
-const [launcher, extensionId, target] = process.argv.slice(2);
-writeFileSync(target,JSON.stringify({name:'com.catnap.suno_mcp',description:'Catnap restricted Suno playlist MCP client',path:launcher,type:'stdio',allowed_origins:['chrome-extension://'+extensionId+'/']},null,2)+'\n',{mode:0o600});
+const [launcher, suppliedIds, target] = process.argv.slice(2);
+const extensionIds = [...new Set(suppliedIds.split(',').map(value=>value.trim()))];
+if (!extensionIds.length || extensionIds.some(id=>! /^[a-p]{32}$/.test(id))) throw Error('Invalid extension ID list.');
+writeFileSync(target,JSON.stringify({name:'com.catnap.suno_mcp',description:'Catnap restricted Suno playlist MCP client',path:launcher,type:'stdio',allowed_origins:extensionIds.map(id=>'chrome-extension://'+id+'/')},null,2)+'\n',{mode:0o600});
 NODE
   printf 'Registered Catnap Suno companion %s for %s.\n' "$SCRIPT_VERSION" "$CATNAP_NAME"
 done

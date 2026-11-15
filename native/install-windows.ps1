@@ -2,7 +2,7 @@
 <#
 SCRIPT_VERSION 0.6.0
 Change summary: compile an auditable per-user native launcher with built-in
-Windows PowerShell/.NET Framework, then register one exact extension origin.
+Windows PowerShell/.NET Framework, then register an explicit extension origin list.
 Requires Node.js 22+ already installed; downloads nothing and requires no admin.
 #>
 [CmdletBinding()]
@@ -18,14 +18,19 @@ $SCRIPT_VERSION = '0.6.0'
 if ($PSVersionTable.PSEdition -ne 'Desktop') {
     throw 'Run this installer with Windows PowerShell 5.1, not PowerShell 7/pwsh. The supplied .cmd uses the built-in Windows PowerShell.'
 }
-if (-not $ExtensionId) { $ExtensionId = Read-Host 'Paste the exact Catnap extension ID from your browser extensions page' }
-if ($ExtensionId -notmatch '^[a-p]{32}$') { throw 'The extension ID must be exactly 32 lowercase letters a-p.' }
+if (-not $ExtensionId) { $ExtensionId = Read-Host 'Paste the exact Catnap extension ID, or both extension IDs separated by a comma' }
+$extensionIds = @($ExtensionId.Split(',') | ForEach-Object { $_.Trim() })
+if (-not $extensionIds.Count -or @($extensionIds | Where-Object { $_ -notmatch '^[a-p]{32}$' }).Count) { throw 'Each comma-separated extension ID must be exactly 32 lowercase letters a-p. No empty IDs or wildcards are allowed.' }
+$extensionIds = @($extensionIds | Select-Object -Unique)
 # More than one Node installation can be present on PATH (including hosted CI).
 # Get-Command may return an array; use the first resolved executable explicitly.
 $nodeCommand = Get-Command node.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
 $node = $nodeCommand.Source
-$nodeMajor = & $node -p 'process.versions.node.split(".")[0]'
-if ($LASTEXITCODE -ne 0 -or [int]$nodeMajor -lt 22) { throw 'Install Node.js 22 or later first (Node.js 24 LTS is recommended).' }
+# Avoid passing quoted JavaScript through Windows PowerShell 5.1's legacy
+# native-argument quoting. Parse Node's plain version output in PowerShell.
+$nodeVersion = & $node --version
+$versionMatch = [regex]::Match([string]$nodeVersion, '^v([0-9]+)\.')
+if ($LASTEXITCODE -ne 0 -or -not $versionMatch.Success -or [int]$versionMatch.Groups[1].Value -lt 22) { throw 'Install Node.js 22 or later first (Node.js 24 LTS is recommended).' }
 $sourceDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $destination = Join-Path $env:LOCALAPPDATA 'Catnap-Suno-MCP'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
@@ -50,7 +55,7 @@ $manifest = @{
     description = 'Catnap restricted Suno playlist MCP client'
     path = $launcher
     type = 'stdio'
-    allowed_origins = @("chrome-extension://$ExtensionId/")
+    allowed_origins = @($extensionIds | ForEach-Object { "chrome-extension://$_/" })
 } | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 $registryPaths = @{
