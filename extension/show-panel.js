@@ -1,10 +1,10 @@
-/* Catnap host-only Inbox & show window, version 0.6.9.
+/* Catnap host-only Inbox & show window, version 0.6.10.
  * Change summary: local readiness, verified playback-mode display, prominent
  * inbox totals and ordered setup actions. Playback never queues extra starts.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.9', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.6.10', $=id=>document.getElementById(id);
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='',playerChoice;
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}

@@ -1,4 +1,4 @@
-/* Catnap Theatre managed-show presentation, version 0.6.9.
+/* Catnap Theatre managed-show presentation, version 0.6.10.
  * Change summary: managed Suno lyrics prepare the matching native details
  * panel; stale and YouTube slots cannot borrow old native lyrics. A second
  * toggle cancels pending playback; reload-safe binding
@@ -8,7 +8,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.9';
+  const SCRIPT_VERSION='0.6.10';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;

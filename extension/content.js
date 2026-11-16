@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.6.9
+// @version      0.6.10
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.6.9 development
+ * CATNAP THEATRE · v0.6.10 development
  * Change: canonical native lyric panels preserve raw text line breaks.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
@@ -26,7 +26,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.6.9';
+  const SCRIPT_VERSION = '0.6.10';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;

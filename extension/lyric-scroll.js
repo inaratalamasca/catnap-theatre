@@ -1,8 +1,8 @@
-// Version 0.6.9: managed lyric reload/recovery obeys the staged song identity.
+// Version 0.6.10: managed lyric reload/recovery obeys the staged song identity.
 // Presentation only: read audio progress; never seek, pause, or restart playback.
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.9';
+  const SCRIPT_VERSION='0.6.10';
   if(globalThis.catnapLyricScrollVersion===SCRIPT_VERSION)return;
   globalThis.catnapLyricScrollVersion=SCRIPT_VERSION;
   const preference='catnap-lyrics-auto-scroll-v1';

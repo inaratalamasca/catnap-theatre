@@ -1,10 +1,10 @@
-// Catnap Theatre standalone companion, version 0.6.9.
+// Catnap Theatre standalone companion, version 0.6.10.
 // Changes: group matching control-window buttons and explicitly label Suno rows.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.9';
+  const SCRIPT_VERSION = '0.6.10';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';

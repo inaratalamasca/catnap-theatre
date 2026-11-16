@@ -1,4 +1,4 @@
-/* Catnap managed show worker, version 0.6.9.
+/* Catnap managed show worker, version 0.6.10.
  * Change summary: optional read-only uploader intake, private show queue,
  * saved inbox discovery, explicit player binding, verified MCP playlist writes
  * and bounded AP polling. Setup selections do not depend on a live Theatre.
@@ -7,7 +7,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.9';
+  const SCRIPT_VERSION = '0.6.10';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
