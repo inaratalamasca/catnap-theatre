@@ -9,6 +9,7 @@
 - Managed YouTube Play expands inside the browser's Theatre window with restore controls, without requesting monitor fullscreen; quiet Load remains held. YouTube queue entries use a small red video badge.
 - Condensed the host song card around a small artwork thumbnail; clicking copies its safe public image URL, with keyboard/clipboard fallback and no private notes included.
 - Added a clean-install-only stream-name prompt and origin-bound local publish-token remembering with session-only/Forget controls.
+- Added Catnap-only busy preflight and explicit confirmed takeover, ready for the separately configured individual-key service. Normal Start does not take over; legacy relays retain normal publishing without the new takeover feature.
 - Lite 0.5.0 and its existing downloads remain unchanged. Current 0.6.10 Dev1 activation/status/lyrics confirmation remains historical evidence, not live acceptance of these new changes.
 
 

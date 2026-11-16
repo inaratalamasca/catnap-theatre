@@ -47,10 +47,15 @@ The host's existing local audio monitor and stereo Opus 256 kbps target remain.
 
 Only one host publishes the shared Catnap stream at a time. Other hosts can
 sign in and prepare playlists while it is live. The relay keeps its existing
-publisher instead of replacing it. The preview recognizes a busy response from
-the planned Catnap access service; the current legacy relay can still return a
-generic connection error on an overlapping Start. Stop the AP broadcast before
-the next LP host starts. This is not automatic scheduling or a takeover button.
+publisher instead of replacing it. With the new Catnap access service enabled,
+a busy response offers **Take over broadcast**. That separate button asks for
+confirmation before ending the old stream; the displaced individual key gets
+a one-hour cooldown and then recovers automatically. It requires a qualified
+broadcaster key, not a key-manager role. A normal Start never silently takes over.
+The current legacy relay can still return a generic connection error on an
+overlapping Start; takeover requires the new service and cannot fall back to
+uncoordinated legacy publishing. Until it is enabled, stop the AP broadcast
+before the next LP host starts. This is not automatic scheduling.
 
 ## Remembering the publish token
 
