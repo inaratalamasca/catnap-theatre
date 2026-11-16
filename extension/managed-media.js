@@ -1,15 +1,17 @@
-/* Catnap managed browser-media adapter, version 0.6.6.
+/* Catnap managed browser-media adapter, version 0.7.0.
  * Change summary: identify Suno's active audio separately from its silent
  * helper, with ambiguity held. Explicit Play may prepare native audio muted,
  * then grant exact-source playback; Pause also cancels same-generation starts.
  * Source keys never leave the bound extension transport. Selected media is
  * checked atomically before play, and quiet Load never prepares native audio.
  * same-tab YouTube embeds are staged paused and controlled by postMessage.
+ * YouTube uses one root-mounted iframe; view changes resize it without moving
+ * or recreating it. No browser/display fullscreen API is used.
  * This file never fetches/duplicates audio, navigates tabs or owns credentials.
  */
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./managed-player.js'):root.CatnapManagedPlayer);if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedMedia=api;})(typeof globalThis!=='undefined'?globalThis:this,function(core){
   'use strict';
-  const SCRIPT_VERSION='0.6.6',NATIVE_CHANNEL='catnap-managed-native-v1';
+  const SCRIPT_VERSION='0.7.0',NATIVE_CHANNEL='catnap-managed-native-v1';
   const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   function sunoId(value){try{const u=new URL(value);const match=/^\/song\/([^/]+)\/?$/.exec(u.pathname);return ['suno.com','www.suno.com'].includes(u.hostname)&&match&&UUID.test(match[1])?match[1].toLowerCase():null;}catch{return null;}}
   function youtubeId(value){try{const u=new URL(value);let id='';if(u.hostname==='youtu.be')id=u.pathname.split('/')[1];else if(['youtube.com','www.youtube.com','m.youtube.com','www.youtube-nocookie.com'].includes(u.hostname))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/').filter(Boolean).find((x,i,a)=>i>0&&['embed','shorts','live'].includes(a[i-1]));return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;}catch{return null;}}
@@ -53,26 +55,42 @@
     }
     return candidates.size===1?[...candidates][0]:null;
   }
-  function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{},onPlaying=()=>{},onPaused=()=>{},onAutoplayBlocked=()=>{}}={}){
+  function create({document:doc=globalThis.document,window:win=globalThis.window,guard,getContainer=()=>doc.querySelector('#catnap-theater-root .ct-art-frame'),onEnded=()=>{},onError=()=>{},onProgress=()=>{},onPlaying=()=>{},onPaused=()=>{},onAutoplayBlocked=()=>{},onViewChange=()=>{}}={}){
     if(typeof guard!=='function')throw Error('A MAIN-world native media guard is required.');
-    let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1,nativeAttempt=0,nativeTransition=null;
+    let generation=0,current=null,frame=null,frameOrigin='',ready=false,wasPlaying=false,pendingPlay=null,handshake=null,readyWaiters=[],destroyed=false,startedGeneration=-1,nativeAttempt=0,nativeTransition=null,mediaStage=null,mediaRoot=null,artContainer=null,windowView=false,playRequested=false;
     const delay=ms=>new Promise(resolve=>win.setTimeout(resolve,ms));
     function nativeCurrentId(){return sunoId(doc.querySelector('a[aria-label^="Playbar: Title for "]')?.href);}
     const nativeButton=id=>findNativePlay(doc,id);
     function post(command,args=[]){if(frame?.contentWindow)frame.contentWindow.postMessage(JSON.stringify({event:'command',func:command,args,id:'catnap-managed-youtube'}),frameOrigin);}
     function listen(){if(frame?.contentWindow)frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:'catnap-managed-youtube'}),frameOrigin);}
     function cancelPending(message){if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.reject(Error(message));pendingPlay=null;}for(const waiter of readyWaiters){win.clearTimeout(waiter.timer);waiter.reject(Error(message));}readyWaiters=[];}
-    function removeFrame(){cancelPending('The selected song changed before playback started.');if(handshake!==null)win.clearInterval(handshake);handshake=null;frame?.remove();frame=null;ready=false;wasPlaying=false;frameOrigin='';}
-    function notifyError(message){const token=generation;cancelPending(message);post('pauseVideo');onError(token,message);}
+    function refreshVideoView(){
+      if(!mediaStage||!mediaRoot||!artContainer)return;
+      // The iframe stays mounted once. Reparenting a live iframe reloads its
+      // document in Chromium, which would interrupt both video and captured audio.
+      if(windowView){Object.assign(mediaStage.style,{position:'fixed',inset:'0',width:'100%',height:'100%',zIndex:'24',borderRadius:'0'});return;}
+      const art=artContainer.getBoundingClientRect(),root=mediaRoot.getBoundingClientRect();
+      Object.assign(mediaStage.style,{position:'absolute',inset:'auto',left:(art.left-root.left)+'px',top:(art.top-root.top)+'px',width:art.width+'px',height:art.height+'px',zIndex:'10',borderRadius:'12px'});
+    }
+    function setWindowView(value){
+      const next=value===true&&frame?.isConnected===true&&mediaStage?.isConnected===true;
+      mediaRoot?.classList.toggle('ct-managed-window-video',next);
+      if(windowView!==next){windowView=next;onViewChange(next);}
+      refreshVideoView();return windowView;
+    }
+    function removeFrame(){cancelPending('The selected song changed before playback started.');if(handshake!==null)win.clearInterval(handshake);handshake=null;setWindowView(false);mediaStage?.remove();if(!mediaStage)frame?.remove();frame=null;mediaStage=null;mediaRoot=null;artContainer=null;ready=false;wasPlaying=false;playRequested=false;frameOrigin='';}
+
+    function notifyError(message){const token=generation;playRequested=false;setWindowView(false);cancelPending(message);post('pauseVideo');onError(token,message);}
     function notifyBlocked(message){
-      if(wasPlaying)return;
+      if(wasPlaying)return;playRequested=false;setWindowView(false);
       if(pendingPlay){const pending=pendingPlay;pendingPlay=null;win.clearTimeout(pending.timer);const error=Error(message);error.code='AUTOPLAY_BLOCKED';pending.reject(error);}
       onAutoplayBlocked(generation,message);
     }
     function stateChange(state){
-      if(state===1){wasPlaying=true;onPlaying(generation);if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.resolve();pendingPlay=null;}}
+      // A manual restore during pending Play wins over its later confirmation.
+      if(state===1){if(!wasPlaying&&!playRequested)setWindowView(true);playRequested=false;wasPlaying=true;onPlaying(generation);if(pendingPlay){win.clearTimeout(pendingPlay.timer);pendingPlay.resolve();pendingPlay=null;}}
       if(state===2&&wasPlaying){wasPlaying=false;onPaused(generation);}
-      if(state===0&&wasPlaying){wasPlaying=false;post('pauseVideo');onEnded(generation);}
+      if(state===0&&wasPlaying){wasPlaying=false;setWindowView(false);post('pauseVideo');onEnded(generation);}
     }
     function onMessage(event){
       if(event.source===win&&event.origin===win.location.origin&&event.data?.channel===NATIVE_CHANNEL){
@@ -81,7 +99,7 @@
         if(event.data.type==='blocked'){const token=event.data.generation;void guard({action:'status',generation:token}).then(status=>{if(generation===token&&nativeTransition?.generation!==token&&!status.permitted)onError(token,event.data.reason||'Native playback was held because its source changed.');}).catch(error=>{if(generation===token&&nativeTransition?.generation!==token)onError(token,error.message);});}
         return;
       }
-      if(!frame||event.source!==frame.contentWindow||event.origin!==frameOrigin)return;
+      if(!frame?.isConnected||event.source!==frame.contentWindow||event.origin!==frameOrigin)return;
       let data=event.data;if(typeof data==='string'){if(data.length>16000)return;try{data=JSON.parse(data);}catch{return;}}if(!data||typeof data!=='object')return;
       if(data.event==='onReady'){ready=true;if(handshake!==null)win.clearInterval(handshake);handshake=null;post('addEventListener',['onStateChange']);post('addEventListener',['onError']);post('addEventListener',['onAutoplayBlocked']);for(const waiter of readyWaiters){win.clearTimeout(waiter.timer);waiter.resolve();}readyWaiters=[];}
       if(data.event==='onStateChange')stateChange(Number(data.info));
@@ -99,20 +117,27 @@
       const status=await guard({action:'block',generation});if(!status?.ready||!status.enabled||status.permitted)throw Error('Native audio could not be held safely. Managed playback is unavailable.');
     }
     async function stage(entry,context={}){
-      if(destroyed)throw Error('The media adapter has closed.');++nativeAttempt;generation=context.generation??generation;const token=generation;current=entry;const source=core.playback(entry);
+      if(destroyed)throw Error('The media adapter has closed.');removeFrame();++nativeAttempt;generation=context.generation??generation;const token=generation;current=entry;const source=core.playback(entry);
       const status=await guard({action:'block',generation});if(token!==generation)throw Error('The selected show entry changed.');if(!status?.ready||!status.enabled||status.permitted)throw Error('Native audio could not be held safely.');
       if(source.provider==='suno'){if(!sunoId(source.url))throw Error('Resolve this Suno short link before playing the show entry.');return;}
       const id=youtubeId(source.url);if(!id)throw Error('This YouTube link does not identify one supported video.');
       const container=getContainer();if(!container)throw Error('Open Theatre before staging a YouTube video.');
-      const url=new URL('https://www.youtube-nocookie.com/embed/'+id);url.searchParams.set('enablejsapi','1');url.searchParams.set('origin',win.location.origin);url.searchParams.set('autoplay','0');url.searchParams.set('playsinline','1');url.searchParams.set('rel','0');frameOrigin=url.origin;
-      frame=doc.createElement('iframe');frame.className='ct-managed-youtube';frame.title='YouTube show source';frame.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';frame.referrerPolicy='strict-origin-when-cross-origin';frame.allowFullscreen=true;frame.src=url.href;
-      Object.assign(frame.style,{position:'absolute',inset:'0',width:'100%',height:'100%',minWidth:'200px',minHeight:'200px',border:'0',zIndex:'4',background:'#100e18'});container.appendChild(frame);frame.addEventListener('load',listen);handshake=win.setInterval(listen,500);listen();
+      const url=new URL('https://www.youtube-nocookie.com/embed/'+id);url.searchParams.set('enablejsapi','1');url.searchParams.set('origin',win.location.origin);url.searchParams.set('autoplay','0');url.searchParams.set('playsinline','1');url.searchParams.set('rel','0');url.searchParams.set('fs','0');frameOrigin=url.origin;
+      frame=doc.createElement('iframe');frame.className='ct-managed-youtube';frame.title='YouTube show source';frame.allow='autoplay; encrypted-media; picture-in-picture';frame.referrerPolicy='strict-origin-when-cross-origin';frame.src=url.href;
+      Object.assign(frame.style,{position:'absolute',inset:'0',width:'100%',height:'100%',minWidth:'0',minHeight:'0',border:'0',background:'#100e18'});
+      artContainer=container;mediaRoot=container.closest('#catnap-theater-root');
+      if(mediaRoot){
+        mediaStage=doc.createElement('div');mediaStage.className='ct-managed-media-stage';
+        Object.assign(mediaStage.style,{position:'absolute',zIndex:'10',overflow:'hidden',borderRadius:'12px',background:'#100e18'});
+        mediaStage.append(frame);mediaRoot.append(mediaStage);refreshVideoView();
+      }else container.appendChild(frame);
+      frame.addEventListener('load',listen);handshake=win.setInterval(listen,500);listen();
     }
     async function play(entry,context={}){
       const token=context.generation??generation;if(token!==generation||current?.id!==entry.id)throw Error('The selected show entry changed.');
       const source=core.playback(entry);
       if(source.provider==='youtube'){
-        await readyForYoutube();if(token!==generation||!frame)throw Error('The selected show entry changed.');
+        playRequested=true;setWindowView(true);await readyForYoutube();if(token!==generation||!frame)throw Error('The selected show entry changed.');
         return new Promise((resolve,reject)=>{pendingPlay={resolve,reject,timer:win.setTimeout(()=>notifyBlocked('YouTube did not start. Press Play inside the video to continue, or check its embed permissions.'),8000)};post('playVideo');});
       }
       const id=sunoId(source.url);if(!id)throw Error('This Suno song needs a canonical song link.');
@@ -156,9 +181,10 @@
         if(stillCurrent())await guard({action:'block',generation});throw error;
       }finally{if(nativeTransition?.attempt===attempt)nativeTransition=null;}
     }
-    async function pause(entry,context={}){if(context.generation!==undefined&&context.generation!==generation)return;++nativeAttempt;cancelPending('Playback was paused before it started.');if(entry&&core.playback(entry).provider==='youtube')post('pauseVideo');await guard({action:'pause',generation});}
-    async function dispose(){if(destroyed)return;await stopAll({generation:generation+1});destroyed=true;win.removeEventListener('message',onMessage);await guard({action:'disable',generation});}
-    return {stopAll,stage,play,pause,dispose,getCurrent:()=>current,getGeneration:()=>generation};
+    async function pause(entry,context={}){if(context.generation!==undefined&&context.generation!==generation)return;++nativeAttempt;playRequested=false;cancelPending('Playback was paused before it started.');if(entry&&core.playback(entry).provider==='youtube')post('pauseVideo');await guard({action:'pause',generation});}
+    async function dispose(){if(destroyed)return;await stopAll({generation:generation+1});destroyed=true;win.removeEventListener('message',onMessage);win.removeEventListener('resize',refreshVideoView);await guard({action:'disable',generation});}
+    win.addEventListener('resize',refreshVideoView);
+    return {stopAll,stage,play,pause,dispose,setWindowView,refreshVideoView,videoView:()=>({available:frame?.isConnected===true,expanded:windowView}),getCurrent:()=>current,getGeneration:()=>generation};
   }
   return {SCRIPT_VERSION,create,sunoId,youtubeId,findNativePlay,findNativeAudio};
 });

@@ -1,14 +1,16 @@
-/* Catnap Theatre managed-show presentation, version 0.6.10.
+/* Catnap Theatre managed-show presentation, version 0.7.0.
  * Change summary: managed Suno lyrics prepare the matching native details
  * panel; stale and YouTube slots cannot borrow old native lyrics. A second
  * toggle cancels pending playback; reload-safe binding
  * status, first-entry Play, trusted native
  * controls routed through manual/AP coordination, staged artwork and timed
- * warnings. Host-only notes remain in the extension window.
+ * warnings. One YouTube stage expands within the Theatre viewport on Play,
+ * with view/playback/exit controls and no browser fullscreen. Host-only notes
+ * remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.10';
+  const SCRIPT_VERSION='0.7.0';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -22,6 +24,14 @@
 #catnap-theater-root[data-layout=lineup][data-managed-show=true] .ct-managed-lineup{display:block}
 #catnap-theater-root .ct-managed-warning{position:absolute;z-index:30;top:76px;left:50%;transform:translateX(-50%);max-width:min(850px,90%);padding:18px 26px;border:1px solid #e4b86e;border-radius:14px;background:rgba(38,25,12,.95);color:#ffe6af;box-shadow:0 8px 35px #0009;font:650 clamp(16px,1.5vw,25px)/1.4 system-ui;text-align:center;pointer-events:none}
 #catnap-theater-root .ct-managed-warning[hidden]{display:none}
+#catnap-theater-root.ct-managed-window-video>.ct-managed-media-stage{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important;z-index:24!important;background:#000}
+#catnap-theater-root.ct-managed-window-video>.ct-header,#catnap-theater-root.ct-managed-window-video>.ct-main,#catnap-theater-root.ct-managed-window-video>.ct-bottom{visibility:hidden}
+#catnap-theater-root .ct-managed-video-controls{position:absolute;right:18px;bottom:94px;z-index:35;display:flex;flex-wrap:wrap;gap:6px;padding:8px;max-width:calc(100% - 24px);border:1px solid #8c7caa;border-radius:12px;background:#10121bec;box-shadow:0 5px 24px #0008;font:12px/1.3 system-ui}
+#catnap-theater-root .ct-managed-video-controls button{padding:7px 10px;border:1px solid #695b80;border-radius:7px;background:#242031;color:#fff}
+#catnap-theater-root.ct-managed-window-video>.ct-managed-video-controls{left:50%;right:auto;bottom:16px;transform:translateX(-50%);width:max-content}
+#catnap-theater-root .ct-managed-yt{display:inline-flex;align-items:center;justify-content:center;width:19px;height:13px;margin-left:6px;border-radius:4px;background:#df202c;vertical-align:middle}
+#catnap-theater-root .ct-managed-yt svg{width:8px;height:8px;fill:white}
+
 #catnap-theater-root .ct-managed-status{font-size:11px;color:#c2aad4;max-width:180px;overflow-wrap:anywhere}
 #catnap-theater-root .ct-managed-source{font-size:12px;letter-spacing:.09em;color:#b5dcd5}
 #catnap-theater-root .ct-managed-lineup button{display:block;width:100%;text-align:left;padding:10px 5px;border-bottom:1px solid #51405e55;font-size:13px}
@@ -45,10 +55,15 @@
   }
   function renderQueue(stage,snapshot){
     let panel=stage.querySelector('.ct-managed-lineup');if(!panel){queueSignature='';panel=document.createElement('aside');panel.className='ct-lineup ct-managed-lineup';panel.setAttribute('aria-label','Managed show running order');stage.querySelector('.ct-main').prepend(panel);}
-    const signature=JSON.stringify([snapshot.index,snapshot.autoplay,snapshot.queue.map(e=>[e.id,e.title,e.preferredSource,e.disclaimer,e.state])]);if(signature===queueSignature)return;queueSignature=signature;
+    const signature=JSON.stringify([snapshot.index,snapshot.autoplay,snapshot.queue.map(e=>[e.id,e.title,e.preferredSource,e.playbackSource,e.disclaimer,e.state])]);if(signature===queueSignature)return;queueSignature=signature;
     panel.replaceChildren();const heading=document.createElement('h2');heading.textContent='INBOX SHOW ORDER';panel.append(heading);
     const source=document.createElement('small');source.textContent=snapshot.autoplay?'Inbox submissions · AP autoplay':'Inbox submissions · manual advance';panel.append(source);
-    snapshot.queue.forEach((entry,index)=>{const button=document.createElement('button');button.type='button';button.textContent=`${String(index+1).padStart(2,'0')}  ${entry.title}${entry.preferredSource==='youtube'?' · YT':''}${entry.disclaimer==='yes'?' ⚠':''}`;button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=entry.state==='held';button.title='Load quietly · press Play separately';button.onclick=()=>{void command('load',{index}).catch(displayError);};panel.append(button);});
+    snapshot.queue.forEach((entry,index)=>{const button=document.createElement('button');button.type='button';button.textContent=`${String(index+1).padStart(2,'0')}  ${entry.title}${entry.disclaimer==='yes'?' ⚠':''}`;
+      if((entry.playbackSource||entry.preferredSource)==='youtube'){
+        const icon=document.createElement('span');icon.className='ct-managed-yt';icon.setAttribute('role','img');icon.setAttribute('aria-label','YouTube');icon.title='YouTube source';
+        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');svg.setAttribute('viewBox','0 0 10 10');svg.setAttribute('aria-hidden','true');path.setAttribute('d','M2 1 9 5 2 9Z');svg.append(path);icon.append(svg);button.append(icon);
+      }
+      button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=entry.state==='held';button.title='Load quietly · press Play separately';button.onclick=()=>{void command('load',{index}).catch(displayError);};panel.append(button);});
   }
   function matchingLyricsSong(snapshot,native){
     const entry=snapshot?.current,target=songId(entry?.sunoUrl);
@@ -65,13 +80,35 @@
     if(!active||!matchingLyricsSong(snapshot,native))throw Error('Lyrics can reload once Suno has loaded the selected Suno song.');
     readManagedLyrics(snapshot,native,{reload:true});const stage=root();if(stage)delete stage.dataset.managedLyrics;render();return true;
   }
+  function videoControls(stage,snapshot){
+    const video=adapter?.videoView?.(),youtube=(snapshot.current?.playbackSource||snapshot.current?.preferredSource)==='youtube';
+    let controls=stage.querySelector('.ct-managed-video-controls');
+    if(!youtube||!video?.available){controls?.remove();return;}
+    if(!controls){
+      controls=document.createElement('div');controls.className='ct-managed-video-controls';controls.setAttribute('role','group');controls.setAttribute('aria-label','YouTube view and playback');
+      const button=(name,label,action)=>{const item=document.createElement('button');item.type='button';item.className=name;item.textContent=label;item.onclick=action;controls.append(item);return item;};
+      button('ct-managed-video-view','Window view',()=>{adapter?.setWindowView?.(!adapter.videoView().expanded);render();});
+      button('ct-managed-video-toggle','Play',()=>{void command('toggle').catch(displayError);});
+      button('ct-managed-video-next','Load next',()=>{void command('next').catch(displayError);});
+      button('ct-managed-video-close','Close Theatre',()=>view()?.open(false));stage.append(controls);
+    }
+    const toggle=controls.querySelector('.ct-managed-video-view');toggle.textContent=video.expanded?'Artwork view':'Window view';toggle.setAttribute('aria-pressed',String(video.expanded));toggle.title=video.expanded?'Restore artwork layout · Esc also works while Theatre controls are focused':'Fill the Theatre window without browser fullscreen';
+    if(controls.dataset.expanded!==String(video.expanded)){controls.dataset.expanded=String(video.expanded);if(video.expanded&&stage.contains(document.activeElement)&&!controls.contains(document.activeElement))toggle.focus();}
+    controls.querySelector('.ct-managed-video-toggle').textContent=['playing','starting'].includes(snapshot.phase)?'Pause':'Play';
+    controls.querySelector('.ct-managed-video-next').disabled=snapshot.index+1>=snapshot.queue.length;
+    adapter?.refreshVideoView?.();
+  }
+  function restoreVideoOnEscape(event){
+    if(!active||!(event.key==='Escape'||event.code==='Escape')||!adapter?.videoView?.().expanded)return false;
+    event.preventDefault();event.stopImmediatePropagation();adapter.setWindowView(false);render();return true;
+  }
   function render(){
     const stage=root(),snapshot=state();if(!active||!stage||!snapshot)return;
     style();stage.dataset.managedShow='true';
     const entry=snapshot.current,select=selector=>stage.querySelector(selector);
     select('.ct-song-title').textContent=entry?.title||show?.name||'Your show is ready';
     select('.ct-artist').textContent=entry?.artist||'Load a song, then press Play';
-    select('.ct-desc').textContent=entry?`${(entry.playbackSource||entry.preferredSource||'held').toUpperCase()} · ${snapshot.error|| (snapshot.phase==='playing'?'Playing':snapshot.phase==='ended'?'Finished':'Loaded quietly')}${entry.disclaimer==='yes'?' · Content disclaimer requested':''}`:'Manual Load next never starts audio.';
+    select('.ct-desc').textContent=entry?`${(entry.playbackSource||entry.preferredSource||'held').toUpperCase()} · ${snapshot.error|| (snapshot.phase==='playing'?'Playing':snapshot.phase==='ended'?'Finished':'Loaded')}${entry.disclaimer==='yes'?' · Content disclaimer requested':''}`:'Manual Load next never starts audio.';
     const art=select('.ct-art'),frame=select('.ct-art-frame');
     let artwork=entry?.artworkUrl||'';
     const native=view()?.nativeSong();
@@ -80,14 +117,14 @@
     else{art.removeAttribute('src');frame.classList.add('ct-no-art');}
     const lyricText=readManagedLyrics(snapshot,native);
     if(stage.dataset.managedLyrics!==String(entry?.id)+String(lyricText)){
-      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · video plays in the artwork area.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
+      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · Play fills the Theatre window. Use Artwork view to restore the layout.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
     }
     select('.ct-up-next-label').textContent=snapshot.autoplay?'UP NEXT · AP AUTOPLAY':'UP NEXT · LOAD MANUALLY';
     select('.ct-up-next-title').textContent=snapshot.queue[snapshot.index+1]?.title||'End of show queue';
     select('.ct-prev').setAttribute('aria-label','Load previous song');select('.ct-prev').title='Load previous · does not play';
     select('.ct-next').setAttribute('aria-label','Load next song');select('.ct-next').title='Load next · does not play';
     select('.ct-progress').disabled=entry?.preferredSource==='youtube';
-    renderQueue(stage,snapshot);warning(snapshot.warning);
+    renderQueue(stage,snapshot);warning(snapshot.warning);videoControls(stage,snapshot);
   }
   function displayError(error){const stage=root();if(stage){stage.querySelector('.ct-desc').textContent=String(error?.message||error);}}
   async function enable(next){
@@ -98,7 +135,7 @@
     adapter=CatnapManagedMedia.create({document,window,guard,getContainer:()=>root()?.querySelector('.ct-art-frame'),
       onEnded:token=>{void coordinator?.ended(token).catch(displayError);},onError:(token,message)=>{void coordinator?.failed(token,message).catch(displayError);},
       onPlaying:token=>coordinator?.observedPlaying(token),onPaused:token=>coordinator?.observedPaused(token),onAutoplayBlocked:(token,message)=>coordinator?.autoplayBlocked(token,message),
-      onProgress:value=>{if(value.generation===state()?.generation)timing=value;}});
+      onProgress:value=>{if(value.generation===state()?.generation)timing=value;},onViewChange:()=>render()});
     coordinator=CatnapManagedPlayer.create({adapter,onState:emit,onWarning:warning,warningSeconds:next.warningSeconds});
     await coordinator.setQueue(next.entries,{showId:next.id,mode:next.mode,autoplay:next.autoplay});render();return {enabled:true};
   }
@@ -107,7 +144,7 @@
     else await guard({action:'disable',generation:0});
     active=false;coordinator=null;adapter=null;show=null;timing={elapsed:0,duration:0};
     view()?.cancelNativeLyrics?.();
-    const stage=root();if(stage){delete stage.dataset.managedShow;delete stage.dataset.managedLyrics;stage.querySelector('.ct-managed-lineup')?.remove();stage.querySelector('.ct-managed-warning')?.remove();stage.querySelector('.ct-progress').disabled=false;}
+    const stage=root();if(stage){delete stage.dataset.managedShow;delete stage.dataset.managedLyrics;stage.querySelector('.ct-managed-lineup')?.remove();stage.querySelector('.ct-managed-warning')?.remove();stage.querySelector('.ct-managed-video-controls')?.remove();stage.classList.remove('ct-managed-window-video');stage.querySelector('.ct-progress').disabled=false;}
     return {enabled:false};
   }
   async function update(next){
@@ -174,6 +211,7 @@
     if(!active||!coordinator)return;
     // Closing the stage destroys its YouTube iframe. Re-stage it paused when
     // Theatre is reopened, so Play cannot address an old, disconnected frame.
+    adapter?.setWindowView?.(false);
     const closingCoordinator=coordinator,index=state().index,token=state().generation;void closingCoordinator.pause().then(()=>{
       if(index>=0&&coordinator===closingCoordinator&&state().generation===token)closingCoordinator.needsRestage=true;
     }).catch(displayError);
@@ -227,14 +265,12 @@
     })().catch(displayError);
     return true;
   }
+  // Window capture sees Esc before content.js's document-level close shortcut.
+  window.addEventListener('keydown',restoreVideoOnEscape,true);
   window.addEventListener('click',routeNativeControl,true);window.addEventListener('keydown',routeNativeControl,true);
   globalThis.CatnapManagedShow={SCRIPT_VERSION,get active(){return active;},snapshot:state,command,render,reloadLyrics,progress,seek,metadata,closed:closedTheatre,routeNativeControl};
   setInterval(()=>{
     const stage=root();if(!stage)return;
-    if(!stage.querySelector('.ct-inbox-controls')){
-      const button=document.createElement('button');button.type='button';button.className='ct-header-action ct-inbox-controls';button.textContent='Inbox & show ↗';button.setAttribute('aria-label','Inbox and show controls');button.title='Open inbox, playlist and show controls';
-      button.onclick=()=>{void chrome.runtime.sendMessage({target:'catnap-show-worker',action:'open'}).catch(displayError);};const actions=stage.querySelector('.ct-header-actions');if(actions)actions.insertBefore(button,actions.querySelector('.ct-close'));else stage.querySelector('.ct-header').append(button);
-    }
     if(active){if(coordinator?.needsRestage){coordinator.needsRestage=false;const index=state().index;void coordinator.load(index).catch(displayError);}render();}
   },400);
 })();
