@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.6.10
+// @version      0.7.0
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,8 +12,8 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.6.10 development
- * Change: canonical native lyric panels preserve raw text line breaks.
+ * CATNAP THEATRE · v0.7.0 development
+ * Change: source-specific Radio display keeps playback and lyric handlers unchanged.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
  * managed mode uses a source-bound guard and the separate show coordinator.
@@ -26,7 +26,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.6.10';
+  const SCRIPT_VERSION = '0.7.0';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;
@@ -36,6 +36,9 @@
   const ROOT_ID = 'catnap-theater-root';
   const LAUNCH_ID = 'catnap-theater-launch';
   const STORAGE_KEY = 'catnap-theater-active-v1';
+  // Only the isolated Radio adapter sets these display flags. No capture or
+  // playback action is exposed through this UI bridge.
+  const radioUi = {live:false,hideTheatreButton:false,state:'idle',open:null};
   const TRACK_RE = /\/song\/([0-9a-f-]{24,})/i;
   const LABELS = {
     title: 'a[aria-label^="Playbar: Title for "]',
@@ -111,6 +114,10 @@
 #${LAUNCH_ID}:hover { transform: translateY(-2px) !important; border-color: #d1a2fa !important; }
 #${LAUNCH_ID}:focus-visible { outline: 3px solid #b6a6ff !important; outline-offset: 3px !important; }
 #${LAUNCH_ID} svg { width: 19px; height: 19px; color: #dda8ff; }
+#${LAUNCH_ID} .ct-radio-dot { display:none; width:8px; height:8px; flex:none; border-radius:50%; background:#74ed9b; }
+#${LAUNCH_ID}.ct-radio-live { padding:8px 12px !important; border-color:rgba(116,237,155,.55) !important; color:#bdf8cf !important; }
+#${LAUNCH_ID}.ct-radio-live svg { display:none; }
+#${LAUNCH_ID}.ct-radio-live .ct-radio-dot { display:block; }
 #${ROOT_ID}, #${ROOT_ID} * { box-sizing: border-box; }
 #${ROOT_ID} {
   --ct-white: #f3f0fb; --ct-muted: #aaa9bd; --ct-border: rgba(174,158,207,.18);
@@ -137,6 +144,8 @@
 }
 #${ROOT_ID} .ct-header-actions {display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}
 #${ROOT_ID} .ct-header-actions .ct-header-action {display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 11px;border:1px solid #77618c;border-radius:8px;background:rgba(34,27,48,.7);color:#eadff5;font:600 12px/1.2 system-ui;white-space:nowrap}
+#${ROOT_ID} .ct-header-actions .ct-popout-controls {width:34px;padding:0}
+#${ROOT_ID} .ct-popout-controls svg {width:18px;height:18px;display:block}
 #${ROOT_ID} .ct-header-actions .ct-header-action:hover {background:#3b2b4d;border-color:#b69acb}
 #${ROOT_ID} .ct-header-actions .ct-close {width:34px;padding:0;font-size:21px}
 #${ROOT_ID} .ct-brand { display: flex; align-items: center; gap: 11px; opacity: .92; flex: 0 0 auto; }
@@ -146,8 +155,11 @@
 #${ROOT_ID} .ct-up-next { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 1px; text-align: center; overflow: hidden; }
 #${ROOT_ID} .ct-up-next-label { color: #a88bbf; font-size: 9px; font-weight: 700; letter-spacing: .2em; white-space: nowrap; }
 #${ROOT_ID} .ct-up-next-title { color: #ddd8e6; font-size: clamp(12px,1.1vw,16px); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#${ROOT_ID} .ct-aiu { flex: 0 0 clamp(108px,12.5vw,170px); max-width: 170px; height: 49px; display: flex; align-items: center; justify-content: flex-end; overflow: hidden; }
-#${ROOT_ID} .ct-aiu-logo { max-width: 100%; max-height: 47px; width: auto; height: auto; object-fit: contain; display: block; }
+#${ROOT_ID} .ct-aiu { flex: 0 0 clamp(108px,12.5vw,170px); max-width: 170px; height: 49px; display: flex; flex-direction:column; align-items:flex-end; justify-content:center; overflow: hidden; }
+#${ROOT_ID} .ct-aiu-logo { max-width: 100%; max-height: 33px; width: auto; height: auto; object-fit: contain; display: block; filter:brightness(0) invert(1); }
+#${ROOT_ID} .ct-radio-status { display:block; padding:0; margin-top:2px; color:#959aa8; font:600 9px/11px system-ui,sans-serif; white-space:nowrap; }
+#${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-aiu-logo { filter:brightness(0) saturate(100%) invert(82%) sepia(35%) saturate(754%) hue-rotate(78deg) brightness(105%) contrast(95%); }
+#${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-radio-status, #${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-aiu-fallback { color:#8df2ac; }
 #${ROOT_ID} .ct-aiu-fallback { display: none; text-align: right; font-size: 12px; font-weight: 850; color: #f7f4ff; letter-spacing: -.035em; line-height: 1; }
 #${ROOT_ID} .ct-aiu-fallback small { display: block; font-size: 9px; font-weight: 550; letter-spacing: .23em; margin-top: 4px; }
 #${ROOT_ID} .ct-main {
@@ -214,7 +226,7 @@
   #${ROOT_ID} .ct-brand svg { height:26px; width:26px; }
   #${ROOT_ID} .ct-brand-main { font-size: 11px; }
   #${ROOT_ID} .ct-aiu { flex-basis: 114px; height: 42px; }
-  #${ROOT_ID} .ct-aiu-logo { max-height: 40px; }
+  #${ROOT_ID} .ct-aiu-logo { max-height: 28px; }
   #${ROOT_ID} .ct-up-next-label { font-size: 8px; }
   #${ROOT_ID} .ct-up-next-title { font-size: 12px; }
   #${ROOT_ID} .ct-main { gap: 14px; padding: 0 16px 12px; grid-template-columns: minmax(0, 1.12fr) minmax(250px, .88fr); }
@@ -251,20 +263,36 @@
   }
 
   function showLauncher() {
-    if (!state.launch) {
+    if (!state.launch?.isConnected) {
       const button = DOC.createElement('button');
       button.id = LAUNCH_ID;
       button.type = 'button';
-      button.setAttribute('aria-label', 'Open Catnap Theater Mode');
-      button.innerHTML = ICONS.cat + '<span>Catnap Theater</span>';
-      button.addEventListener('click', () => toggle());
+      button.innerHTML = ICONS.cat + '<span class="ct-radio-dot" aria-hidden="true"></span><span class="ct-launch-label">Theatre</span>';
+      button.addEventListener('click', () => {
+        if (radioUi.live) { if (typeof radioUi.open === 'function') radioUi.open(); }
+        else toggle();
+      });
       DOC.documentElement.appendChild(button);
       state.launch = button;
     }
-    state.launch.style.display = (!state.open && isOnSongPage()) ? 'inline-flex' : 'none';
-    // Important: #launch CSS uses !important for display, so use setProperty.
-    state.launch.style.setProperty('display', (!state.open && isOnSongPage()) ? 'inline-flex' : 'none', 'important');
+    const label = radioUi.live ? 'On Air' : 'Theatre';
+    const text = state.launch.querySelector('.ct-launch-label');
+    if (text.textContent !== label) text.textContent = label;
+    state.launch.classList.toggle('ct-radio-live', radioUi.live);
+    state.launch.setAttribute('aria-label', radioUi.live ? 'On Air · open Radio controls' : 'Open Catnap Theatre');
+    state.launch.title = radioUi.live ? 'This tab is broadcasting. Open Radio controls.' : radioUi.state === 'starting' ? 'Radio is starting. Open Catnap Theatre.' : radioUi.state === 'error' ? 'Radio is not live. Open Catnap Theatre.' : 'Open Catnap Theatre';
+    const visible = !state.open && (radioUi.live || (!radioUi.hideTheatreButton && isOnSongPage()));
+    // The launcher CSS uses !important, so keep the display decision here.
+    state.launch.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
   }
+
+  globalThis.CatnapTheatreRadioUI = Object.freeze({update(next, openControls) {
+    radioUi.live = next?.state === 'live' && next.source === true;
+    radioUi.state = ['idle','starting','connecting','reconnecting','live','error'].includes(next?.state) ? next.state : 'idle';
+    radioUi.hideTheatreButton = next?.hideTheatreButton === true;
+    radioUi.open = typeof openControls === 'function' ? openControls : null;
+    showLauncher();
+  }});
 
   function createRoot() {
     const root = DOC.createElement('div');
@@ -281,6 +309,7 @@
         <div class="ct-aiu" title="AI:Underground">
           <img class="ct-aiu-logo" src="${chrome.runtime.getURL('assets/aiu-logo.png')}" alt="AI:Underground" />
           <span class="ct-aiu-fallback" aria-hidden="true">AI:<small>UNDERGROUND</small></span>
+          <button type="button" class="ct-radio-status" data-catnap-radio-status="true" aria-label="No Radio · open Radio controls">No Radio</button>
         </div>
         <div class="ct-header-actions" role="group" aria-label="Theatre control windows"></div>
       </header>

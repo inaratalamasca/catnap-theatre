@@ -1,10 +1,10 @@
-// Catnap Theatre standalone companion, version 0.6.10.
-// Changes: group matching control-window buttons and explicitly label Suno rows.
+// Catnap Theatre standalone companion, version 0.7.0.
+// Changes: one accessible gear opens the separate operator controls.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.10';
+  const SCRIPT_VERSION = '0.7.0';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';
@@ -101,14 +101,15 @@
     root.appendChild(tools);
     const header=root.querySelector('.ct-header');
     let actions=header.querySelector('.ct-header-actions');if(!actions){actions=element('div',{class:'ct-header-actions',role:'group','aria-label':'Theatre control windows'});header.append(actions);}
-    const controls=element('button',{type:'button',class:'ct-header-action ct-popout-controls','aria-label':'Theatre controls',title:'Open presentation settings'},'Presentation ↗');
+    const controls=element('button',{type:'button',class:'ct-header-action ct-popout-controls','aria-label':'Theatre controls',title:'Open presentation settings'});
+    controls.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9.21 5.26 L10.48 4.86 L9.92 2.22 L14.08 2.22 L13.52 4.86 L14.79 5.26 L14.79 5.26 L15.98 5.88 L17.45 3.61 L20.39 6.55 L18.12 8.02 L18.74 9.21 L18.74 9.21 L19.14 10.48 L21.78 9.92 L21.78 14.08 L19.14 13.52 L18.74 14.79 L18.74 14.79 L18.12 15.98 L20.39 17.45 L17.45 20.39 L15.98 18.12 L14.79 18.74 L14.79 18.74 L13.52 19.14 L14.08 21.78 L9.92 21.78 L10.48 19.14 L9.21 18.74 L9.21 18.74 L8.02 18.12 L6.55 20.39 L3.61 17.45 L5.88 15.98 L5.26 14.79 L5.26 14.79 L4.86 13.52 L2.22 14.08 L2.22 9.92 L4.86 10.48 L5.26 9.21 L5.26 9.21 L5.88 8.02 L3.61 6.55 L6.55 3.61 L8.02 5.88 L9.21 5.26 Z"/><circle cx="12" cy="12" r="3"/></svg>';
     actions.insertBefore(controls,actions.firstChild);
     const close=element('button',{type:'button',class:'ct-header-action ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
     close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));actions.appendChild(close);
     status=tools.querySelector('.ct-settings-status');
     controls.onclick=async()=>{
-      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.textContent='Presentation ↗';controls.title='Open presentation settings';}
-      catch(error){controls.textContent='Controls unavailable';controls.title=error.message||'Could not open controls.';}
+      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.title='Open presentation settings';}
+      catch(error){controls.title=error.message||'Could not open controls.';}
     };
     const logo=element('img',{class:'ct-custom-logo',alt:'Host logo',hidden:''});Object.assign(logo.style,{maxWidth:'100px',height:'36px',objectFit:'contain'});root.querySelector('.ct-brand').prepend(logo);
     function localImage(control,kind){control.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)||file.size>20*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF under 20 MB.';return;}const old=kind==='logo'?logoUrl:backgroundUrl;if(old)URL.revokeObjectURL(old);const url=URL.createObjectURL(file);if(kind==='logo')logoUrl=url;else backgroundUrl=url;paint();status.textContent='Local image loaded for this tab only. It is not included in settings exports.';};}
