@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.7 development
+# Inbox playlists and managed shows · 0.6.8 development
 
 This is an isolated development build, separate from the submitted 0.5.0 Store beta. It has two packages built from the same inbox and playlist engine:
 
@@ -17,7 +17,9 @@ Use a separate test profile and a fresh development folder. Do not enable two Th
 4. Select LP/AP and the correct inbox. Read Pending submissions to preview the FIFO order. This never accepts, releases, declines, deletes or cleans uploader entries.
 5. Connect Suno using your own account. It must be allowed to use Suno MCP; a normal website login or completed OAuth screen alone is not proof of MCP eligibility. Load or create a playlist, then Add missing Suno songs & verify.
 
-Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.7 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
+Setup steps show progress while running. Inbox discovery and the selected inbox are saved for reopening the controls; use Find my inboxes again when that list changes. If Suno already says connected, you can continue without connecting again. In 0.6.8, a selection save and the next setup action run in order instead of dropping a quick click. An operation's button stays disabled until it finishes, preventing repeated playlist creation or writes. Read Pending and Add missing remain separate deliberate actions.
+
+Connect Suno requests authorization-site access from its own button. If a browser permission prompt is declined, no sign-in request starts. Failures stay beside Connect Suno and identify whether client registration or token exchange failed. The 0.6.8 extension uses the same 0.6.0 native protocol, so an already installed companion does not need reinstalling.
 
 For the original 0.6.0 build's generic **Failed to fetch**, try Enable inbox & Suno access, then Connect Suno before changing extensions. This checks a missing optional grant without refreshing a playing tab. If the error remains, note whether Suno's sign-in window opened. Do not share authorization URLs, codes or tokens. The 0.6.1 patch improves diagnosis; an account connection is not considered tested until a real sign-in and playlist read succeed.
 
@@ -42,7 +44,7 @@ Native Suno playback uses an exact rendered song row and a source-bound audio gu
 
 Current Suno has a blob-backed `active-audio-play` music element alongside a separate `silent-audio` helper. The adapter uses exactly one identified music element and excludes the helper from generic fallback selection. Duplicate or source-less identified elements remain held; it does not guess by DOM order, duration or the blob's random identifier.
 
-On explicit Play, a cold native player may need to begin loading before Suno updates its current-song state. The 0.6.7 guard permits a bounded preparation interval with native audio forced muted, then checks the selected song and source before allowing audible playback. Load never prepares or starts audio. Pause, stop, a changed selection and timeout cancel preparation. A readiness failure remains held and includes only short diagnostic facts, not private media URLs.
+On explicit Play, a cold native player may need to begin loading before Suno updates its current-song state. The 0.6.8 guard permits a bounded preparation interval with native audio forced muted, then checks the selected song and source before allowing audible playback. Load never prepares or starts audio. Pause, stop, a changed selection and timeout cancel preparation. A readiness failure remains held and includes only short diagnostic facts, not private media URLs.
 
 The controls verify the actual page/show lease and native guard before displaying manual playback status. Reloaded/inactive pages show a reconnect prompt, and current-song copy is unavailable until that connection is valid. Known native Suno playback buttons are routed through the managed show while it is active; this does not turn ordinary unlinked Suno playback into a managed show.
 
@@ -81,7 +83,7 @@ The existing public audio listener's v1 metadata schema accepts Suno identities 
 
 ## Current Suno row controls
 
-A live 0.6.3 trial staged the song successfully but could not find its native Play control. Read-only inspection of the real playlist confirmed that Suno uses a DIV with role=button and a Play label, inside a deeper role=group song row. Version 0.6.7 matches that actual accessible control while retaining exact song identity, row scope, ambiguity and disabled-state checks. It does not click the playlist-wide Play button to get around a missing row. The native guard remains in force.
+A live 0.6.3 trial staged the song successfully but could not find its native Play control. Read-only inspection of the real playlist confirmed that Suno uses a DIV with role=button and a Play label, inside a deeper role=group song row. Version 0.6.8 matches that actual accessible control while retaining exact song identity, row scope, ambiguity and disabled-state checks. It does not click the playlist-wide Play button to get around a missing row. The native guard remains in force.
 
 ## Verification and remaining acceptance
 
@@ -89,7 +91,9 @@ Automated checks cover FIFO/source/flag handling, exact sender/tab/lease checks,
 
 On November 15, the host confirmed loading 0.6.2, connecting through Suno authorization, creating a playlist and rebroadcasting that playing playlist with clean audio. This is a successful host-reported combined rehearsal of authorization, playlist creation, Suno playback and HQ publishing; it is not an instrumented latency or audio-quality measurement.
 
-The host also confirmed the complete 0.6.6 manual LP sequence: first Play, a held ending, Load next with the second entry paused, then Play starting that entry. Managed lyrics were missing and appeared after returning to ordinary Suno. The 0.6.7 lyrics correction passes 219 maintained checks and an isolated Chromium rehearsal with delayed native panels, plain lyrics, quiet staging, reload and YouTube clearing; the real host lyrics retry is still pending.
+The host also confirmed the complete 0.6.6 manual LP sequence: first Play, a held ending, Load next with the second entry paused, then Play starting that entry. Managed lyrics were missing and appeared after returning to ordinary Suno. The 0.6.7 retry still had missing lyrics, including after its visible Reload lyrics button was pressed.
+
+Version 0.6.8 corrects a reader difference reproduced in fresh Chromium: raw lyric newlines were collapsed by rendered-text extraction, causing valid plain lyrics to be rejected. The reader now preserves those raw newlines and gives the exact current-song panel priority over unrelated artwork or Copy controls. The released 0.6.7 reader fails those fixtures and the corrected reader passes; this is a reproduced defect, while the actual host retry remains pending. Quiet Load, manual ending and native audio guards are preserved. All 238 maintained checks pass, including setup sequencing, pending-write deduplication and cancellation after a failed selection.
 
 Remaining acceptance includes exact inbox-to-playlist membership/order and ongoing additions, a flagged Load without sound, AP autoplay, YouTube insertion/return and embed/gesture behavior, token renewal, and simultaneous Discord/HQ capture. The confirmed manual sequence does not establish those separate behaviors. Windows/macOS browser installation needs platform verification in addition to the isolated helper/CI checks.
 

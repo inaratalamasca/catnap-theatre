@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.8 development — November 15, 2026
+
+- Preserve raw newlines when reading plain native lyrics. A fresh Chromium differential reproduces the 0.6.7 failure with normal whitespace and confirms the corrected reader, including unrelated artwork and Copy controls.
+- Scope lyrics to the exact current-song heading and nearby native Styles control before considering unrelated page markers. Keep stale-song rejection and quiet/YouTube lyric clearing.
+- Repair inbox setup sequencing and selection state so quick successive setup clicks are retained and a stale Theatre does not make a saved inbox or playlist selection appear to fail. Playlist writes remain verified and are never blindly retried.
+- The host confirmed the 0.6.7 Reload lyrics button appears but lyrics stay missing. Real 0.6.8 lyrics and intake retries remain pending; accepted 0.6.6 audio/manual behavior is preserved.
+
 ## 0.6.7 development — November 15, 2026
 
 - Reuse the ordinary native song-details preparation and lyrics reader in managed mode. Open/refresh only the matching loaded Suno song; delayed callbacks and lyric repair cannot fill a staged-next or YouTube slot with the previous song's words.
