@@ -1,6 +1,6 @@
 /* Catnap host-only Inbox & show window, version 0.6.9.
- * Change summary: verified playback-mode display, prominent inbox totals and
- * ordered setup actions. Playback never queues extra starts.
+ * Change summary: local readiness, verified playback-mode display, prominent
+ * inbox totals and ordered setup actions. Playback never queues extra starts.
  */
 (() => {
   'use strict';
@@ -14,6 +14,27 @@
   function options(select,items,current,empty){
     const signature=JSON.stringify([items,current]);if(select.dataset.signature===signature){select.value=String(current||'');return;}
     select.dataset.signature=signature;select.replaceChildren(new Option(empty,''),...items.map(row=>new Option(row.name,String(row.id))));select.value=String(current||'');
+  }
+  function readinessDisplay(data,chosen){
+    const r=data.readiness||{},s=data.state,inboxOnly=globalThis.CatnapPackage?.inboxOnly===true,inUse=inboxOnly||Number.isInteger(s.playerTabId);
+    const step=(id,ready,message)=>{$(id).dataset.state=ready?'ready':'missing';label(id+'-label',message);};
+    const checked=Number.isFinite(r.inboxCheckedAt)?new Date(r.inboxCheckedAt).toLocaleTimeString():'';
+    $('integration-readiness').dataset.inUse=String(inUse);
+    $('suno-connection').dataset.state=!inUse?'inactive':r.sunoAuthorized?'ready':'missing';
+    $('inbox-connection').dataset.state=!inUse?'inactive':r.inboxAccessChecked?'ready':'missing';
+    label('suno-connection-label',!inUse?'Not in use':r.sunoAuthorized?'Authorized':'Not authorized');
+    label('inbox-connection-label',!inUse?'Not in use':r.inboxAccessChecked?`Ready · last access checked${checked?' '+checked:''}`:'Not ready · check setup below');
+    label('integration-use',!inUse?'Not in use · Suno controls playback. You can still prepare the inbox and playlist.':inboxOnly?'Playlist creator in use · Suno controls playback.':'Inbox show selected · setup readiness is shown below.');
+    step('ready-suno',r.sunoAuthorized,`Suno: ${r.sunoAuthorized?'Authorized · playlist verification is separate':'Not authorized'}`);
+    step('ready-uploader-permission',r.uploaderPermission,`Uploader permission: ${r.uploaderPermission?'Enabled':'Not enabled'}`);
+    step('ready-uploader-tab',r.uploaderTabOpen,`Uploader tab: ${r.uploaderTabOpen?'Selected and open':'Not selected or no longer open'}`);
+    step('ready-inbox',r.inboxSelected,`Inbox: ${r.inboxSelected?'Selected':'Not selected'}`);
+    step('ready-inbox-access',r.inboxAccessChecked,`Inbox read access: ${r.inboxAccessChecked?'Last checked'+(checked?' '+checked:''):'Not checked for this tab and inbox'}`);
+    step('ready-pending',r.pendingRead,`Pending submissions: ${r.pendingRead?'Read for this selection':'Not read for this selection'}`);
+    step('ready-playlist',r.playlistSelected,`Destination playlist: ${r.playlistSelected?'Selected':'Not selected'}`);
+    step('ready-verification',r.playlistVerified,`Playlist membership: ${r.playlistVerified?'Verified for this running order':'Not verified for this running order'}`);
+    step('ready-theatre-selection',!!chosen,`Theatre tab: ${chosen?'Selected and open':'Not selected'}`);
+    step('ready-theatre',!inboxOnly&&data.playbackHealth?.linked===true&&Number.isInteger(s.playerTabId),`Inbox playback connection: ${!inboxOnly&&data.playbackHealth?.linked===true&&Number.isInteger(s.playerTabId)?'Verified':'Not active or needs reconnecting'}`);
   }
   function controlMode(data,chosen){
     const s=data.state,inboxOnly=globalThis.CatnapPackage?.inboxOnly===true,bound=!inboxOnly&&Number.isInteger(s.playerTabId),linked=bound&&data.playbackHealth?.linked===true;
@@ -42,6 +63,7 @@
     const chosen=playerChoice!==undefined?(available(playerChoice)?playerChoice:null):[s.playerTabId,data.suggestedTabId].find(available);
     options($('player-tab'),playerTabs.map(t=>({id:t.id,name:t.title})),chosen,'Choose your playing Theatre tab');
     controlMode(data,chosen);
+    readinessDisplay(data,chosen);
     if(s.inboxes)inboxes=s.inboxes;
     const availableInboxes=[...(inboxes[s.mode]||[])];
     if(s.inboxId&&!availableInboxes.some(row=>row.id===s.inboxId))availableInboxes.push({id:s.inboxId,name:s.inboxName||'Selected inbox · Find my inboxes to verify'});
@@ -53,7 +75,8 @@
     if(document.activeElement!==$('warning-seconds'))$('warning-seconds').value=s.warningSeconds;
     const read=s.lastRead,readTime=read?new Date(read.at):null;
     label('inbox-status',read?`Inbox Submissions: ${read.pending} Pending · ${read.held} held · (${Number.isNaN(readTime.getTime())?'time unavailable':readTime.toLocaleTimeString()})`:'Inbox Submissions: Not read yet');
-    label('inbox-error',s.error||'');$('inbox-error').hidden=!s.error;
+    const inboxError=[...new Set([s.error,s.inboxAccessError].filter(Boolean))].join(' ');
+    label('inbox-error',inboxError);$('inbox-error').hidden=!inboxError;
     $('playback-status').textContent=linked?`${data.playbackHealth.phase||p.phase||'Ready'}${p.error?' · '+p.error:''} · ${s.mode==='ap'&&s.autoplay?'AP autoplay':'Manual advance'}`:(data.playbackHealth?.reason||'Choose your Suno tab, then Load or Play to connect the show.');
     $('autoplay-help').textContent=linked?(s.mode==='ap'&&s.autoplay?'AP autoplay is on. The next inbox entry starts when the current song ends. Load next still stages a song quietly.':'Manual mode stops at the end. Load next changes artwork and warning without playing audio.'):'Playback is not connected. Load or Play reconnects the selected Theatre; ordinary Suno playback is not yet controlled.';
     $('current-title').textContent=entry?entry.title:'No song loaded';
@@ -63,7 +86,7 @@
     $('current-warning').dataset.warning=entry?.disclaimer||'unknown';
     for(const id of ['copy-playing','copy-link','copy-context','repeat-warning'])$(id).disabled=!entry;
     $('reload-lyrics').disabled=!entry||(p.source||entry.preferredSource)!=='suno';
-    $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno connected. Playlist changes require your explicit action.':data.suno.reconnectRequired?'Suno needs updated permissions. Click Connect Suno and approve account profile and library access.':'Suno not connected. Connect Suno to authorize playlist changes.');
+    $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno authorized. Playlist changes require your explicit action.':data.suno.reconnectRequired?'Suno needs updated permissions. Click Connect Suno and approve account profile and library access.':'Suno not authorized. Connect Suno to authorize playlist changes.');
     $('playlist-status').textContent=s.lastPlaylistSync?`Last verified: ${s.lastPlaylistSync.confirmed?.length??s.lastPlaylistSync.confirmed??0} confirmed · ${s.lastPlaylistSync.missing?.length||0} missing`:'';
     $('queue-count').textContent=`(${s.entries.length})`;
     const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason]),entry?.id,s.playerTabId,Number($('player-tab').value)]);
@@ -141,7 +164,7 @@
       await requireAccess(request,'Suno connection access was not granted. Click Connect Suno to try again.');
       await send('connect-suno');sunoMessage='';
     }catch(error){sunoMessage=error.message;throw error;}
-    },'Suno connected.','Connecting to Suno…');
+    },'Suno authorized.','Connecting to Suno…');
   };
   $('disconnect-suno').onclick=()=>setupButton('disconnect-suno',async()=>{await send('disconnect-suno');sunoMessage='';},'Suno disconnected.','Disconnecting Suno…');
   $('playlists').onclick=()=>setupButton('playlists',async()=>{playlists=await send('playlists');},'Choose a destination playlist.','Loading your Suno playlists…');

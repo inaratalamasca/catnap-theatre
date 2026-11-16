@@ -16,10 +16,10 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:playerInitiallySelected?22:null,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
-  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant,finishPlay,poll;
+  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant,finishPlay,poll,readinessOverrides={};
   const delayed=new Map(),failures=new Map();
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
-  const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
+  const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},readiness:{sunoAuthorized:sunoConnected,uploaderPermission:true,uploaderTabOpen:true,inboxSelected:!!state.inboxId,inboxAccessChecked:true,inboxCheckedAt:1,pendingRead:true,playlistSelected:!!state.playlistId,playlistVerified:true,...readinessOverrides},version:'0.6.0'});
   w.setInterval=fn=>{poll=fn;return 0;};
   w.CatnapPackage={inboxOnly};
   w.chrome={permissions:{request:async value=>{permissions.push(value);if(pendingPermission){const request=pendingPermission;pendingPermission=null;return request;}return permissionGranted;}},runtime:{sendMessage:async message=>{
@@ -51,6 +51,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   Object.defineProperty(w.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{if(clipboardDenied)throw Error('Clipboard permission denied');copies.push(value);}}});
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
   return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),
+    setReadiness:value=>{readinessOverrides=value;},
     rejectNext:(action,error)=>failures.set(action,error),
     holdPermission(){let release;pendingPermission=new Promise(resolve=>{release=resolve;});return release;},
     holdNext(action){let release;delayed.set(action,new Promise(resolve=>{release=resolve;}));return release;},
@@ -137,6 +138,44 @@ test('Inbox-only always explains that Suno controls playback and exposes no mana
   assert.equal(f.element('control-mode-title').textContent,'Suno playlist controls');
   assert.match(f.element('control-mode-detail').textContent,/extension updates playlists.*Suno controls song playback/);
   assert.equal(f.element('bound-player').hidden,true);assert.equal(f.element('selected-player').hidden,true);
+});
+
+test('active integration readiness says Authorized separately from unverified playlist membership',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());f.setReadiness({playlistVerified:false});await f.poll();
+  assert.equal(f.element('suno-connection-label').textContent,'Authorized');assert.equal(f.element('suno-connection').dataset.state,'ready');
+  assert.match(f.element('inbox-connection-label').textContent,/Ready · last access checked/);
+  assert.match(f.element('ready-suno-label').textContent,/Authorized · playlist verification is separate/);
+  assert.equal(f.element('ready-verification').dataset.state,'missing');assert.match(f.element('ready-verification-label').textContent,/Not verified/);
+  assert.equal(f.element('ready-verification').querySelector('.status-dot').getAttribute('aria-hidden'),'true');
+  assert.doesNotMatch(f.element('suno-connection-label').textContent,/connected|working/i);
+});
+
+test('ordinary Suno mode greys the top integrations without disabling preparation or clearing detailed readiness',async t=>{
+  const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('suno-connection').dataset.state,'inactive');assert.equal(f.element('inbox-connection').dataset.state,'inactive');
+  assert.equal(f.element('suno-connection-label').textContent,'Not in use');assert.equal(f.element('inbox-connection-label').textContent,'Not in use');
+  assert.match(f.element('integration-use').textContent,/still prepare/);
+  assert.equal(f.element('ready-suno').dataset.state,'ready');assert.equal(f.element('ready-pending').dataset.state,'ready');
+  assert.equal(f.element('discover').disabled,false);assert.equal(f.element('import').disabled,false);assert.equal(f.element('connect-suno').disabled,false);
+  await f.click('discover');assert.equal(f.messages.filter(message=>message.action==='discover').length,1);
+  assert.equal(f.messages.some(message=>['bind-player','play'].includes(message.action)),false);
+});
+
+test('Inbox-only keeps service readiness active while explaining that the creator does not control playback',async t=>{
+  const f=await fixture({inboxOnly:true,linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('integration-readiness').dataset.inUse,'true');assert.equal(f.element('suno-connection-label').textContent,'Authorized');
+  assert.match(f.element('integration-use').textContent,/Playlist creator in use · Suno controls playback/);
+  assert.equal(f.element('theatre-playback').hidden,true);
+});
+
+test('missing or failed inbox readiness has text labels and never removes the last successful count',async t=>{
+  const f=await fixture({linked:false});t.after(()=>f.dom.window.close());
+  f.setReadiness({uploaderPermission:false,uploaderTabOpen:false,inboxSelected:false,inboxAccessChecked:false,inboxCheckedAt:null,pendingRead:false,playlistSelected:false,playlistVerified:false});
+  f.state().inboxAccessError='Fixture access check failed';await f.poll();
+  for(const id of ['ready-uploader-permission','ready-uploader-tab','ready-inbox','ready-inbox-access','ready-pending','ready-playlist','ready-verification','ready-theatre'])assert.equal(f.element(id).dataset.state,'missing',id);
+  assert.match(f.element('ready-inbox-access-label').textContent,/Not checked/);assert.match(f.element('ready-uploader-permission-label').textContent,/Not enabled/);
+  assert.equal(f.element('inbox-connection').dataset.state,'missing');assert.match(f.element('inbox-connection-label').textContent,/Not ready/);
+  assert.match(f.element('inbox-status').textContent,/2 Pending · 0 held/);assert.equal(f.element('inbox-error').textContent,'Fixture access check failed');
 });
 
 test('host notes and uploader names render as text, with an explicit disclaimer badge',async t=>{
@@ -228,15 +267,15 @@ test('authorization error stays beside Connect Suno after background status refr
   assert.equal(f.element('status').textContent,f.element('suno-status').textContent);
   await f.change('show-name','Another fixture name');
   assert.equal(f.element('suno-status').textContent,'Suno client registration could not reach Suno.');
-  await f.click('disconnect-suno');assert.match(f.element('suno-status').textContent,/Suno not connected/);
+  await f.click('disconnect-suno');assert.match(f.element('suno-status').textContent,/Suno not authorized/);
 });
 
 
 test('successful connection status follows later worker authorization loss',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
-  await f.click('connect-suno');assert.match(f.element('suno-status').textContent,/Suno connected/);
+  await f.click('connect-suno');assert.match(f.element('suno-status').textContent,/Suno authorized/);
   f.setConnected(false);await f.change('show-name','Refresh fixture');
-  assert.match(f.element('suno-status').textContent,/Suno not connected/);
+  assert.match(f.element('suno-status').textContent,/Suno not authorized/);
 });
 
 
@@ -244,7 +283,7 @@ test('an older grant prompts updated consent and clears that prompt after succes
   const f=await fixture({legacyGrant:true});t.after(()=>f.dom.window.close());
   assert.match(f.element('suno-status').textContent,/updated permissions.*Connect Suno/);
   await f.click('connect-suno');
-  assert.match(f.element('suno-status').textContent,/Suno connected/);
+  assert.match(f.element('suno-status').textContent,/Suno authorized/);
   assert.doesNotMatch(f.element('suno-status').textContent,/updated permissions/);
 });
 

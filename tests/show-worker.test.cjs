@@ -50,6 +50,7 @@ function fixture(options = {}) {
     tabs:{query:async()=>[...tabMap.values()].map(clone),get:async id=>{if(!tabMap.has(id))throw Error('No such fixture tab');return clone(tabMap.get(id));},sendMessage:async(tabId,message,target)=>{
       calls.messages.push(clone({tabId,message,target}));
       if(message.target==='catnap-inbox') {
+        if(options.inboxError)return {ok:false,error:options.inboxError};
         if(message.action==='discover')return {ok:true,data:{inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP',mode:'lp'}],ap:[{id:'fixture-inbox',name:'Fixture AP',mode:'ap'}]}}};
         if(message.action==='read')return {ok:true,data:options.inboxData?clone(options.inboxData):{inbox:{id:'fixture-inbox',name:'Fixture '+message.mode.toUpperCase(),mode:message.mode},summary:{pending:(options.rows||[]).length},rows:clone(options.rows||[])}};
       }
@@ -78,7 +79,7 @@ function fixture(options = {}) {
     windows:{create:async spec=>{calls.windows.push(clone(spec));return {id:100};},update:async()=>({id:100})}
   };
   const CatnapSuno = {
-    status:async()=>({connected:true}),connect:async()=>({connected:true}),disconnect:async()=>({connected:false}),listPlaylists:async()=>[],
+    status:async()=>({connected:options.sunoAuthorized!==false}),connect:async()=>({connected:true}),disconnect:async()=>({connected:false}),listPlaylists:async()=>[],
     createPlaylist:async(name,visibility)=>{calls.mcp.push({operation:'create',name,visibility});return {id:PLAYLIST,name,visibility};},
     reconcilePlaylist:async(id,ids,bindings)=>{
       calls.mcp.push({operation:'reconcile',id,ids:[...ids],bindings});
@@ -108,6 +109,69 @@ test('private host controls reject unrelated senders while own extension popup/t
   assert.equal((await f.control('status',{}, {...f.host,tab:{id:100}})).ok,true);
   assert.equal(f.calls.mcp.length,0);
   assert.equal(f.calls.messages.length,0);
+});
+
+test('readiness status uses local authorization, origin permission and tab facts without provider probes',async()=>{
+  const f=fixture({permission:false,sunoAuthorized:false});
+  const response=await f.control('status');assert.equal(response.ok,true);
+  assert.deepEqual(response.data.readiness,{sunoAuthorized:false,uploaderPermission:false,uploaderTabOpen:true,inboxSelected:true,inboxAccessChecked:false,inboxCheckedAt:null,pendingRead:false,playlistSelected:false,playlistVerified:false});
+  assert.deepEqual(f.calls.permissions,[{origins:['https://uploader.aiu.fm/*']}]);
+  assert.equal(f.calls.mcp.length,0);assert.equal(f.calls.fetch.length,0);assert.equal(f.calls.scripts.length,0);assert.equal(f.calls.messages.length,0);
+  const before=f.calls.permissions.length;
+  assert.equal((await f.control('status',{}, {...f.host,id:'untrusted'})).ok,false);assert.equal(f.calls.permissions.length,before);
+});
+
+test('discovery and Pending read establish distinct readiness evidence for the chosen tab and inbox',async()=>{
+  const f=fixture({rows:[row('one')]});
+  assert.equal((await f.control('status')).data.readiness.inboxAccessChecked,false,'an open tab does not prove sign-in or access');
+  await f.control('discover');let r=(await f.control('status')).data.readiness;
+  assert.equal(r.inboxAccessChecked,true);assert.equal(r.pendingRead,false);assert.ok(Number.isFinite(r.inboxCheckedAt));
+  await f.control('import');r=(await f.control('status')).data.readiness;
+  assert.equal(r.pendingRead,true);assert.equal(f.state().lastRead.context.inboxId,'fixture-inbox');assert.equal(f.state().lastRead.context.uploaderTabId,8);
+  assert.equal(Object.values(r).every(value=>typeof value==='boolean'||typeof value==='number'||value===null),true,'readiness exports only facts, not account payloads or notes');
+  f.tabMap.set(8,{id:8,url:'https://uploader.aiu.fm.evil.invalid/',title:'Wrong origin'});
+  r=(await f.control('status')).data.readiness;assert.equal(r.uploaderTabOpen,false);assert.equal(r.inboxAccessChecked,false);assert.equal(r.pendingRead,false);
+});
+
+test('a failed latest discovery or read invalidates ready access while preserving successful counters',async()=>{
+  for(const action of ['discover','import']){
+    const options={rows:[row('saved')]},f=fixture(options);await f.control('import');
+    const prior=f.state().lastRead;assert.equal((await f.control('status')).data.readiness.pendingRead,true);
+    options.inboxError='Fixture session no longer has inbox access';
+    assert.equal((await f.control(action)).ok,false);
+    const r=(await f.control('status')).data.readiness;assert.equal(r.inboxAccessChecked,false);assert.equal(r.pendingRead,false);
+    assert.deepEqual(f.state().lastRead,prior);assert.match(f.state().inboxAccessError,/no longer has inbox access/);
+  }
+});
+
+test('browser startup requires a new inbox access check but keeps historical submission counts',async()=>{
+  const f=fixture({rows:[row('saved')]});await f.control('import');const lastRead=f.state().lastRead;
+  assert.equal((await f.control('status')).data.readiness.inboxAccessChecked,true);
+  await f.startup();assert.equal((await f.control('status')).data.readiness.inboxAccessChecked,false);
+  assert.deepEqual(f.state().lastRead,lastRead);assert.equal(f.calls.mcp.length,0);
+});
+
+test('changing a target clears current read or playlist evidence, while legacy snapshots never imply readiness',async()=>{
+  const context={uploaderTabId:8,inboxId:'fixture-inbox',mode:'lp'};
+  const evidence={playlistId:PLAYLIST,inboxAccess:{kind:'read',...context,at:1},lastRead:{at:1,pending:0,held:0,context},lastPlaylistSync:{at:1,confirmed:0,missing:[],failures:[],context:{...context,playlistId:PLAYLIST,sunoIds:[]}}};
+  for(const settings of [{uploaderTabId:18},{inboxId:'other-inbox'},{mode:'ap'},{playlistId:NEXT_PLAYLIST}]){
+    const f=fixture({state:evidence});f.tabMap.set(18,{id:18,url:'https://uploader.aiu.fm/',title:'Other uploader'});
+    assert.equal((await f.control('status')).data.readiness.playlistVerified,true);
+    assert.equal((await f.control('configure',{settings})).ok,true);
+    const r=(await f.control('status')).data.readiness;assert.equal(r.playlistVerified,false);
+    if(!settings.playlistId)assert.equal(r.pendingRead,false);
+  }
+  const legacy=fixture({state:{playlistId:PLAYLIST,lastRead:{at:1,pending:1,held:0},lastPlaylistSync:{at:1,confirmed:1,missing:[],failures:[]}}});
+  const r=(await legacy.control('status')).data.readiness;assert.equal(r.pendingRead,false);assert.equal(r.playlistVerified,false);
+});
+
+test('new inbox songs invalidate playlist verification until the explicit sync verifies the current source IDs',async()=>{
+  const context={uploaderTabId:8,inboxId:'fixture-inbox',mode:'lp'};
+  const f=fixture({state:{playlistId:PLAYLIST,entries:[entry('one')],lastPlaylistSync:{at:1,confirmed:1,missing:[],failures:[],context:{...context,playlistId:PLAYLIST,sunoIds:[SONG]}}},rows:[row('one'),row('two',{suno_url:song(SECOND)})]});
+  assert.equal((await f.control('status')).data.readiness.playlistVerified,true);
+  await f.control('import');let r=(await f.control('status')).data.readiness;assert.equal(r.pendingRead,true);assert.equal(r.playlistVerified,false);assert.equal(f.calls.mcp.length,0);
+  await f.control('sync-playlist');r=(await f.control('status')).data.readiness;assert.equal(r.playlistVerified,true);
+  assert.equal(f.calls.mcp.length,1);assert.deepEqual(f.state().lastPlaylistSync.context.sunoIds,[SONG,SECOND]);
 });
 
 test('uploader reads inject their core/adapter into only the selected authorized origin and include show mode', async () => {
