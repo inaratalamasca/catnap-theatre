@@ -1,24 +1,39 @@
-/* Catnap managed show coordinator, version 0.7.0.
+/* Catnap managed show coordinator, version 0.8.0.
  * Change summary: independently staged mixed-source entries, manual LP endings,
- * opt-in AP autoplay, local order/holds, timed flags and bound playback events.
+ * opt-in AP autoplay, fair ready-tail rotation and bound completion history.
  * This module performs no network, DOM or account operation itself. Its adapter
  * MUST enforce an inaudible stage/stop boundary before native media is selected.
  */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedPlayer=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const SCRIPT_VERSION='0.7.0';
+  const SCRIPT_VERSION='0.8.0';
   const clean=value=>typeof value==='string'?value.trim():'';
   const identity=entry=>clean(entry?.entryId)||clean(entry?.id);
   const wasPlayed=entry=>typeof entry?.playedAt==='number'&&Number.isFinite(entry.playedAt)&&entry.playedAt>=0;
-  const isHeld=entry=>entry?.state==='held'||entry?.hostHeld===true||entry?.effectiveHeld===true;
-  function localHolds(queue){
-    const known=new Map(queue.map(entry=>[identity(entry),entry]));
-    return queue.map(entry=>{
+  const isHeld=entry=>entry?.state==='held'||entry?.state==='declined'||entry?.hostHeld===true||entry?.effectiveHeld===true;
+  const sequence=(entry,field)=>Number.isInteger(entry?.[field])&&entry[field]>0?entry[field]:null;
+  function completed(queue,ids,now){
+    const out=queue.map(entry=>({...entry})),known=new Map(out.map(entry=>[identity(entry),entry]));let order=out.reduce((max,entry)=>Math.max(max,sequence(entry,'playedOrder')||0),0);
+    for(const entry of out.filter(wasPlayed).filter(entry=>!sequence(entry,'playedOrder')).sort((a,b)=>a.playedAt-b.playedAt))entry.playedOrder=++order;
+    for(const id of ids){const entry=known.get(id);if(entry&&!wasPlayed(entry)&&entry.state!=='declined'){entry.playedAt=now;entry.playedOrder=++order;}}
+    return out;
+  }
+  function localHolds(queue,{protectedId=null}={}){
+    const out=completed(queue,[],0),known=new Map(out.map(entry=>[identity(entry),entry]));
+    let release=out.reduce((max,entry)=>Math.max(max,sequence(entry,'releaseOrder')||0),0);const newlyReleased=[];
+    for(const entry of out){
       const previous=entry.repeatPredecessorId?known.get(entry.repeatPredecessorId):null;
-      const repeat=!!entry.repeatPredecessorId&&entry.repeatHoldOverride!==true&&!wasPlayed(entry)&&!wasPlayed(previous);
-      const reason=entry.state==='held'?(entry.holdReason||'This submission has no usable source.'):entry.hostHeld===true?'Held by host.':repeat?'Waiting for this uploader’s previous submission to finish.':'';
-      return {...entry,effectiveHeld:!!reason,effectiveHoldReason:reason};
-    });
+      const repeat=!!entry.repeatPredecessorId&&entry.repeatHoldOverride!==true&&!wasPlayed(entry)&&!wasPlayed(previous)&&identity(entry)!==protectedId;
+      const reason=entry.state==='declined'?'Declined in uploader.':entry.state==='held'?(entry.holdReason||'This submission has no usable source.'):entry.hostHeld===true?'Held by host.':repeat?'Waiting for this uploader’s previous submission to finish.':'';
+      entry.effectiveHeld=!!reason;entry.effectiveHoldReason=reason;
+      if(previous&&wasPlayed(previous)&&!wasPlayed(entry)&&!entry.effectiveHeld&&entry.repeatHoldOverride!==true&&identity(entry)!==protectedId&&entry.repeatReleasedFor!==identity(previous))newlyReleased.push(entry);
+    }
+    newlyReleased.sort((a,b)=>(sequence(known.get(a.repeatPredecessorId),'playedOrder')||0)-(sequence(known.get(b.repeatPredecessorId),'playedOrder')||0));
+    for(const entry of newlyReleased){entry.repeatReleasedFor=entry.repeatPredecessorId;entry.releaseOrder=++release;}
+    const released=new Set(newlyReleased.map(identity));
+    return [...out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder),...out.filter(entry=>!wasPlayed(entry)&&identity(entry)===protectedId),
+      ...out.filter(entry=>!wasPlayed(entry)&&identity(entry)!==protectedId&&!entry.effectiveHeld&&!released.has(identity(entry))),...newlyReleased,
+      ...out.filter(entry=>!wasPlayed(entry)&&identity(entry)!==protectedId&&entry.effectiveHeld)];
   }
   function playback(entry){
     const provider=clean(entry?.playbackSource||entry?.preferredSource||entry?.source).toLowerCase();
@@ -47,7 +62,7 @@
       this.queue=[];this.showId='';this.mode='lp';this.autoplay=false;this.index=-1;this.phase='idle';this.generation=0;this.occurrenceId='';this.error='';this.warning=null;this.warningTimer=null;this.warningSeconds=warningDuration(warningSeconds);this.disposed=false;this.started=0;this.playAttempt=0;this.needsStage=true;this.playPreviousPhase='ready';
     }
     firstPlayableIndex(){return this.queue.findIndex(entry=>!isHeld(entry)&&!wasPlayed(entry));}
-    nextIndex(direction=1){if(this.index<0)return direction===1?this.firstPlayableIndex():-1;for(let index=this.index+direction;index>=0&&index<this.queue.length;index+=direction)if(!isHeld(this.queue[index]))return index;return -1;}
+    nextIndex(direction=1){if(this.index<0)return direction===1?this.firstPlayableIndex():-1;for(let index=this.index+direction;index>=0&&index<this.queue.length;index+=direction)if(!isHeld(this.queue[index])&&(direction<0||!wasPlayed(this.queue[index])))return index;return -1;}
     snapshot(){return {version:SCRIPT_VERSION,showId:this.showId,mode:this.mode,autoplay:this.autoplay,index:this.index,nextIndex:this.nextIndex(),current:this.queue[this.index]||null,queue:this.queue.slice(),phase:this.phase,generation:this.generation,occurrenceId:this.occurrenceId,error:this.error,warning:this.warning?{...this.warning}:null,warningSeconds:this.warningSeconds};}
     emit(){const state=this.snapshot();this.onState(state);return state;}
     ensure(){if(this.disposed)throw Error('This show coordinator has closed.');}
@@ -71,18 +86,23 @@
     }
     appendQueue(entries){
       this.ensure();if(!Array.isArray(entries))throw Error('New entries must be a list.');
-      const known=new Map(this.queue.map(entry=>[identity(entry),entry])),seen=new Set(),next=[],currentId=identity(this.queue[this.index]);
+      const known=new Map(this.queue.map(entry=>[identity(entry),entry])),incoming=new Map(entries.map(entry=>[identity(entry),entry])),seen=new Set(),next=[],currentId=identity(this.queue[this.index]);
+      const awaitingCompletion=this.queue.some(entry=>wasPlayed(entry)&&(!wasPlayed(incoming.get(identity(entry)))||!sequence(incoming.get(identity(entry)),'playedOrder')));
       for(const entry of entries){const id=identity(entry);if(!id||seen.has(id))throw Error('Each submission needs its own unique show entry ID.');seen.add(id);const previous=known.get(id),updated={...previous,...entry};if(previous){
         // Updating an inbox note/flag must never retarget the prepared/playing
         // source. The host can deliberately reload to apply a source edit.
         if(id===currentId&&this.phase!=='idle')for(const key of ['id','entryId','source','playbackSource','preferredSource','sunoUrl','sunoId','sunoShortCode','youtubeUrl','youtubeId','sources','url','state','hostHeld','repeatHoldOverride','repeatPredecessorId']){if(Object.hasOwn(previous,key))updated[key]=previous[key];else delete updated[key];}
         // An older worker publication may arrive after local completion. Never
         // erase that completion while waiting for the trusted observation save.
-        if(wasPlayed(previous))updated.playedAt=previous.playedAt;
+        if(wasPlayed(previous)){updated.playedAt=previous.playedAt;updated.playedOrder=previous.playedOrder;}
+        if(awaitingCompletion&&previous.repeatReleasedFor){updated.repeatReleasedFor=previous.repeatReleasedFor;updated.releaseOrder=previous.releaseOrder;}
       }next.push(updated);}
       for(const entry of this.queue)if(!seen.has(identity(entry)))next.push({...entry});
       if(next.length>1000)throw Error('The show queue limit was reached.');
-      this.queue=localHolds(next);this.index=currentId?this.queue.findIndex(entry=>identity(entry)===currentId):-1;
+      // A worker update that predates our local completion cannot undo its
+      // ready-tail rotation while the completion observation is still in flight.
+      if(awaitingCompletion){const rank=new Map(this.queue.map((entry,index)=>[identity(entry),index]));next.sort((a,b)=>(rank.get(identity(a))??1000)-(rank.get(identity(b))??1000));}
+      this.queue=localHolds(next,{protectedId:currentId});this.index=currentId?this.queue.findIndex(entry=>identity(entry)===currentId):-1;
       return this.emit();
     }
     async load(index){
@@ -128,7 +148,7 @@
     async ended(token){
       this.ensure();if(token!==this.generation||!['playing','starting'].includes(this.phase))return this.snapshot();
       const generation=this.generation;this.phase='ending';this.emit();await this.adapter.stopAll({generation});
-      if(generation!==this.generation)return this.snapshot();this.needsStage=true;this.queue[this.index]={...this.queue[this.index],playedAt:this.clock.now()};this.queue=localHolds(this.queue);this.phase='ended';this.emit();
+      if(generation!==this.generation)return this.snapshot();this.needsStage=true;const finishedId=identity(this.queue[this.index]);this.queue=localHolds(completed(this.queue,[finishedId],this.clock.now()));this.index=this.queue.findIndex(entry=>identity(entry)===finishedId);this.phase='ended';this.emit();
       if(this.autoplay&&this.mode==='ap'&&this.nextIndex()>=0){await this.loadNext();if(this.phase==='ready')return this.play();}
       return this.snapshot();
     }

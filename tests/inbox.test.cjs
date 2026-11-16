@@ -155,6 +155,49 @@ test('manual Release permits a rare three-part chain across refresh without rele
  assert.deepEqual(queue.slice(0,3).map(e=>e.effectiveHeld),[false,false,false]);
  assert.equal(queue.find(e=>e.submissionId==='other2').effectiveHeld,true);
 });
+const fairEntries=names=>Core.mergeEntries([],names.map(name=>normalize([providerRow(name,{uploader_id:name[0],title:name})]).entries[0]));
+const readyIds=queue=>Core.playlistEntries(queue).map(entry=>entry.submissionId);
+test('fair rotation appends only the exact finished predecessor successor behind the current accepted tail',()=>{
+ let queue=Core.applyQueuePolicy(fairEntries(['X1','Y1','X2','Z1','X3']),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1']);
+ assert.equal(queue.find(e=>e.submissionId==='X3').repeatPredecessorId,inboxId+':X2');
+ queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true,protectedEntryId:inboxId+':X1'});
+ assert.equal(queue.find(e=>e.submissionId==='X2').effectiveHeld,true,'Load alone is not a finish');
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['W1'])),{repeatUploaderHold:true,protectedEntryId:inboxId+':X1'});
+ queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':X1'],{now:100}),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','W1','X2']);
+ assert.equal(queue.find(e=>e.submissionId==='X3').effectiveHeld,true);
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['V1'])),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','W1','X2','V1'],'later arrival follows the already-admitted X2');
+ for(const name of ['Y1','Z1','W1','X2'])queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':'+name],{now:200}),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','W1','X2','V1','X3']);
+ const before=JSON.stringify(queue);queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':X2',inboxId+':X1'],{now:999}),{repeatUploaderHold:true});
+ assert.equal(JSON.stringify(queue),before,'duplicate completion cannot rotate again or rewrite first played order');
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['X1','Y1','X2','Z1','X3','W1','V1'])),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','W1','X2','V1','X3']);
+});
+test('actual completion order, late repeats and manual movements survive without FIFO reconstruction',()=>{
+ let queue=Core.applyQueuePolicy(fairEntries(['X1','Y1','Z1']),{repeatUploaderHold:true});
+ queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':Z1',inboxId+':X1'],{now:100}),{repeatUploaderHold:true});
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['X2','W1'])),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['Z1','X1','Y1','W1','X2'],'a late eligible repeat joins the tail after accepted arrivals');
+ const released=queue.find(e=>e.submissionId==='X2');assert.equal(released.repeatReleasedFor,inboxId+':X1');
+ queue=[...queue.filter(e=>e!==released).slice(0,2),released,...queue.filter(e=>e!==released).slice(2)];
+ queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true});assert.deepEqual(readyIds(queue),['Z1','X1','X2','Y1','W1'],'host move is not undone by repeat policy');
+ assert.deepEqual(queue.filter(Core.wasPlayed).map(e=>e.playedOrder),[1,2]);
+});
+test('explicit manual Hold never auto-releases and declined repeats do not block their next surviving sibling',()=>{
+ let queue=fairEntries(['X1','Y1','X2','Z1','X3']);queue.find(e=>e.submissionId==='X2').hostHeld=true;
+ queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':X1'],{now:100}),{repeatUploaderHold:true});
+ assert.equal(queue.find(e=>e.submissionId==='X2').effectiveHeld,true);assert.equal(queue.find(e=>e.submissionId==='X3').effectiveHeld,true);
+ queue=Core.applyQueuePolicy(Core.releaseEntry(queue,inboxId+':X2'),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','X2']);
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['X1','Y1','X2','Z1','X3'])),{repeatUploaderHold:true});
+ assert.equal(queue.find(e=>e.submissionId==='X2').repeatHoldOverride,true);
+ queue.find(e=>e.submissionId==='X2').state='declined';queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true});
+ assert.equal(queue.find(e=>e.submissionId==='X3').repeatPredecessorId,inboxId+':X1');
+ assert.deepEqual(readyIds(queue),['X1','Y1','Z1','X3']);assert.equal(Core.isHeld(queue.find(e=>e.submissionId==='X2')),true);
+});
 
 test('discovery uses provider show/personal IDs without synthesizing a second managed LP', () => {
   const result = Core.discoverInboxes({hosts: [
@@ -226,7 +269,7 @@ test('reader rejects unauthenticated, undiscovered, non-JSON and oversized data 
   await assert.rejects(mockClient({'/me': response({}, 429)}).client.discover(), /rate limited/);
 });
 
-test('message adapter ignores foreign senders and never implements a mutation operation', () => {
+test('message adapter ignores foreign senders and rejects unknown or unapproved mutation operations', () => {
   let listener;
   const chrome = {runtime: {id: 'fixture-extension', onMessage: {addListener: callback => { listener = callback; }}}};
   Reader.install(chrome, Reader.ORIGIN);

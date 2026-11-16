@@ -1,6 +1,6 @@
-/* Catnap Inbox data model, version 0.7.0.
+/* Catnap Inbox data model, version 0.8.0.
  * Change summary: independent Pending-only FIFO normalization, retained external
- * sources, persistent local order/holds and private optional repeat-uploader policy.
+ * sources, actual completion order and fair repeat rotation at the ready tail.
  * Pure functions only: no account access, storage, playback or remote writes.
  */
 (function (root, factory) {
@@ -9,7 +9,7 @@
   else root.CatnapInboxCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const VERSION = '0.7.0';
+  const VERSION = '0.8.0';
   const MAX_ROWS = 1000;
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   const HOST_ID = /^[A-Za-z0-9_.-]{1,100}$/;
@@ -146,6 +146,9 @@
       const source=prior||{};
       return {...entry,hostHeld:source.hostHeld===true,repeatHoldOverride:source.repeatHoldOverride===true,
         playedAt:typeof source.playedAt==='number'&&Number.isFinite(source.playedAt)&&source.playedAt>=0?source.playedAt:null,
+        playedOrder:Number.isInteger(source.playedOrder)&&source.playedOrder>0?source.playedOrder:null,
+        releaseOrder:Number.isInteger(source.releaseOrder)&&source.releaseOrder>0?source.releaseOrder:null,
+        repeatReleasedFor:typeof source.repeatReleasedFor==='string'?source.repeatReleasedFor:null,
         intakeOrder:Number.isInteger(source.intakeOrder)&&source.intakeOrder>=0?source.intakeOrder:nextOrder++};
     };
     for (const entry of existing) {
@@ -156,7 +159,7 @@
       const next = {...entry, ...fresh};
       // Re-reading an inbox is not permission to restart/reopen a played item.
       if (entry.state !== 'queued' && entry.state !== 'held') next.state = entry.state;
-      if (ACTIVE_STATES.has(entry.state)||entry.id===activeEntryId) {
+      if (ACTIVE_STATES.has(entry.state)||entry.id===activeEntryId||wasPlayed(entry)) {
         for (const field of ['sunoUrl', 'sunoId', 'sunoShortCode', 'youtubeUrl', 'youtubeId', 'preferredSource']) next[field] = entry[field];
         if(entry.id===activeEntryId){next.state=entry.state;next.holdReason=entry.holdReason;}
       }
@@ -169,6 +172,45 @@
     return merged;
   }
   const wasPlayed=entry=>typeof entry?.playedAt==='number'&&Number.isFinite(entry.playedAt)&&entry.playedAt>=0;
+  const isHeld=entry=>entry?.state==='held'||entry?.state==='declined'||entry?.hostHeld===true||entry?.effectiveHeld===true;
+  const sequence=(entry,field)=>Number.isInteger(entry?.[field])&&entry[field]>0?entry[field]:null;
+  function completeEntries(entries,orderedIds,{now=Date.now()}={}){
+    if(!Array.isArray(entries)||entries.length>MAX_ROWS||!Array.isArray(orderedIds)||orderedIds.length>MAX_ROWS||typeof now!=='number'||!Number.isFinite(now)||now<0)throw Error('Invalid show completion history.');
+    const out=entries.map(entry=>({...entry})),known=new Map(out.map(entry=>[entry.id,entry]));
+    let order=out.reduce((max,entry)=>Math.max(max,sequence(entry,'playedOrder')||0),0);
+    // Older local records had timestamps but no sequence. Retain their recorded
+    // order before adding any new genuine completion events.
+    for(const entry of out.filter(wasPlayed).filter(entry=>!sequence(entry,'playedOrder')).sort((a,b)=>a.playedAt-b.playedAt))entry.playedOrder=++order;
+    for(const id of orderedIds){const entry=known.get(id);if(!entry||wasPlayed(entry)||entry.state==='declined')continue;entry.playedAt=now;entry.playedOrder=++order;}
+    return out;
+  }
+  function releaseEntry(entries,entryId){
+    if(!Array.isArray(entries)||entries.length>MAX_ROWS)throw Error('The show queue is invalid or too large.');
+    const selected=entries.find(entry=>entry.id===entryId);
+    if(!selected||selected.state==='held'||selected.state==='declined')throw Error('Correct the source before releasing this entry.');
+    const order=entries.reduce((max,entry)=>Math.max(max,sequence(entry,'releaseOrder')||0),0)+1;
+    return [...entries.filter(entry=>entry.id!==entryId).map(entry=>({...entry})),{...selected,hostHeld:false,repeatHoldOverride:true,releaseOrder:order}];
+  }
+  function rotateReady(entries,{protectedEntryId=null}={}){
+    const out=completeEntries(entries,[]),known=new Map(out.map(entry=>[entry.id,entry]));
+    let release=out.reduce((max,entry)=>Math.max(max,sequence(entry,'releaseOrder')||0),0);
+    const newlyReleased=[];
+    for(const entry of out){
+      const prior=entry.repeatPredecessorId?known.get(entry.repeatPredecessorId):null;
+      const excluded=entry.state==='held'||entry.state==='declined',manual=entry.hostHeld===true;
+      const waiting=!!entry.repeatPredecessorId&&!wasPlayed(prior)&&!wasPlayed(entry)&&entry.repeatHoldOverride!==true&&entry.id!==protectedEntryId;
+      entry.effectiveHoldReason=entry.state==='declined'?'Declined in uploader.':excluded?(entry.holdReason||'This submission has no usable source.'):manual?'Held by host.':waiting?'Waiting for this uploader’s previous submission to finish.':'';
+      entry.effectiveHeld=!!entry.effectiveHoldReason;
+      if(prior&&wasPlayed(prior)&&!wasPlayed(entry)&&!entry.effectiveHeld&&entry.repeatHoldOverride!==true&&entry.id!==protectedEntryId&&entry.repeatReleasedFor!==prior.id)newlyReleased.push(entry);
+    }
+    newlyReleased.sort((a,b)=>(sequence(known.get(a.repeatPredecessorId),'playedOrder')||0)-(sequence(known.get(b.repeatPredecessorId),'playedOrder')||0)||(a.intakeOrder||0)-(b.intakeOrder||0));
+    for(const entry of newlyReleased){entry.repeatReleasedFor=entry.repeatPredecessorId;entry.releaseOrder=++release;}
+    const released=new Set(newlyReleased.map(entry=>entry.id));
+    const played=out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder),current=out.filter(entry=>!wasPlayed(entry)&&entry.id===protectedEntryId);
+    const ready=out.filter(entry=>!wasPlayed(entry)&&entry.id!==protectedEntryId&&!entry.effectiveHeld&&!released.has(entry.id));
+    const held=out.filter(entry=>!wasPlayed(entry)&&entry.id!==protectedEntryId&&entry.effectiveHeld);
+    return [...played,...current,...ready,...newlyReleased,...held];
+  }
   function applyQueuePolicy(entries,{repeatUploaderHold=false,protectedEntryId=null}={}) {
     if(!Array.isArray(entries)||entries.length>MAX_ROWS)throw Error('The show queue is invalid or too large.');
     // Compare the provider's immutable uploader ID when available, otherwise
@@ -178,14 +220,16 @@
     const chronological=entries.map((entry,index)=>({entry,index})).sort((a,b)=>(Number.isInteger(a.entry.intakeOrder)?a.entry.intakeOrder:a.index)-(Number.isInteger(b.entry.intakeOrder)?b.entry.intakeOrder:b.index)||a.index-b.index);
     for(const {entry} of chronological){
       const key=uploaderKey(entry),prior=key?previous.get(key):null;
-      predecessors.set(entry.id,repeatUploaderHold&&entry.id!==protectedEntryId&&prior&&!wasPlayed(prior)&&!wasPlayed(entry)&&entry.repeatHoldOverride!==true?prior.id:null);
-      if(key)previous.set(key,entry);
+      predecessors.set(entry.id,repeatUploaderHold&&entry.state!=='declined'&&prior?prior.id:null);
+      if(key&&entry.state!=='declined')previous.set(key,entry);
     }
-    return entries.map(entry=>{
-      const repeatPredecessorId=predecessors.get(entry.id)||null;
-      const effectiveHoldReason=entry.state==='held'?(entry.holdReason||'This submission has no usable source.'):entry.hostHeld===true?'Held by host.':repeatPredecessorId?'Waiting for this uploader’s previous submission to finish.':'';
-      return {...entry,repeatPredecessorId,effectiveHeld:!!effectiveHoldReason,effectiveHoldReason};
-    });
+    return rotateReady(entries.map(entry=>({...entry,repeatPredecessorId:predecessors.get(entry.id)||null})),{protectedEntryId});
   }
-  return {VERSION, MAX_ROWS, text, note, validInboxId, normalizeFlag, parseSunoURL, parseYouTubeURL, discoverInboxes, normalizeRows, mergeEntries,applyQueuePolicy,wasPlayed};
+  function playlistEntries(entries,{currentEntryId=null}={}){
+    const played=entries.filter(entry=>wasPlayed(entry)&&!isHeld(entry)).slice().sort((a,b)=>(sequence(a,'playedOrder')||0)-(sequence(b,'playedOrder')||0));
+    const current=entries.filter(entry=>!wasPlayed(entry)&&entry.id===currentEntryId&&!isHeld(entry));
+    const ready=entries.filter(entry=>!wasPlayed(entry)&&entry.id!==currentEntryId&&!isHeld(entry));
+    return [...played,...current,...ready];
+  }
+  return {VERSION, MAX_ROWS, text, note, validInboxId, normalizeFlag, parseSunoURL, parseYouTubeURL, discoverInboxes, normalizeRows, mergeEntries,applyQueuePolicy,wasPlayed,isHeld,completeEntries,releaseEntry,rotateReady,playlistEntries};
 });

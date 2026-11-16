@@ -3,6 +3,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {JSDOM}=require('jsdom');
 const Player=require('../extension/managed-player.js');
+const Inbox=require('../extension/inbox-core.js');
 const Native=require('../extension/managed-native-guard.js');
 const Media=require('../extension/managed-media.js');
 const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'];
@@ -84,8 +85,8 @@ test('full local reorder reconciles by submission identity without touching curr
 test('held entries are skipped for initial/Next/AP while direct held Load never interrupts current audio',async()=>{
  const hostHeld={...entries[0],id:'held-host',hostHeld:true},invalid={...entries[0],id:'held-source',state:'held',holdReason:'Missing source'};
  const f=fixture();await f.player.setQueue([hostHeld,entries[0],invalid,entries[1]],{mode:'ap',autoplay:true});
- assert.equal(f.player.firstPlayableIndex(),1);assert.equal(f.player.snapshot().nextIndex,1);await f.player.loadNext();await f.player.play();
- const before=f.player.snapshot(),calls=f.calls.length;await assert.rejects(f.player.load(0),/Held by host/);
+ assert.equal(f.player.snapshot().queue[f.player.firstPlayableIndex()].id,entries[0].id);assert.equal(f.player.snapshot().nextIndex,f.player.firstPlayableIndex());await f.player.loadNext();await f.player.play();
+ const before=f.player.snapshot(),calls=f.calls.length;await assert.rejects(f.player.load(f.player.snapshot().queue.findIndex(e=>e.id===hostHeld.id)),/Held by host/);
  assert.equal(f.calls.length,calls);assert.equal(f.player.snapshot().generation,before.generation);assert.equal(f.player.snapshot().phase,'playing');
  await f.player.ended(before.generation);assert.equal(f.player.snapshot().current.id,entries[1].id);assert.equal(f.player.snapshot().phase,'playing');
 });
@@ -111,6 +112,45 @@ test('a queue reconciliation during quiet Load cannot replace the requested stab
  f.player.appendQueue([entries[0],third,entries[1]]);pending=false;release();await loading;
  assert.equal(f.player.snapshot().current.id,entries[1].id);assert.equal(f.player.snapshot().index,2);
  assert.equal(f.calls.filter(x=>x[0]==='stage').at(-1)[1],entries[1].id);assert.equal(f.calls.some(x=>x[0]==='play'),false);
+});
+const fairQueue=names=>Inbox.applyQueuePolicy(Inbox.mergeEntries([],names.map(name=>({...entries[0],id:name,title:name,uploaderId:name[0],uploaderName:name[0]}))),{repeatUploaderHold:true});
+const accepted=queue=>Inbox.playlistEntries(queue).map(entry=>entry.id);
+test('AP fair X1/Y1/X2/Z1/X3 rotation admits repeats only at ready tail despite arrivals and stale worker snapshots',async()=>{
+ let worker=fairQueue(['X1','Y1','X2','Z1','X3']);const f=fixture();await f.player.setQueue(worker,{mode:'ap',autoplay:true});await f.player.loadNext();await f.player.play();
+ worker=Inbox.applyQueuePolicy(Inbox.mergeEntries(worker,[{...entries[0],id:'W1',title:'W1',uploaderId:'W'}]),{repeatUploaderHold:true,protectedEntryId:'X1'});
+ f.player.appendQueue(worker);assert.deepEqual(accepted(f.player.snapshot().queue),['X1','Y1','Z1','W1']);
+ await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,'Y1');
+ assert.deepEqual(accepted(f.player.snapshot().queue),['X1','Y1','Z1','W1','X2']);
+ f.player.appendQueue(worker);assert.deepEqual(accepted(f.player.snapshot().queue),['X1','Y1','Z1','W1','X2'],'pre-finish publication cannot restore X2 ahead of accepted entries');
+ const later=Inbox.applyQueuePolicy(Inbox.mergeEntries(worker,[{...entries[0],id:'V1',title:'V1',uploaderId:'V'}]),{repeatUploaderHold:true,protectedEntryId:'Y1'});
+ f.player.appendQueue(later);assert.deepEqual(accepted(f.player.snapshot().queue),['X1','Y1','Z1','W1','X2','V1']);
+ for(const next of ['Z1','W1','X2','V1','X3']){await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,next);}
+ const history=f.player.snapshot().queue.filter(Player.wasPlayed);assert.deepEqual(history.map(e=>e.id),['X1','Y1','Z1','W1','X2','V1']);
+ assert.deepEqual(history.map(e=>e.playedOrder),[1,2,3,4,5,6]);assert.equal(f.player.snapshot().queue.find(e=>e.id==='X3').repeatReleasedFor,'X2');
+});
+test('Load, Skip and Pause never count as predecessor finish, and a manual hold is not auto-released',async()=>{
+ const queue=fairQueue(['X1','Y1','X2','Z1','X3']);queue.find(e=>e.id==='X2').hostHeld=true;
+ const f=fixture();await f.player.setQueue(queue,{mode:'lp'});await f.player.loadNext();await f.player.play();await f.player.pause();await f.player.loadNext();
+ assert.equal(Player.wasPlayed(f.player.snapshot().queue.find(e=>e.id==='X1')),false);assert.equal(Player.isHeld(f.player.snapshot().queue.find(e=>e.id==='X2')),true);
+ await f.player.load(f.player.snapshot().queue.findIndex(e=>e.id==='X1'));await f.player.play();await f.player.ended(f.player.snapshot().generation);
+ const repeat=f.player.snapshot().queue.find(e=>e.id==='X2');assert.equal(repeat.hostHeld,true);assert.equal(Player.isHeld(repeat),true);assert.equal(repeat.repeatReleasedFor,null);
+});
+test('completion ordering matches pure queue policy and replay cannot duplicate completion/release events',async()=>{
+ let expected=fairQueue(['X1','Y1','X2','Z1','X3']);const f=fixture();await f.player.setQueue(expected,{mode:'lp'});
+ for(const id of ['Z1','X1','Y1','X2']){
+  await f.player.load(f.player.snapshot().queue.findIndex(e=>e.id===id));await f.player.play();await f.player.ended(f.player.snapshot().generation);
+  expected=Inbox.applyQueuePolicy(Inbox.completeEntries(expected,[id],{now:1000}),{repeatUploaderHold:true});
+  const projection=queue=>queue.map(e=>[e.id,e.playedOrder||null,e.releaseOrder||null,e.repeatReleasedFor||null,e.effectiveHeld]);
+  assert.deepEqual(projection(f.player.snapshot().queue),projection(expected));
+ }
+ const before=f.player.snapshot().queue.map(e=>[e.id,e.playedOrder,e.releaseOrder]);await f.player.play();await f.player.ended(f.player.snapshot().generation);
+ assert.deepEqual(f.player.snapshot().queue.map(e=>[e.id,e.playedOrder,e.releaseOrder]),before);
+});
+test('declined entries never stage and their surviving repeat follows the previous non-declined submission',async()=>{
+ let queue=fairQueue(['X1','X2','Y1','X3']);queue=Inbox.applyQueuePolicy(queue.map(e=>e.id==='X2'?{...e,state:'declined'}:e),{repeatUploaderHold:true});
+ assert.equal(queue.find(e=>e.id==='X3').repeatPredecessorId,'X1');const f=fixture();await f.player.setQueue(queue,{mode:'ap',autoplay:true});await f.player.loadNext();await f.player.play();
+ await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,'Y1');await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,'X3');
+ assert.equal(f.calls.some(call=>call[0]==='stage'&&call[1]==='X2'),false);
 });
 test('pausing while Play is pending cannot be undone by its late completion',async()=>{
  let complete;const f=fixture({play:()=>new Promise(resolve=>{complete=resolve;})});await f.player.setQueue(entries);await f.player.load(0);const starting=f.player.play();while(!complete)await new Promise(resolve=>setImmediate(resolve));await f.player.pause();complete();await starting;assert.equal(f.player.snapshot().phase,'paused');

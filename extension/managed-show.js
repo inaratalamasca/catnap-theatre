@@ -1,4 +1,4 @@
-/* Catnap Theatre managed-show presentation, version 0.7.0.
+/* Catnap Theatre managed-show presentation, version 0.8.0.
  * Change summary: managed Suno lyrics prepare the matching native details
  * panel; stale and YouTube slots cannot borrow old native lyrics. A second
  * toggle cancels pending playback; reload-safe binding
@@ -6,13 +6,14 @@
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. One YouTube stage expands within the Theatre viewport on Play,
  * with view/playback/exit controls and no browser fullscreen. Local held rows
- * stay disabled, Up next skips them, and every observation retains completed IDs.
+ * stay disabled, repeat releases join the ready tail, and observations retain
+ * the actual completion sequence. Row Load resolves stable submission IDs.
  * Source status stays above the progress bar. Host-only notes
  * remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.7.0';
+  const SCRIPT_VERSION='0.8.0';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -48,7 +49,7 @@
   }
   function emit(playback){
     render();
-    const payload={phase:playback.phase,index:playback.index,generation:playback.generation,occurrenceId:playback.occurrenceId,autoplay:playback.autoplay,error:playback.error,completedEntryIds:playback.queue.filter(CatnapManagedPlayer.wasPlayed).map(CatnapManagedPlayer.identity).slice(0,1000),source:playback.current?.playbackSource||playback.current?.preferredSource,current:playback.current?{id:playback.current.id}:null};
+    const payload={phase:playback.phase,index:playback.index,generation:playback.generation,occurrenceId:playback.occurrenceId,autoplay:playback.autoplay,error:playback.error,completedEntryIds:playback.queue.filter(CatnapManagedPlayer.wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder).map(CatnapManagedPlayer.identity).slice(0,1000),source:playback.current?.playbackSource||playback.current?.preferredSource,current:playback.current?{id:playback.current.id}:null};
     const signature=JSON.stringify(payload);if(signature===observedSignature)return;observedSignature=signature;
     void chrome.runtime.sendMessage({target:'catnap-show-observed',showId:show?.id,bindingId:show?.bindingId,revision:++revision,playback:payload}).catch(()=>{});
   }
@@ -62,13 +63,13 @@
     const signature=JSON.stringify([snapshot.index,snapshot.autoplay,snapshot.queue.map(e=>[e.id,e.title,e.preferredSource,e.playbackSource,e.disclaimer,e.state,e.effectiveHeld,e.effectiveHoldReason,e.playedAt])]);if(signature===queueSignature)return;queueSignature=signature;
     panel.replaceChildren();const heading=document.createElement('h2');heading.textContent='INBOX SHOW ORDER';panel.append(heading);
     const source=document.createElement('small');source.textContent=snapshot.autoplay?'Inbox submissions · AP autoplay':'Inbox submissions · manual advance';panel.append(source);
-    snapshot.queue.forEach((entry,index)=>{const button=document.createElement('button');button.type='button';button.textContent=`${String(index+1).padStart(2,'0')}  ${entry.title}${entry.disclaimer==='yes'?' ⚠':''}`;
+    snapshot.queue.forEach((entry,index)=>{const button=document.createElement('button');button.type='button';button.dataset.entryId=entry.id;button.textContent=`${String(index+1).padStart(2,'0')}  ${entry.title}${entry.disclaimer==='yes'?' ⚠':''}`;
       if((entry.playbackSource||entry.preferredSource)==='youtube'){
         const icon=document.createElement('span');icon.className='ct-managed-yt';icon.setAttribute('role','img');icon.setAttribute('aria-label','YouTube');icon.title='YouTube source';
         const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');svg.setAttribute('viewBox','0 0 10 10');svg.setAttribute('aria-hidden','true');path.setAttribute('d','M2 1 9 5 2 9Z');svg.append(path);icon.append(svg);button.append(icon);
       }
-      const held=CatnapManagedPlayer.isHeld(entry);if(held){const badge=document.createElement('span');badge.className='ct-managed-held';badge.textContent='Held';button.append(badge);}
-      button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=held;button.title=held?(entry.effectiveHoldReason||entry.holdReason||'Held · release this entry in Inbox & show'): 'Load · press Play separately';button.onclick=()=>{void command('load',{index}).catch(displayError);};panel.append(button);});
+      const held=CatnapManagedPlayer.isHeld(entry);if(held){const badge=document.createElement('span');badge.className='ct-managed-held';badge.textContent=entry.state==='declined'?'Declined':'Held';button.append(badge);}
+      button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=held;button.title=held?(entry.effectiveHoldReason||entry.holdReason||'Held · release this entry in Inbox & show'): 'Load · press Play separately';button.onclick=()=>{void command('load',{entryId:entry.id}).catch(displayError);};panel.append(button);});
   }
   function matchingLyricsSong(snapshot,native){
     const entry=snapshot?.current,target=songId(entry?.sunoUrl);
@@ -181,7 +182,7 @@
     }
     if(action==='play'&&state().phase==='playing')return {playback:state()};
     let result;
-    if(action==='load')result=await coordinator.load(args.index);
+    if(action==='load'){const index=args.entryId!==undefined?state().queue.findIndex(entry=>entry.id===args.entryId):args.index;result=await coordinator.load(index);}
     else if(action==='next')result=await coordinator.loadNext();
     else if(action==='previous')result=await coordinator.loadPrevious();
     else if(action==='play')result=await coordinator.play();
