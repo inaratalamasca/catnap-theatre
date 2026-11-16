@@ -123,8 +123,19 @@
       r.token = '';
       if (this.resources === r) this.resources = null;
     }
-    async fail(r, message) { ++this.generation; await this.cleanup(r); this.report('error', message); }
-    async stop(message = 'Stopped. Local Suno playback continues.') { ++this.generation; await this.cleanup(this.resources); this.report('idle', message); }
+    async fail(r, message) {
+      if (this.resources !== r) return;
+      const generation = ++this.generation;
+      await this.cleanup(r);
+      // Old monitor/relay cleanup can finish after Stop and a newer Start.
+      // It may release its own resources, never replace the new peer's status.
+      if (generation === this.generation && (!this.resources || this.resources === r)) this.report('error', message);
+    }
+    async stop(message = 'Stopped. Local playback continues.') {
+      const generation = ++this.generation, r = this.resources;
+      await this.cleanup(r);
+      if (generation === this.generation && (!this.resources || this.resources === r)) this.report('idle', message);
+    }
   }
   return {VERSION,BITRATE,DEFAULT_ENDPOINT,endpoint,permissionOrigin,sessionURL,stereoSDP,Publisher};
 });

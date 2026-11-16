@@ -40,6 +40,32 @@ test('stop racing with WHIP allocation deletes the late remote session',async()=
  let resolvePost;const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});if(options.method==='POST')return new Promise(r=>{resolvePost=r;});return {};}});
  const starting=f.publisher.start({endpoint,token:'broadcaster:secret'});while(!resolvePost)await new Promise(r=>setImmediate(r));await f.publisher.stop();resolvePost({status:201,headers:new Headers({Location:'/live/session/late'}),text:async()=>SDP});await starting;await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).method,'DELETE');assert.equal(calls.at(-1).headers.Authorization,'Bearer broadcaster:secret');assert.equal(f.publisher.state,'idle');
 });
+test('late peer-failure cleanup cannot mark a newer live broadcast as failed or allow another Start',async()=>{
+ let releaseOld,closed=0;
+ const f=fixture({monitor:async()=>({close:()=>++closed===1?new Promise(resolve=>{releaseOld=resolve;}):Promise.resolve()})});
+ await f.publisher.start({endpoint});
+ f.pc.connectionState='failed';f.pc.onconnectionstatechange();
+ assert.equal(typeof releaseOld,'function');
+ await f.publisher.stop();assert.equal(f.publisher.state,'idle');
+ await f.publisher.start({endpoint});const replacement=f.publisher.resources;
+ assert.equal(f.publisher.state,'live');
+ releaseOld();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ await assert.rejects(f.publisher.start({endpoint}),/already/);
+ await f.publisher.stop();
+});
+test('late Stop cleanup cannot mark a replacement broadcast idle',async()=>{
+ let releaseOld,closed=0;
+ const f=fixture({monitor:async()=>({close:()=>++closed===1?new Promise(resolve=>{releaseOld=resolve;}):Promise.resolve()})});
+ await f.publisher.start({endpoint});
+ const firstStop=f.publisher.stop();assert.equal(typeof releaseOld,'function');
+ await f.publisher.stop();assert.equal(f.publisher.state,'idle');
+ await f.publisher.start({endpoint});const replacement=f.publisher.resources;
+ releaseOld();await firstStop;
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ await assert.rejects(f.publisher.start({endpoint}),/already/);
+ await f.publisher.stop();
+});
 test('video or missing audio is rejected and released',async()=>{
  const track={stopped:0,stop(){this.stopped++;}};const f=fixture({capture:async()=>({getTracks:()=>[track],getAudioTracks:()=>[],getVideoTracks:()=>[track]})});assert.equal(await f.publisher.start({endpoint}),false);assert.equal(track.stopped,1);assert.equal(f.pc.closed,undefined);
 });
