@@ -69,6 +69,19 @@ test('Stop during Catnap preflight prevents a late grant from publishing or repl
  assert.equal(calls.filter(call=>call.url===endpoint&&call.method==='POST').length,1);
  await f.publisher.stop();
 });
+test('only an explicit Catnap takeover sends the takeover flag; legacy/custom relays cannot execute it',async()=>{
+ for(const takeover of [undefined,false,'true',true]){
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return url.includes('/hosts/api/')?{status:200}:{status:201,headers:new Headers({Location:'/live/session/test'}),text:async()=>SDP};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,takeover,token:'private-fixture'}),true);
+  assert.deepEqual(JSON.parse(calls[0].body),takeover===true?{takeover:true}:{});
+  assert.equal(JSON.stringify(f.statuses).includes('private-fixture'),false);await f.publisher.stop();
+ }
+ const legacy=fixture({fetch:async()=>({status:404})});
+ assert.equal(await legacy.publisher.start({endpoint:B.DEFAULT_ENDPOINT,takeover:true}),false);
+ assert.equal(legacy.statuses.at(-1).message,'Broadcast takeover is unavailable on this relay.');
+ const custom=fixture();await assert.rejects(custom.publisher.start({endpoint,takeover:true}),/only on the Catnap relay/);
+ assert.equal(custom.calls.length,0);assert.equal(custom.publisher.resources,null);
+});
 test('stop during capture also stops a late-resolving captured stream',async()=>{
  let resolve;const f=fixture({capture:()=>new Promise(r=>{resolve=r;})});const starting=f.publisher.start({endpoint});await f.publisher.stop();resolve(f.stream);await starting;await new Promise(r=>setImmediate(r));assert.equal(f.track.stopped,1);assert.equal(f.publisher.state,'idle');assert.equal(f.calls.length,0);
 });

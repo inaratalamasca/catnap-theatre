@@ -10,8 +10,11 @@ const rememberToken=document.querySelector('#remember-token'),forgetToken=docume
 const SAVED_TOKEN='broadcastSavedToken',REMEMBER_TOKEN='broadcastRememberToken';
 let tokenOrigin=null,credentialRevision=0,credentialOperations=Promise.resolve();
 const statusLine = document.querySelector('#status'), start = document.querySelector('#start'), stop = document.querySelector('#stop');
+const takeoverButton=document.querySelector('#takeover');
+const BUSY_MESSAGE='Another host is broadcasting. Wait for them to stop, then try again.';
 let busy=false,stopping=false,panelError='',publisherState='idle',commandGeneration=0,statusRevision=0;
 let submittedToken='',rejectedToken=null;
+let takeoverContext=null;
 const radioOnly=globalThis.CatnapPackage?.radioOnly===true;
 document.querySelector('#show-controls').hidden=radioOnly;
 document.querySelector('#theatre-preference').hidden=radioOnly;
@@ -38,7 +41,7 @@ function comparableOrigin(value){try{const url=new URL(value.trim());return !url
 function canonicalOrigin(value){return typeof value==='string'&&value===comparableOrigin(value)&&endpointOrigin(value+'/whip')===value?value:null;}
 function storedToken(value){return typeof value==='string'&&!malformed(value)?value.trim():'';}
 function storageStatus(text){document.querySelector('#token-storage-status').textContent=text||(rememberToken.checked?'Remembering is on for this relay origin. Changes or Start save the token locally.':'Session only. The token is not kept between browser sessions.');}
-function clearInputToken(){token.value='';tokenOrigin=null;rejectedToken=null;tokenStatus();}
+function clearInputToken(){token.value='';tokenOrigin=null;rejectedToken=null;takeoverContext=null;tokenStatus();controls();}
 function checkInputOrigin(origin){
   if(token.value&&tokenOrigin&&tokenOrigin!==origin){clearInputToken();return false;}
   return true;
@@ -60,10 +63,10 @@ function explicitSave(){
   if(!rememberToken.checked||!endpointOrigin(endpoint.value)||malformed(token.value))return;
   void saveCredential(true,token.value,endpoint.value).then(()=>storageStatus(),()=>show({error:'Could not remember the token on this browser.'}));
 }
-token.addEventListener('input',()=>{credentialRevision++;tokenOrigin=token.value?comparableOrigin(endpoint.value):null;if(token.value.trim()!==rejectedToken)rejectedToken=null;tokenStatus();});
+token.addEventListener('input',()=>{credentialRevision++;takeoverContext=null;controls();tokenOrigin=token.value?comparableOrigin(endpoint.value):null;if(token.value.trim()!==rejectedToken)rejectedToken=null;tokenStatus();});
 token.addEventListener('change',explicitSave);
-endpoint.addEventListener('input',()=>{credentialRevision++;checkInputOrigin(comparableOrigin(endpoint.value));});
-endpoint.addEventListener('change',()=>{credentialRevision++;checkInputOrigin(comparableOrigin(endpoint.value));});
+endpoint.addEventListener('input',()=>{credentialRevision++;takeoverContext=null;controls();checkInputOrigin(comparableOrigin(endpoint.value));});
+endpoint.addEventListener('change',()=>{credentialRevision++;takeoverContext=null;controls();checkInputOrigin(comparableOrigin(endpoint.value));});
 rememberToken.addEventListener('change',()=>{
   credentialRevision++;checkInputOrigin(comparableOrigin(endpoint.value));storageStatus();
   if(rememberToken.checked)explicitSave();else void saveCredential(false,'',null).catch(()=>show({error:'Could not remove the saved token on this browser.'}));
@@ -92,9 +95,14 @@ function restoreCredential(settings,session){
   }
 }
 
+function takeoverMatchesSettings(){
+  let address;try{address=CatnapBroadcast.endpoint(endpoint.value);}catch{}
+  return !!(takeoverContext&&takeoverContext.endpoint===address&&address===CatnapBroadcast.DEFAULT_ENDPOINT&&takeoverContext.token===token.value.trim());
+}
 function controls(){
   const active=!['idle','error'].includes(publisherState);
   start.disabled=busy||active;stop.disabled=stopping||(!busy&&!active);
+  takeoverButton.hidden=!takeoverMatchesSettings();takeoverButton.disabled=busy||active;
   const live=publisherState==='live',indicator=document.querySelector('#on-air');
   indicator.dataset.live=String(live);
   const label=document.querySelector('#on-air-label'),text=live?'On Air':publisherState==='unknown'?'Status unavailable':'Not live';if(label.textContent!==text)label.textContent=text;
@@ -103,6 +111,10 @@ function show(value) {
   if (!value) return;
   if(['idle','starting','connecting','reconnecting','live','error','unknown'].includes(value.state))publisherState=value.state;
   const failure=value.error||(value.state==='error'?value.message:'');
+  if(failure===BUSY_MESSAGE&&endpointOrigin(endpoint.value)&&token.value.trim()===submittedToken){
+    const address=CatnapBroadcast.endpoint(endpoint.value);
+    if(address===CatnapBroadcast.DEFAULT_ENDPOINT)takeoverContext={endpoint:address,token:submittedToken};
+  }else if(value.state&&value.state!=='error')takeoverContext=null;
   if(failure==='Relay rejected the publish token.'&&token.value.trim()===submittedToken)rejectedToken=submittedToken;
   if(['connecting','live'].includes(value.state)&&token.value.trim()===submittedToken)rejectedToken=null;
   tokenStatus();
@@ -123,10 +135,11 @@ async function refreshStatus(){
   catch(error){if(generation===commandGeneration&&revision===statusRevision&&!busy)show({state:'unknown',error:error.message});}
 }
 (async () => { const settings = await chrome.storage.local.get(['broadcastEndpoint','hideTheatreButton',REMEMBER_TOKEN,SAVED_TOKEN]); endpoint.value=settings.broadcastEndpoint || CatnapBroadcast.DEFAULT_ENDPOINT; hideTheatre.checked=settings.hideTheatreButton===true; const session=await chrome.storage.session.get(['broadcastToken','broadcastTokenOrigin','broadcastTokenEndpoint','broadcastMetadataSession']);restoreCredential(settings,session);submittedToken=token.value.trim();tokenStatus();storageStatus();await refreshStatus(); })().catch(()=>show({error:'Could not restore Radio settings.'}));
-start.addEventListener('click', async () => {
+async function startBroadcast(takeover=false) {
   if(busy||!['idle','error'].includes(publisherState))return;
+  if(takeover&&!takeoverMatchesSettings())return;
   const generation=++commandGeneration,current=()=>generation===commandGeneration;
-  ++statusRevision;busy=true;panelError='';show({state:'starting',message:'Waiting for relay access…'});
+  ++statusRevision;busy=true;panelError='';takeoverContext=null;show({state:'starting',message:'Waiting for relay access…'});
   // Optional relay host permission is requested only by this explicit user gesture.
   try {
     const url = CatnapBroadcast.endpoint(endpoint.value), origin = CatnapBroadcast.permissionOrigin(url);
@@ -147,14 +160,21 @@ start.addEventListener('click', async () => {
     try{await chrome.storage.session.set({broadcastToken:publishToken,broadcastTokenOrigin:relayOrigin,broadcastTokenEndpoint:url});}catch{throw Error('Could not store the Radio session credential.');}
     if(!current())return;inputsCurrent();
     submittedToken=publishToken;
-    const result=await command('start',{endpoint:url});if(current())show(result);
+    const result=await command('start',{endpoint:url,takeover:takeover===true});if(current())show(result);
   } catch (error) { if(current())show({error:error.message}); }
   finally { if(current()){busy=false;controls();await refreshStatus();} }
+}
+start.addEventListener('click',()=>{void startBroadcast(false);});
+takeoverButton.addEventListener('click',()=>{
+  if(busy||takeoverButton.hidden||takeoverButton.disabled)return;
+  if(!takeoverMatchesSettings()){takeoverContext=null;controls();return;}
+  if(!globalThis.confirm('Take over the current broadcast? The other host will be disconnected and their key will have a one-hour cooldown.'))return;
+  void startBroadcast(true);
 });
 stop.addEventListener('click',async()=>{
   if(stopping)return;
   const generation=++commandGeneration,current=()=>generation===commandGeneration;
-  ++statusRevision;panelError='';busy=true;stopping=true;controls();
+  ++statusRevision;panelError='';takeoverContext=null;busy=true;stopping=true;controls();
   try{const result=await command('stop');if(current())show(result);}
   catch(error){if(current())show({error:error.message});}
   finally{if(current()){stopping=false;busy=false;controls();await refreshStatus();}}

@@ -42,6 +42,6 @@ const publisher = new CatnapBroadcast.Publisher({
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message.target !== 'broadcast-offscreen' || sender.id !== chrome.runtime.id || sender.tab || (sender.url && sender.url !== chrome.runtime.getURL(chrome.runtime.getManifest?.().background?.service_worker||'broadcast-worker.js'))) return;
   if (message.action === 'status') { reply({...status,level:meter}); return; }
-  if (message.action === 'start') { publisher.start(message).then(() => reply({...status,level:meter})); return true; }
+  if (message.action === 'start') { publisher.start({...message,takeover:message.takeover===true}).then(() => reply({...status,level:meter})); return true; }
   if (message.action === 'stop') { publisher.stop().then(() => reply({...status,level:meter})); return true; }
 });

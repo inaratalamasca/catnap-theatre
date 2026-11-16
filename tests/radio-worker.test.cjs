@@ -68,6 +68,17 @@ test('page display messages can open controls but cannot capture, stop or forge 
   assert.equal(f.captures.length,0);
   f.local.hideTheatreButton=true;const status=await f.send({target:'catnap-radio-ui',action:'status'},f.source(1));assert.equal(status.hideTheatreButton,true);assert.equal(status.state,'idle');
 });
+test('only packaged panel can pass explicit Catnap takeover to offscreen; ordinary starts remain false',async()=>{
+ for(const takeover of [undefined,false,'true',true]){
+  const f=fixture();await f.click(1);await f.send({target:'broadcast-worker',action:'start',endpoint:B.DEFAULT_ENDPOINT,takeover},f.panel);
+  assert.equal(f.offscreenCommands.find(m=>m.action==='start').takeover,takeover===true);
+ }
+ const f=fixture();await f.click(1);
+ assert.equal(await f.send({target:'broadcast-worker',action:'start',endpoint:B.DEFAULT_ENDPOINT,takeover:true},f.source(1)),undefined);
+ assert.equal(f.offscreenCommands.some(m=>m.action==='start'),false);
+ const error=await f.send({target:'broadcast-worker',action:'start',endpoint:'https://other.example/live/whip',takeover:true},f.panel);
+ assert.match(error.error,/only on the Catnap relay/);assert.equal(f.captures.length,0);
+});
 test('a bound source navigation stops publishing outside the source allowlist, including a revoked URL grant',async()=>{
   for(const destination of ['https://discord.com/channels/test','https://party.aiu.fm/party/login',undefined]){
     const f=fixture();await f.click(2);await f.send({target:'broadcast-worker',action:'start',endpoint:B.DEFAULT_ENDPOINT},f.panel);f.state('live');

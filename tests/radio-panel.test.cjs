@@ -49,6 +49,43 @@ test('Stop cancels a pending permission grant before it can save a token or star
   assert.equal(f.writes.some(value=>Object.hasOwn(value,'broadcastToken')),false);assert.equal(d.getElementById('start').disabled,false);
   assert.equal(d.getElementById('on-air').dataset.live,'false');
 });
+const BUSY='Another host is broadcasting. Wait for them to stop, then try again.';
+async function busyPanel(options={}){
+ const f=await fixture(true,options);
+ f.setHandler('start',message=>{const state=message.takeover===true?'connecting':'error',text=message.takeover===true?'Taking over':BUSY;f.setState(state,text);return {state,message:text};});
+ const d=f.w.document;d.getElementById('token').value='private-takeover-fixture';d.getElementById('start').click();await settle(f);
+ return f;
+}
+test('busy Catnap stream offers a separate confirmed takeover and never takes over automatically',async t=>{
+ const f=await busyPanel();t.after(()=>f.dom.window.close());const d=f.w.document,confirmations=[];
+ assert.equal(f.sent.filter(m=>m.action==='start').length,1);assert.equal(f.sent.find(m=>m.action==='start').takeover,false);
+ assert.equal(d.getElementById('takeover').hidden,false);assert.equal(d.getElementById('on-air').dataset.live,'false');
+ f.w.confirm=text=>{confirmations.push(text);return false;};d.getElementById('takeover').click();await settle(f);
+ assert.match(confirmations[0],/one-hour cooldown/);assert.equal(f.sent.filter(m=>m.action==='start').length,1);
+ f.w.confirm=()=>true;d.getElementById('takeover').click();d.getElementById('takeover').click();await settle(f);
+ assert.equal(f.sent.filter(m=>m.action==='start').length,2);assert.equal(f.sent.filter(m=>m.action==='start').at(-1).takeover,true);
+ assert.equal(d.getElementById('takeover').hidden,true);assert.equal(JSON.stringify(f.sent).includes('private-takeover-fixture'),false);assert.equal(d.body.textContent.includes('private-takeover-fixture'),false);
+});
+test('Takeover is bound to busy endpoint/token and is unavailable for custom relays or rejected keys',async t=>{
+ const f=await busyPanel();t.after(()=>f.dom.window.close());const d=f.w.document;
+ d.getElementById('token').value='new-token';d.getElementById('token').dispatchEvent(new f.w.Event('input'));
+ assert.equal(d.getElementById('takeover').hidden,true);
+ const changed=await busyPanel();t.after(()=>changed.dom.window.close());let confirmations=0;changed.w.confirm=()=>{confirmations++;return true;};
+ changed.w.document.getElementById('endpoint').value='https://other.example/live/whip';
+ changed.w.document.getElementById('takeover').click();await settle(changed);
+ assert.equal(confirmations,0,'an endpoint change cannot prompt for takeover on a custom relay');
+ assert.equal(changed.sent.filter(m=>m.action==='start').length,1,'programmatic relay changes cannot reuse the busy context');
+ const other=await busyPanel({local:{broadcastEndpoint:'https://other.example/live/whip'}});t.after(()=>other.dom.window.close());
+ assert.equal(other.w.document.getElementById('takeover').hidden,true);
+ const bad=await fixture(true);t.after(()=>bad.dom.window.close());bad.setState('error','Relay rejected the publish token.');bad.w.poll();await settle(bad);
+ assert.equal(bad.w.document.getElementById('takeover').hidden,true);
+});
+test('Stop cancels a confirmed takeover awaiting relay permission without sending the takeover command',async t=>{
+ const f=await busyPanel();t.after(()=>f.dom.window.close());const d=f.w.document,grant=f.holdPermission();f.w.confirm=()=>true;
+ d.getElementById('takeover').click();d.getElementById('stop').click();await settle(f);grant(true);await settle(f);
+ assert.equal(f.sent.some(m=>m.action==='start'&&m.takeover===true),false);
+ assert.equal(d.getElementById('start').disabled,false);assert.equal(d.getElementById('on-air').dataset.live,'false');
+});
 
 test('token presence is distinct from validity and never lights On Air before a live publisher status',async t=>{
   const f=await fixture(true);t.after(()=>f.dom.window.close());const d=f.w.document,token=d.getElementById('token');

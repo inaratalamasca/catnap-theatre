@@ -55,6 +55,8 @@
     async start(options) {
       if (this.state !== 'idle' && this.state !== 'error') throw Error('A broadcast is already starting or running.');
       const url = endpoint(options.endpoint), token = String(options.token || '').trim();
+      const takeover = options.takeover === true;
+      if (takeover && url !== DEFAULT_ENDPOINT) throw Error('Broadcast takeover is available only on the Catnap relay.');
       if (/[\r\n]/.test(token)) throw Error('Invalid token.');
       const generation = ++this.generation;
       const r = {controller:new AbortController(), token, url, pc:null, stream:null, monitor:null, session:null};
@@ -98,11 +100,12 @@
           const checkHeaders = {'Content-Type':'application/json'};
           if (token) checkHeaders.Authorization = 'Bearer ' + token;
           const check = await bounded(this.env.fetch(new URL('/hosts/api/publish-check', url).href, {
-            method:'POST', headers:checkHeaders, body:'{}', signal:r.controller.signal,
+            method:'POST', headers:checkHeaders, body:takeover?'\u007b"takeover":true\u007d':'{}', signal:r.controller.signal,
             redirect:'error', credentials:'omit'
           }), r.controller.signal, 12000); current();
           if (check.status === 409) throw Error('Another host is broadcasting. Wait for them to stop, then try again.');
           if (check.status === 401 || check.status === 403) throw Error('Relay rejected the publish token.');
+          if (takeover && [404,405].includes(check.status)) throw Error('Broadcast takeover is unavailable on this relay.');
           if (![200,404,405].includes(check.status)) throw Error('Relay availability check failed. Try again shortly.');
         }
         const response = await bounded(this.env.fetch(url, {method:'POST',headers,body:r.pc.localDescription.sdp,signal:r.controller.signal,redirect:'error',credentials:'omit'}), r.controller.signal, 12000, response => {

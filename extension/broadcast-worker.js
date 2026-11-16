@@ -179,6 +179,8 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       const generation = ++commandGeneration;
       const current = () => { if (generation !== commandGeneration) throw Error('Broadcast start cancelled.'); };
       const endpoint = CatnapBroadcast.endpoint(message.endpoint);
+      const takeover = message.takeover === true;
+      if (takeover && endpoint !== CatnapBroadcast.DEFAULT_ENDPOINT) throw Error('Broadcast takeover is available only on the Catnap relay.');
       if (!await chrome.permissions.contains({origins:[CatnapBroadcast.permissionOrigin(endpoint)]})) throw Error('Grant access to this relay first.');
       current();
       const {broadcastSourceTabId} = await chrome.storage.session.get('broadcastSourceTabId'); current();
@@ -198,7 +200,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       try {
         const latest=await chrome.tabs.get(tab.id);current();
         if(!CatnapBroadcastSource.allowed(latest?.url))throw Error('The source tab changed. Select a Suno or AIU player tab from the toolbar again.');
-        const result = await chrome.runtime.sendMessage({target:'broadcast-offscreen',action:'start',streamId,endpoint,token:broadcastToken});
+        const result = await chrome.runtime.sendMessage({target:'broadcast-offscreen',action:'start',streamId,endpoint,token:broadcastToken,takeover});
         if (!result || result.error || ['idle','error'].includes(result.state)) await clearMetadata();
         return result;
       } catch (error) { await clearMetadata(); throw error; }
