@@ -1,8 +1,10 @@
-/* Catnap per-tab Radio indicator, version 0.7.0.
+/* Catnap per-tab Radio indicator, version 0.8.1.
  * Displays only sanitized worker state for this exact source tab. Clicking an
  * indicator opens controls; capture always needs the extension toolbar grant.
  * No capture, playback, credentials or private relay URL here. Only the fixed
  * public Catnap listener link may be displayed for its actual live source.
+ * Change: a live combined page keeps distinct Theatre and On Air controls, so
+ * closing the presentation never removes the way to reopen it.
  */
 (function(scope,factory){
   const api=factory();
@@ -10,7 +12,7 @@
   else {scope.CatnapRadioTab=api;if(scope.document&&scope.chrome?.runtime)api.install(scope);}
 })(globalThis,()=>{
   'use strict';
-  const SCRIPT_VERSION='0.7.0',POLL_MS=2000,REQUEST_MS=5000,LISTENER='https://listen.catnapradio.com/';
+  const SCRIPT_VERSION='0.8.1',POLL_MS=2000,REQUEST_MS=5000,LISTENER='https://listen.catnapradio.com/';
   const ROOT='catnap-theater-root',LAUNCH='catnap-theater-launch',PILL='catnap-radio-indicator',STYLE='catnap-radio-tab-styles';
   const STATES=new Set(['idle','starting','connecting','reconnecting','live','error']),installed=new WeakMap();
   function sanitize(value){
@@ -96,7 +98,13 @@
       if(!sourceKind){removePill();clearHeaders();return;}
       style();paintHeaders();
       const adapter=sourceKind==='suno'&&!current.radioOnly?window.CatnapTheatreRadioUI:null;
-      if(typeof adapter?.update==='function'){adapter.update(current,open);removePill();return;}
+      const combined=typeof adapter?.update==='function';
+      if(combined){
+        adapter.update(current);
+        // Keep the Theatre launcher's action separate from Radio controls.
+        // Idle combined pages need only Theatre; live pages need both entries.
+        if(!live()){removePill();return;}
+      }
       // Legacy Lite launch handlers remain owned by Lite. A separate Radio pill
       // can coexist safely, while the known Lite header gets the same status.
       if(!pill?.isConnected){pill=document.createElement('button');pill.id=PILL;pill.type='button';pill.innerHTML='<span class="catnap-radio-dot" aria-hidden="true"></span><span class="catnap-radio-label"></span>';pill.addEventListener('click',open);document.documentElement.appendChild(pill);}
@@ -105,7 +113,16 @@
       pill.setAttribute('aria-label',live()?'On Air · open Radio controls':'Open Radio controls');
       pill.title=live()?'This tab is broadcasting. Open Radio controls.':['starting','connecting','reconnecting'].includes(current.state)&&current.source?(current.state==='reconnecting'?'Radio is reconnecting. Open controls.':'Radio is starting. Open controls.'):current.state==='error'?'Radio is not live. Open controls.':'Open Radio controls. Start broadcasting from the extension toolbar.';
       pill.hidden=sourceKind==='suno'&&!!document.getElementById(ROOT);
-      if(sourceKind==='suno')pill.style.setProperty('bottom',document.getElementById(LAUNCH)?'152px':'104px','important');
+      if(sourceKind==='suno'){
+        const launcher=document.getElementById(LAUNCH);
+        const launcherVisible=combined&&launcher&&window.getComputedStyle(launcher).display!=='none';
+        // Measure the existing button instead of assuming its text/font width.
+        // The fallback is for a not-yet-laid-out launcher; resize/poll refreshes
+        // the exact position without moving or rebinding Theatre.
+        const width=launcherVisible?(launcher.getBoundingClientRect().width||120):0;
+        pill.style.setProperty('right',(launcherVisible?25+width+8:25)+'px','important');
+        pill.style.setProperty('bottom',combined?'104px':launcher?'152px':'104px','important');
+      }else {pill.style.removeProperty('right');pill.style.removeProperty('bottom');}
     }
     function apply(value){const next=sanitize(value);if(!next)return false;current=next;epoch++;render();return true;}
     function receive(message,sender){if(message?.target!=='catnap-radio-state'||!trustedSender(runtime,sender))return;apply(message);}
@@ -124,8 +141,8 @@
     const observer=new window.MutationObserver(records=>{if(records.some(record=>Array.from(record.addedNodes).some(relevant)||Array.from(record.removedNodes).some(relevant)))render();});
     observer.observe(document.documentElement,{childList:true,subtree:true});
     const resume=()=>{void poll();};
-    runtime.onMessage?.addListener(receive);window.addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);
-    const api={version:SCRIPT_VERSION,refresh:poll,status:()=>({...current}),dispose(){disposed=true;window.clearInterval(timer);observer.disconnect();runtime.onMessage?.removeListener?.(receive);window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);removePill();clearHeaders();installed.delete(window);}};
+    runtime.onMessage?.addListener(receive);window.addEventListener('pageshow',resume);window.addEventListener('resize',render);document.addEventListener('visibilitychange',resume);
+    const api={version:SCRIPT_VERSION,refresh:poll,status:()=>({...current}),dispose(){disposed=true;window.clearInterval(timer);observer.disconnect();runtime.onMessage?.removeListener?.(receive);window.removeEventListener('pageshow',resume);window.removeEventListener('resize',render);document.removeEventListener('visibilitychange',resume);removePill();clearHeaders();installed.delete(window);}};
     installed.set(window,api);timer=window.setInterval(()=>{void poll();},POLL_MS);void poll();return api;
   }
   return {SCRIPT_VERSION,POLL_MS,sanitize,trustedSender,install};

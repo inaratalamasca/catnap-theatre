@@ -39,7 +39,7 @@
   const STORAGE_KEY = 'catnap-theater-active-v1';
   // Only the isolated Radio adapter sets these display flags. No capture or
   // playback action is exposed through this UI bridge.
-  const radioUi = {live:false,hideTheatreButton:false,state:'idle',open:null};
+  const radioUi = {live:false,hideTheatreButton:false,state:'idle'};
   const TRACK_RE = /\/song\/([0-9a-f-]{24,})/i;
   const LABELS = {
     title: 'a[aria-label^="Playbar: Title for "]',
@@ -115,10 +115,6 @@
 #${LAUNCH_ID}:hover { transform: translateY(-2px) !important; border-color: #d1a2fa !important; }
 #${LAUNCH_ID}:focus-visible { outline: 3px solid #b6a6ff !important; outline-offset: 3px !important; }
 #${LAUNCH_ID} svg { width: 19px; height: 19px; color: #dda8ff; }
-#${LAUNCH_ID} .ct-radio-dot { display:none; width:8px; height:8px; flex:none; border-radius:50%; background:#74ed9b; }
-#${LAUNCH_ID}.ct-radio-live { padding:8px 12px !important; border-color:rgba(116,237,155,.55) !important; color:#bdf8cf !important; }
-#${LAUNCH_ID}.ct-radio-live svg { display:none; }
-#${LAUNCH_ID}.ct-radio-live .ct-radio-dot { display:block; }
 #${ROOT_ID}, #${ROOT_ID} * { box-sizing: border-box; }
 #${ROOT_ID} {
   --ct-white: #f3f0fb; --ct-muted: #aaa9bd; --ct-border: rgba(174,158,207,.18);
@@ -271,30 +267,24 @@
       const button = DOC.createElement('button');
       button.id = LAUNCH_ID;
       button.type = 'button';
-      button.innerHTML = ICONS.cat + '<span class="ct-radio-dot" aria-hidden="true"></span><span class="ct-launch-label">Theatre</span>';
-      button.addEventListener('click', () => {
-        if (radioUi.live) { if (typeof radioUi.open === 'function') radioUi.open(); }
-        else toggle();
-      });
+      button.innerHTML = ICONS.cat + '<span class="ct-launch-label">Theatre</span>';
+      // Radio has a separate On Air control. This launcher must always reopen
+      // Theatre, including after closing its presentation during a broadcast.
+      button.addEventListener('click', () => toggle());
       DOC.documentElement.appendChild(button);
       state.launch = button;
     }
-    const label = radioUi.live ? 'On Air' : 'Theatre';
-    const text = state.launch.querySelector('.ct-launch-label');
-    if (text.textContent !== label) text.textContent = label;
-    state.launch.classList.toggle('ct-radio-live', radioUi.live);
-    state.launch.setAttribute('aria-label', radioUi.live ? 'On Air · open Radio controls' : 'Open Catnap Theatre');
-    state.launch.title = radioUi.live ? 'This tab is broadcasting. Open Radio controls.' : radioUi.state === 'starting' ? 'Radio is starting. Open Catnap Theatre.' : radioUi.state === 'error' ? 'Radio is not live. Open Catnap Theatre.' : 'Open Catnap Theatre';
-    const visible = !state.open && (radioUi.live || (!radioUi.hideTheatreButton && isOnSongPage()));
+    state.launch.setAttribute('aria-label', 'Open Catnap Theatre');
+    state.launch.title = 'Open Catnap Theatre';
+    const visible = !state.open && !radioUi.hideTheatreButton && (radioUi.live || isOnSongPage());
     // The launcher CSS uses !important, so keep the display decision here.
     state.launch.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
   }
 
-  globalThis.CatnapTheatreRadioUI = Object.freeze({update(next, openControls) {
+  globalThis.CatnapTheatreRadioUI = Object.freeze({update(next) {
     radioUi.live = next?.state === 'live' && next.source === true;
     radioUi.state = ['idle','starting','connecting','reconnecting','live','error'].includes(next?.state) ? next.state : 'idle';
     radioUi.hideTheatreButton = next?.hideTheatreButton === true;
-    radioUi.open = typeof openControls === 'function' ? openControls : null;
     showLauncher();
   }});
 

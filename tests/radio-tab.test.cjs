@@ -1,4 +1,4 @@
-/* Radio page UI regressions, version 0.7.0.
+/* Radio page UI regressions, version 0.8.1.
  * Synthetic pages only: no captures, accounts, real music or relay secrets.
  */
 'use strict';
@@ -32,14 +32,39 @@ test('only the configured same-extension background entry is a trusted push send
 test('all publisher states preserve safe preferences and only exact true live/source is audible',async()=>{
  const f=await fixture({content:true});try{
   const launch=f.w.document.getElementById('catnap-theater-launch');
+  const pill=()=>f.w.document.getElementById('catnap-radio-indicator');
   assert.equal(launch.textContent,'Theatre');
-  for(const next of ['starting','connecting','reconnecting','error','idle']){f.push({state:next,source:true});assert.equal(launch.textContent,'Theatre');assert.equal(launch.classList.contains('ct-radio-live'),false);}
-  f.push({state:'live',source:false});assert.equal(launch.textContent,'Theatre');
-  f.push({state:'live',source:true,hideTheatreButton:true});assert.equal(launch.textContent,'On Air');assert.equal(launch.classList.contains('ct-radio-live'),true);assert.equal(launch.style.display,'inline-flex');
-  launch.click();await flush();assert.equal(f.messages.at(-1).action,'open');assert.equal(f.w.document.getElementById('catnap-theater-root'),null,'On Air opens controls, never Theatre or capture');
+  for(const next of ['starting','connecting','reconnecting','error','idle']){f.push({state:next,source:true});assert.equal(launch.textContent,'Theatre');assert.equal(launch.classList.contains('ct-radio-live'),false);assert.equal(pill(),null);}
+  f.push({state:'live',source:false});assert.equal(launch.textContent,'Theatre');assert.equal(pill(),null);
+  f.push({state:'live',source:true,hideTheatreButton:true});assert.equal(launch.textContent,'Theatre');assert.equal(launch.style.display,'none');assert.equal(pill().textContent,'On Air');assert.equal(pill().style.right,'25px');
+  pill().click();await flush();assert.equal(f.messages.at(-1).action,'open');assert.equal(f.w.document.getElementById('catnap-theater-root'),null,'On Air opens controls, never Theatre or capture');
   f.push({state:'idle',hideTheatreButton:true});assert.equal(launch.style.display,'none');
-  f.push({state:'idle',hideTheatreButton:false});assert.equal(launch.style.display,'inline-flex');
+  f.push({state:'idle',hideTheatreButton:false});assert.equal(launch.style.display,'inline-flex');assert.equal(pill(),null);
   assert.equal(f.messages.every(m=>m.target==='catnap-radio-ui'&&['status','open'].includes(m.action)),true);assert.equal(f.plays,0);
+ }finally{f.close();}
+});
+
+test('live Radio keeps a distinct Theatre entry that closes and reopens the actual presentation',async()=>{
+ const f=await fixture({content:true});try{
+  const launch=f.w.document.getElementById('catnap-theater-launch');
+  const pill=()=>f.w.document.getElementById('catnap-radio-indicator');
+  const root=()=>f.w.document.getElementById('catnap-theater-root');
+  launch.getBoundingClientRect=()=>({width:111});
+  f.push({state:'live',source:true});
+  assert.equal(launch.textContent,'Theatre');assert.equal(launch.getAttribute('aria-label'),'Open Catnap Theatre');assert.equal(launch.title,'Open Catnap Theatre');assert.equal(launch.style.display,'inline-flex');
+  assert.equal(pill().textContent,'On Air');assert.equal(pill().getAttribute('aria-label'),'On Air · open Radio controls');assert.equal(pill().style.right,'144px');assert.equal(pill().style.bottom,'104px');
+  const opens=()=>f.messages.filter(m=>m.action==='open').length;
+  pill().click();await flush();assert.equal(opens(),1);assert.equal(root(),null);
+  for(let i=0;i<2;i++){
+   launch.click();await flush();assert.ok(root(),'the original Theatre entry opens its presentation while live');assert.equal(pill().hidden,true);assert.equal(launch.style.display,'none');assert.equal(root().querySelector('.ct-radio-status').textContent,'On Air');
+   f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{code:'Escape',bubbles:true}));await flush();
+   assert.equal(root(),null);assert.equal(launch.style.display,'inline-flex');assert.equal(pill().hidden,false);assert.equal(f.w.document.querySelectorAll('#catnap-radio-indicator').length,1);
+  }
+  assert.equal(opens(),1,'opening and closing Theatre never sends Radio/capture commands');assert.equal(f.plays,0);
+  f.push({state:'live',source:true,hideTheatreButton:true});assert.equal(launch.style.display,'none');assert.equal(pill().style.right,'25px');
+  f.push({state:'live',source:true,hideTheatreButton:false});assert.equal(launch.style.display,'inline-flex');assert.equal(pill().style.right,'144px');
+  launch.getBoundingClientRect=()=>({width:160});f.w.dispatchEvent(new f.w.Event('resize'));assert.equal(pill().style.right,'193px');
+  for(const next of ['reconnecting','error','idle']){f.push({state:next,source:true});assert.equal(pill(),null);assert.equal(launch.textContent,'Theatre');}
  }finally{f.close();}
 });
 
@@ -47,9 +72,9 @@ test('untrusted and malformed pushes cannot change live state or display injecte
  const f=await fixture({content:true});try{
   const launch=f.w.document.getElementById('catnap-theater-launch');
   for(const sender of [{id:'other'},{id:'ours',url:'chrome-extension://ours/radio-panel.html'},{id:'ours',url:'chrome-extension://ours/broadcast-worker.js',tab:{id:7}}])f.push({state:'live',source:true},sender);
-  assert.equal(launch.textContent,'Theatre');
-  f.push({state:'live',source:'true'});assert.equal(launch.textContent,'Theatre');
-  f.push({state:'live',source:true,token:'private-token',endpoint:'https://secret.invalid',payload:'<img onerror=bad>'});assert.equal(launch.textContent,'On Air');
+  assert.equal(launch.textContent,'Theatre');assert.equal(f.w.document.getElementById('catnap-radio-indicator'),null);
+  f.push({state:'live',source:'true'});assert.equal(launch.textContent,'Theatre');assert.equal(f.w.document.getElementById('catnap-radio-indicator'),null);
+  f.push({state:'live',source:true,token:'private-token',endpoint:'https://secret.invalid',payload:'<img onerror=bad>'});assert.equal(launch.textContent,'Theatre');assert.equal(f.w.document.getElementById('catnap-radio-indicator').textContent,'On Air');
   assert.equal(JSON.stringify(f.api.status()).includes('private-token'),false);assert.equal(f.w.document.documentElement.textContent.includes('private-token'),false);assert.equal(f.w.document.querySelector('[onerror]'),null);
  }finally{f.close();}
 });
@@ -74,6 +99,16 @@ test('standalone Radio supports the unchanged Lite header without replacing its 
   const label=root.querySelector('.ct-radio-status');assert.ok(label);assert.equal(label.textContent,'On Air');old.click();assert.equal(oldLaunches,1);assert.equal(f.w.document.getElementById('catnap-theater-launch'),old);
   label.click();await flush();assert.equal(f.messages.at(-1).action,'open');assert.equal(f.w.document.getElementById('catnap-radio-indicator').hidden,true);
   root.remove();await flush();assert.equal(f.w.document.getElementById('catnap-radio-indicator').hidden,false);assert.equal(f.plays,0);
+ }finally{f.close();}
+});
+
+test('Radio-only Suno pages never gain a Theatre launcher and retain their existing Radio control',async()=>{
+ const f=await fixture({response:state({radioOnly:true})});try{
+  const pill=()=>f.w.document.getElementById('catnap-radio-indicator');
+  assert.equal(f.w.document.getElementById('catnap-theater-launch'),null);assert.equal(pill().textContent,'Radio');
+  f.push({state:'live',source:true,radioOnly:true});assert.equal(pill().textContent,'On Air');assert.equal(pill().style.right,'25px');
+  pill().click();await flush();assert.equal(f.messages.at(-1).action,'open');assert.equal(f.w.document.getElementById('catnap-theater-root'),null);
+  f.push({state:'live',source:false,radioOnly:true});assert.equal(pill().textContent,'Radio');assert.equal(f.w.document.getElementById('catnap-theater-launch'),null);assert.equal(f.plays,0);
  }finally{f.close();}
 });
 
