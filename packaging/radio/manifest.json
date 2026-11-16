@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "Catnap Radio — Development",
+  "version": "0.7.0",
+  "description": "Broadcast music from your selected Suno or AIU Player tab to an authorized audio relay. No microphone or recording.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabCapture",
+    "offscreen"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "broadcast-worker.js"
+  },
+  "options_page": "broadcast.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://suno.com/*",
+        "https://www.suno.com/*"
+      ],
+      "js": [
+        "broadcast-source.js",
+        "broadcast-metadata.js",
+        "radio-tab.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://party.aiu.fm/party",
+        "https://party.aiu.fm/party/*"
+      ],
+      "js": [
+        "broadcast-source.js",
+        "radio-tab.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Catnap Radio — music broadcast controls",
+    "default_icon": {
+      "16": "assets/icons/radio-16.png",
+      "32": "assets/icons/radio-32.png",
+      "48": "assets/icons/radio-48.png",
+      "128": "assets/icons/radio-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/radio-16.png",
+    "32": "assets/icons/radio-32.png",
+    "48": "assets/icons/radio-48.png",
+    "128": "assets/icons/radio-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-src 'none'; connect-src https: http:"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAud5lYkzNHro2cm9KD1LrjcMhDSiehQzdapGsHx1bLF1kcGrQbXe/MS6h0sr8maSPMqCxXOpX6r6pSwXruK6+0mFRe0HlfUrmbnbwyz7/1ok46cIoCm9KEh/m1CXAKn119q5D7nvjWdCiber2zC4mWNf3pMg5neobzWFo0Lrc3kTkpQqr6IxAjyviwcNjRaciM8gVgogNVF0SYOQGpGKe0DOGrpV2pRDA955/RWzZ58+JtnPtio0amu2Bj1i9o6g+7rw2gjjZbwe2Okf80N2+FOcj0nHjxdn7oUiGsB+RxtPGtBKuO0Htd+/QqIEFpTLp97vvpc2JLLf3dNdNgI5wkwIDAQAB"
+}

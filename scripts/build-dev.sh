@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Catnap development package builder, version 0.6.10.
+# Catnap development package builder, version 0.7.0.
 # Change summary: explicit public source allowlists, independently loadable
-# combined/Inbox-only packages, root manifests and SHA-256 checksums.
+# Theatre/Inbox/Radio packages, root manifests and SHA-256 checksums. Radio is a
+# separate minimal capture tool and never includes the inbox/native companion.
 # Builds files only. It never installs extensions, registers a native host,
 # contacts services, reads browser profiles or deploys a package.
 set -euo pipefail
-SCRIPT_VERSION='0.6.10'
+SCRIPT_VERSION='0.7.0'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR=''
@@ -13,7 +14,8 @@ PACKAGE_FLAVOR='both'
 
 usage() {
   printf 'Catnap development builder %s\n' "$SCRIPT_VERSION"
-  printf 'Usage: bash scripts/build-dev.sh --output DIRECTORY [--flavor both|theatre|inbox]\n'
+  printf 'Usage: bash scripts/build-dev.sh --output DIRECTORY [--flavor both|all|theatre|inbox|radio]\n'
+  printf 'both preserves Theatre + Inbox; all additionally builds standalone Radio.\n'
   printf 'Use a fresh output directory. Existing package targets are never overwritten.\n'
 }
 while (($#)); do
@@ -29,7 +31,7 @@ while (($#)); do
   esac
 done
 [[ -n "$OUTPUT_DIR" ]] || { usage >&2; exit 2; }
-case "$PACKAGE_FLAVOR" in both|theatre|inbox) ;; *) printf 'Choose both, theatre or inbox.\n' >&2; exit 2 ;; esac
+case "$PACKAGE_FLAVOR" in both|all|theatre|inbox|radio) ;; *) printf 'Choose both, all, theatre, inbox or radio.\n' >&2; exit 2 ;; esac
 for tool in node zip; do
   command -v "$tool" >/dev/null 2>&1 || { printf 'Required build tool missing: %s\n' "$tool" >&2; exit 2; }
 done
@@ -54,11 +56,16 @@ COMMON_FILES=(
 THEATRE_FILES=(
   helpers.js content.js lyric-scroll.js visual-media.js standalone.js visualizer.js
   managed-player.js managed-native-guard.js managed-media.js managed-show.js
-  broadcast-core.js broadcast-metadata-core.js broadcast-metadata.js
+  broadcast-source.js radio-tab.js broadcast-core.js broadcast-metadata-core.js broadcast-metadata.js
   broadcast-worker.js broadcast-panel.js broadcast-offscreen.js
   broadcast.html broadcast.css broadcast-offscreen.html
   presentation-control-worker.js presentation-tab-controller.js
   presentation-panel.html presentation-panel.js lounge.html lounge.css lounge.js
+)
+RADIO_FILES=(
+  broadcast-source.js broadcast-core.js broadcast-metadata-core.js broadcast-metadata.js
+  broadcast-worker.js broadcast-panel.js broadcast-offscreen.js
+  broadcast.html broadcast.css broadcast-offscreen.html radio-tab.js visualizer.js
 )
 copy_source() {
   local source_path="$1" destination_path="$2"
@@ -76,7 +83,10 @@ checksum() {
 }
 build_flavor() {
   local flavor="$1" package_name manifest_path file package_dir archive_path
-  if [[ "$flavor" == 'inbox' ]]; then
+  if [[ "$flavor" == 'radio' ]]; then
+    package_name="Catnap-Radio-Dev-v${SCRIPT_VERSION}"
+    manifest_path="$PROJECT_DIR/packaging/radio/manifest.json"
+  elif [[ "$flavor" == 'inbox' ]]; then
     package_name="Catnap-Inbox-Dev-v${SCRIPT_VERSION}"
     manifest_path="$PROJECT_DIR/packaging/inbox/manifest.json"
   else
@@ -88,9 +98,14 @@ build_flavor() {
   done
   package_dir="$STAGING_DIR/$package_name"
   mkdir -p "$package_dir"
-  for file in "${COMMON_FILES[@]}"; do copy_source "$PROJECT_DIR/extension/$file" "$package_dir/$file"; done
+  if [[ "$flavor" != 'radio' ]]; then
+    for file in "${COMMON_FILES[@]}"; do copy_source "$PROJECT_DIR/extension/$file" "$package_dir/$file"; done
+  fi
   copy_source "$manifest_path" "$package_dir/manifest.json"
-  if [[ "$flavor" == 'inbox' ]]; then
+  if [[ "$flavor" == 'radio' ]]; then
+    for file in "${RADIO_FILES[@]}"; do copy_source "$PROJECT_DIR/extension/$file" "$package_dir/$file"; done
+    printf '/* Generated Catnap Radio configuration, version %s. */\nglobalThis.CatnapPackage = Object.freeze({version:"%s",inboxOnly:false,radioOnly:true});\n' "$SCRIPT_VERSION" "$SCRIPT_VERSION" > "$package_dir/package-mode.js"
+  elif [[ "$flavor" == 'inbox' ]]; then
     copy_source "$PROJECT_DIR/extension/inbox-worker.js" "$package_dir/inbox-worker.js"
     printf '/* Generated Catnap Inbox package configuration, version %s. */\nglobalThis.CatnapPackage = Object.freeze({version:"%s",inboxOnly:true});\n' "$SCRIPT_VERSION" "$SCRIPT_VERSION" > "$package_dir/package-mode.js"
   else
@@ -98,20 +113,48 @@ build_flavor() {
     copy_source "$PROJECT_DIR/extension/assets/aiu-logo.png" "$package_dir/assets/aiu-logo.png"
   fi
   for file in 16 32 48 128; do
-    if [[ "$flavor" == inbox ]]; then
+    if [[ "$flavor" == radio ]]; then
+      copy_source "$PROJECT_DIR/packaging/radio/assets/icons/radio-$file.png" "$package_dir/assets/icons/radio-$file.png"
+    elif [[ "$flavor" == inbox ]]; then
       copy_source "$PROJECT_DIR/packaging/inbox/assets/icons/inbox-$file.png" "$package_dir/assets/icons/inbox-$file.png"
     else
       copy_source "$PROJECT_DIR/extension/assets/icons/theatre-$file.png" "$package_dir/assets/icons/theatre-$file.png"
     fi
   done
-  for file in README.md CHANGELOG.md LICENSE NOTICE LICENSING.md; do copy_source "$PROJECT_DIR/$file" "$package_dir/$file"; done
-  for file in README.md catnap-suno-host.mjs install-linux.sh install-windows.cmd install-windows.ps1 CatnapSunoLauncher.cs install-macos.sh; do copy_source "$PROJECT_DIR/native/$file" "$package_dir/native/$file"; done
-  # Only maintained Markdown documentation is distributed. Screenshots are not
-  # needed for installation; no historical/event/input folders are copied.
-  while IFS= read -r file; do
-    copy_source "$file" "$package_dir/docs/${file#"$PROJECT_DIR/docs/"}"
-  done < <(find "$PROJECT_DIR/docs" -type f -name '*.md' -print)
-  cat > "$package_dir/PACKAGE-README.md" <<EOF
+  for file in LICENSE NOTICE LICENSING.md; do copy_source "$PROJECT_DIR/$file" "$package_dir/$file"; done
+  if [[ "$flavor" == 'radio' ]]; then
+    copy_source "$PROJECT_DIR/docs/BROADCAST-PILOT.md" "$package_dir/docs/BROADCAST-PILOT.md"
+    cat > "$package_dir/PACKAGE-README.md" <<EOF
+# Catnap Radio development package ${SCRIPT_VERSION}
+
+Load this folder, containing manifest.json, with Load unpacked in Chrome/Brave.
+Pin the teal radio-tower icon. Open the intended Suno or AIU Player party tab,
+then click that icon. Choose the relay and supply its private publish token.
+Start music broadcast is explicit; opening the panel never starts capture.
+
+This separate package broadcasts the selected tab's audio. It does not provide
+Theatre presentation, inbox/playlist creation, native helpers, microphone input,
+recording or a relay server. It does not need Node.js, Suno MCP or an LLM.
+The relay must already be running and authorize this broadcaster. Credentials
+are supplied by the host and are never included in this package.
+
+Only one broadcaster should capture the intended music tab at a time. Stop a
+broadcast before changing or reloading its extension. Keep the captured tab open;
+closing the controls window does not stop a started broadcast. Use Stop to end it.
+
+Read docs/BROADCAST-PILOT.md for relay, listener and rehearsal details. This is
+a development preview, not an automatic update to Theatre Lite or the Store beta.
+Licensing and branding terms are in LICENSE, NOTICE and LICENSING.md.
+EOF
+  else
+    for file in README.md CHANGELOG.md; do copy_source "$PROJECT_DIR/$file" "$package_dir/$file"; done
+    for file in README.md catnap-suno-host.mjs install-linux.sh install-windows.cmd install-windows.ps1 CatnapSunoLauncher.cs install-macos.sh; do copy_source "$PROJECT_DIR/native/$file" "$package_dir/native/$file"; done
+    # Only maintained Markdown documentation is distributed. Screenshots are not
+    # needed for installation; no historical/event/input folders are copied.
+    while IFS= read -r file; do
+      copy_source "$file" "$package_dir/docs/${file#"$PROJECT_DIR/docs/"}"
+    done < <(find "$PROJECT_DIR/docs" -type f -name '*.md' -print)
+    cat > "$package_dir/PACKAGE-README.md" <<EOF
 # Catnap ${flavor} development package ${SCRIPT_VERSION}
 
 Load this folder (the one containing manifest.json) using Load unpacked in an
@@ -134,6 +177,7 @@ The source README and docs describe the shared project; this file identifies
 the selected package. First-party licensing and branding terms are in LICENSE,
 NOTICE and LICENSING.md. See maintained acceptance documentation for test limits.
 EOF
+  fi
   # Validate the selected manifest and every declared local entry point before
   # archiving; this does not run any extension code.
   node - "$package_dir" "$SCRIPT_VERSION" <<'NODE'
@@ -157,5 +201,6 @@ NODE
   printf 'Built %s\nFolder: %s\nZIP: %s\n' "$flavor" "$OUTPUT_DIR/$package_name" "$OUTPUT_DIR/$package_name.zip"
 }
 
-if [[ "$PACKAGE_FLAVOR" == both || "$PACKAGE_FLAVOR" == theatre ]]; then build_flavor theatre; fi
-if [[ "$PACKAGE_FLAVOR" == both || "$PACKAGE_FLAVOR" == inbox ]]; then build_flavor inbox; fi
+if [[ "$PACKAGE_FLAVOR" == both || "$PACKAGE_FLAVOR" == all || "$PACKAGE_FLAVOR" == theatre ]]; then build_flavor theatre; fi
+if [[ "$PACKAGE_FLAVOR" == both || "$PACKAGE_FLAVOR" == all || "$PACKAGE_FLAVOR" == inbox ]]; then build_flavor inbox; fi
+if [[ "$PACKAGE_FLAVOR" == all || "$PACKAGE_FLAVOR" == radio ]]; then build_flavor radio; fi
