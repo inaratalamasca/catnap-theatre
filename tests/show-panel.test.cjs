@@ -9,9 +9,10 @@ const extension = path.join(__dirname,'../extension');
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function settle() { await tick(); await tick(); }
 
-async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true,holdPlay=false}={}) {
+async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true,holdPlay=false,confirmResult=true,checkedDeclineStatus='pending'}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
-  const w=dom.window, messages=[],copies=[],permissions=[];
+  const w=dom.window, messages=[],copies=[],permissions=[],confirmations=[];
+  w.confirm=message=>{confirmations.push(message);return confirmResult;};
   let pendingPermission;
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
@@ -35,6 +36,9 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
       case 'configure':Object.assign(state,message.settings);data=structuredClone(state);break;
       case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'},{id:'other-inbox',name:'Other LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};state.inboxes=structuredClone(data.inboxes);break;
       case 'import':data=structuredClone(state);break;
+      case 'claim-playlist':state.playlistOwnership={playlistId:state.playlistId,showId:state.id,managedIds:[],verifiedOrder:[]};data=structuredClone(state);break;
+      case 'check-decline-entry':{const entry=state.entries.find(item=>item.id===message.entryId);if(checkedDeclineStatus==='declined'){entry.state='declined';entry.declineUncertain=false;}else if(checkedDeclineStatus==='pending'){entry.declineUncertain=false;entry.hostHeld=true;entry.effectiveHeld=true;}data={status:checkedDeclineStatus};break;}
+      case 'decline-entry':{const entry=state.entries.find(item=>item.id===message.entryId);entry.state='declined';entry.effectiveHeld=false;state.playlistDirty=true;data={declined:true,entryId:entry.id};break;}
       case 'sync-playlist':data={confirmed:state.entries.length,missing:[],playerUpdateWarning:state.error||undefined};break;
       case 'load':{const entry=state.entries.find(item=>item.id===message.entryId);state.playback={current:{id:entry.id},phase:'ready',source:entry.preferredSource};data={loaded:true};break;}
       case 'queue-move':{const from=state.entries.findIndex(item=>item.id===message.entryId),[entry]=state.entries.splice(from,1),to=message.beforeEntryId===null?state.entries.length:state.entries.findIndex(item=>item.id===message.beforeEntryId);state.entries.splice(to,0,entry);data=structuredClone(state);break;}
@@ -52,7 +56,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   }}};
   Object.defineProperty(w.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{if(clipboardDenied)throw Error('Clipboard permission denied');copies.push(value);}}});
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
-  return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),
+  return {dom,w,messages,copies,permissions,confirmations,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),
     setReadiness:value=>{readinessOverrides=value;},
     rejectNext:(action,error)=>failures.set(action,error),
     holdPermission(){let release;pendingPermission=new Promise(resolve=>{release=resolve;});return release;},
@@ -521,7 +525,7 @@ test('local reorder uses stable entry identities, preserves current anchor, and 
   rowButton(f,'fixture-inbox:3','move-down').click();await settle();
   assert.equal(f.messages.filter(m=>m.action==='queue-move').at(-1).beforeEntryId,null);
   assert.equal(f.messages.some(m=>['sync-playlist','create-playlist','play','load'].includes(m.action)),false);
-  assert.match(f.element('queue-help').textContent,/across inbox reads.*does not reorder the Suno playlist/);
+  assert.match(f.element('queue-help').textContent,/across inbox reads.*managed playlist sync/);
 });
 
 test('host Hold and Release are explicit local actions and held rows cannot Load',async t=>{
@@ -611,4 +615,127 @@ test('prominent held total follows effective local holds and release without cha
   assert.equal(f.state().lastRead.held,0,'saved provider-read counts stay separate');
   assert.equal(f.element('inbox-connection').dataset.state,'missing','local queue mutation is no evidence of current inbox access');
   assert.equal(f.element('ready-pending').dataset.state,'missing');
+});
+
+
+test('held, ready and declined states have distinct text and declined rows never count as held',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  Object.assign(f.state().entries[1],{hostHeld:true,effectiveHeld:true,effectiveHoldReason:'Held by host.'});
+  addQueueEntry(f,'fixture-inbox:ready',{hostHeld:false,effectiveHeld:false});
+  addQueueEntry(f,'fixture-inbox:declined',{state:'declined',hostHeld:true,effectiveHeld:true});await f.poll();
+  assert.equal(queueRow(f,'fixture-inbox:2').dataset.held,'true');
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,'Held');
+  assert.equal(queueRow(f,'fixture-inbox:ready').querySelector('.queue-state').textContent,'Ready');
+  assert.equal(queueRow(f,'fixture-inbox:declined').querySelector('.queue-state').textContent,'Declined');
+  assert.equal(queueRow(f,'fixture-inbox:declined').dataset.held,'false');
+  assert.match(f.element('inbox-status').textContent,/1 held in show/);
+  for(const action of ['load','hold','move-up','move-down','decline'])assert.equal(rowButton(f,'fixture-inbox:declined',action).disabled,true);
+});
+
+test('repeat uploader chips use stable ID before name and retain a color through refresh and reorder',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  Object.assign(f.state().entries[0],{uploaderId:'synthetic-account',uploaderName:'Original name',intakeOrder:0});
+  Object.assign(f.state().entries[1],{uploaderId:'synthetic-account',uploaderName:'Changed name',intakeOrder:1});
+  addQueueEntry(f,'fixture-inbox:other',{uploaderId:'different-account',uploaderName:'Changed name',intakeOrder:2});await f.poll();
+  const group=queueRow(f,'fixture-inbox:1').dataset.uploaderGroup;
+  assert.match(group,/^[0-5]$/);assert.equal(queueRow(f,'fixture-inbox:2').dataset.uploaderGroup,group);
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.uploader-group').textContent,'Same uploader · 2 of 2');
+  assert.equal(queueRow(f,'fixture-inbox:other').dataset.uploaderGroup,undefined,'same display name cannot merge different explicit IDs');
+  [f.state().entries[1],f.state().entries[2]]=[f.state().entries[2],f.state().entries[1]];await f.poll();
+  assert.equal(queueRow(f,'fixture-inbox:2').dataset.uploaderGroup,group);
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.uploader-group').textContent,'Same uploader · 2 of 2');
+  assert.equal(queueRow(f,'fixture-inbox:2').dataset.uploaderGroup.includes('synthetic-account'),false);
+});
+
+test('explicit Decline confirms song, uploader and fixed reason and sends only the stable entry ID',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  rowButton(f,'fixture-inbox:2','decline').click();await settle();
+  assert.equal(f.confirmations.length,1);assert.match(f.confirmations[0],/Second song.*Other uploader/s);
+  assert.match(f.confirmations[0],/Only one song at a time, please\./);
+  assert.doesNotMatch(f.confirmations[0],/Second private note/);
+  assert.deepEqual(f.messages.filter(m=>m.action==='decline-entry'),[{target:'catnap-show-worker',action:'decline-entry',entryId:'fixture-inbox:2'}]);
+  assert.equal(f.state().entries[1].state,'declined');
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,'Declined');
+  assert.equal(f.messages.some(m=>['play','sync-playlist'].includes(m.action)),false);
+});
+
+test('canceled Decline, protected rows and Inbox-only flavor never send the mutation',async t=>{
+  const f=await fixture({confirmResult:false});t.after(()=>f.dom.window.close());
+  rowButton(f,'fixture-inbox:2','decline').click();rowButton(f,'fixture-inbox:1','decline').click();await settle();
+  assert.equal(f.confirmations.length,1);assert.equal(f.messages.some(m=>m.action==='decline-entry'),false);
+  const creator=await fixture({inboxOnly:true});t.after(()=>creator.dom.window.close());
+  assert.equal(rowButton(creator,'fixture-inbox:2','decline').hidden,true);
+  assert.equal(creator.element('claim-playlist').hidden,true);assert.equal(creator.element('playlist-order-help').hidden,true);
+  assert.match(creator.element('inbox-read-help').textContent,/submissions stay unchanged/);
+  assert.equal(creator.messages.some(m=>['decline-entry','claim-playlist'].includes(m.action)),false);
+});
+
+test('a pending or failed Decline is never repeated automatically or displayed as confirmed',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());const release=f.holdNext('decline-entry');
+  f.rejectNext('decline-entry','Decline is not confirmed. Check the uploader before trying again.');
+  const button=rowButton(f,'fixture-inbox:2','decline');button.click();button.click();await settle();
+  assert.equal(f.messages.filter(m=>m.action==='decline-entry').length,1);assert.equal(f.confirmations.length,1);assert.equal(button.disabled,true);
+  release();await settle();await f.poll();await f.poll();
+  assert.equal(f.messages.filter(m=>m.action==='decline-entry').length,1);
+  assert.notEqual(f.state().entries[1].state,'declined');assert.match(f.element('status').textContent,/not confirmed.*Check the uploader/);
+});
+
+test('playlist ownership is explicit and local dirty state remains pending without automatic sync',async t=>{
+  const f=await fixture({mode:'ap'});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('claim-playlist').disabled,false);assert.match(f.element('playlist-status').textContent,/not managed yet/);
+  assert.equal(f.messages.some(m=>m.action==='claim-playlist'),false);
+  await f.click('claim-playlist');
+  assert.equal(f.messages.filter(m=>m.action==='claim-playlist').length,1);assert.equal(f.element('claim-playlist').disabled,true);
+  f.state().playlistDirty=true;f.state().playlistSyncPending=true;f.state().watch.enabled=true;await f.poll();await f.poll();
+  assert.match(f.element('playlist-status').textContent,/Suno update pending/);
+  assert.equal(f.messages.some(m=>['sync-playlist','play'].includes(m.action)),false);
+  f.state().lastPlaylistSync={confirmed:2,missing:[],deferred:true,reason:'loaded song is protected'};await f.poll();
+  assert.match(f.element('playlist-status').textContent,/deferred.*loaded song is protected/);
+});
+
+test('repeated Suno IDs warn about one playlist occurrence while retaining separate show rows',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.state().entries[0].sunoId='synthetic-same-song';f.state().entries[1].sunoId='synthetic-same-song';await f.poll();
+  assert.equal(f.element('playlist-duplicates').hidden,false);assert.match(f.element('playlist-duplicates').textContent,/appear once.*each submission/s);
+  assert.equal(f.w.document.querySelectorAll('#queue li').length,2);
+  f.state().entries[1].state='declined';await f.poll();assert.equal(f.element('playlist-duplicates').hidden,true);
+});
+
+
+test('an uncertain Decline exposes a read-only check and keeps retry disabled until verified Pending',async t=>{
+ const f=await fixture();t.after(()=>f.dom.window.close());
+ Object.assign(f.state().entries[1],{declineUncertain:true,hostHeld:true,effectiveHeld:true});await f.poll();
+ assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,'Decline unconfirmed');
+ assert.equal(rowButton(f,'fixture-inbox:2','decline').disabled,true);assert.equal(rowButton(f,'fixture-inbox:2','check-decline').hidden,false);
+ rowButton(f,'fixture-inbox:2','check-decline').click();await settle();
+ assert.deepEqual(f.messages.filter(m=>m.action==='check-decline-entry'),[{target:'catnap-show-worker',action:'check-decline-entry',entryId:'fixture-inbox:2'}]);
+ assert.equal(f.confirmations.length,0);assert.equal(f.messages.some(m=>m.action==='decline-entry'),false);
+ assert.equal(f.state().entries[1].declineUncertain,false);assert.equal(f.state().entries[1].hostHeld,true);
+ assert.equal(rowButton(f,'fixture-inbox:2','check-decline').hidden,true);assert.equal(rowButton(f,'fixture-inbox:2','decline').disabled,false);
+ assert.equal(rowButton(f,'fixture-inbox:2','load').disabled,true,'host hold remains until the host releases it');
+});
+
+test('unknown Decline evidence retains its warning while verified Declined becomes a locked non-held row',async t=>{
+ for(const checkedDeclineStatus of ['unknown','declined']){
+  const f=await fixture({checkedDeclineStatus});t.after(()=>f.dom.window.close());
+  Object.assign(f.state().entries[1],{declineUncertain:true,hostHeld:true,effectiveHeld:true});await f.poll();
+  rowButton(f,'fixture-inbox:2','check-decline').click();await settle();
+  assert.equal(f.messages.some(m=>m.action==='decline-entry'),false);
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,checkedDeclineStatus==='unknown'?'Decline unconfirmed':'Declined');
+  assert.equal(queueRow(f,'fixture-inbox:2').dataset.held,checkedDeclineStatus==='unknown'?'true':'false');
+  assert.equal(rowButton(f,'fixture-inbox:2','decline').disabled,true);
+ }
+});
+
+
+test('queue arrows cannot claim a saved move across the canonical ready and held boundary',async t=>{
+ const f=await fixture();t.after(()=>f.dom.window.close());
+ addQueueEntry(f,'fixture-inbox:held-one',{hostHeld:true,effectiveHeld:true,effectiveHoldReason:'Held by host.'});
+ addQueueEntry(f,'fixture-inbox:held-two',{hostHeld:true,effectiveHeld:true,effectiveHoldReason:'Held by host.'});await f.poll();
+ assert.equal(rowButton(f,'fixture-inbox:2','move-down').disabled,true,'ready tail cannot move into held section');
+ assert.equal(rowButton(f,'fixture-inbox:held-one','move-up').disabled,true,'held head cannot move into ready section');
+ rowButton(f,'fixture-inbox:2','move-down').click();rowButton(f,'fixture-inbox:held-one','move-up').click();await settle();
+ assert.equal(f.messages.some(m=>m.action==='queue-move'),false);
+ assert.equal(rowButton(f,'fixture-inbox:held-one','move-down').disabled,false,'same-category hold order remains editable');
+ assert.equal(rowButton(f,'fixture-inbox:held-two','move-up').disabled,false);
 });

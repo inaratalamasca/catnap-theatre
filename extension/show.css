@@ -1,4 +1,4 @@
-/* Catnap show controls, version 0.7.0.
+/* Catnap show controls, version 0.8.0.
  * Change summary: persistent playback mode, clear active controls and prominent
  * inbox read totals. Host-only notes never enter the stage.
  */
@@ -43,3 +43,16 @@ button.mode-choice.is-active::before{content:'✓ ';font-weight:800}
 .queue-state{border:1px solid #635374;border-radius:6px;padding:3px 6px;font-size:11px;white-space:nowrap;color:#ddd0ea}#queue li[data-held=true]{border-color:#967039}.queue-hold-reason{color:#f1cc8f;overflow-wrap:anywhere}
 
 #queue li>strong{min-width:0;overflow-wrap:anywhere}
+
+/* 0.8: state labels remain readable without color, while repeated uploader
+ * chips and matching right edges make related submissions easy to scan. */
+#queue li[data-held=true]{background:#3b2232;border-color:#f39cb8;border-left:5px solid #f39cb8}#queue li[data-held=true] .queue-state{background:#62283f;border-color:#ffc0d4;color:#fff0f5}.queue-hold-reason{color:#ffe1b0}
+#queue .uploader-group{grid-column:1/-1;justify-self:start;padding:3px 7px;border:1px solid;border-radius:6px;font-size:11px;font-weight:650;overflow-wrap:anywhere}.uploader-group[hidden]{display:none}
+#queue li[data-uploader-group="0"]{border-right:4px solid #c7a0ed}#queue li[data-uploader-group="0"] .uploader-group{background:#39274b;border-color:#c7a0ed;color:#f0ddff}
+#queue li[data-uploader-group="1"]{border-right:4px solid #7ed7ce}#queue li[data-uploader-group="1"] .uploader-group{background:#193b38;border-color:#7ed7ce;color:#d8fff9}
+#queue li[data-uploader-group="2"]{border-right:4px solid #e1c675}#queue li[data-uploader-group="2"] .uploader-group{background:#40361e;border-color:#e1c675;color:#fff1bd}
+#queue li[data-uploader-group="3"]{border-right:4px solid #8ebcf0}#queue li[data-uploader-group="3"] .uploader-group{background:#24364e;border-color:#8ebcf0;color:#e1efff}
+#queue li[data-uploader-group="4"]{border-right:4px solid #dfaa8c}#queue li[data-uploader-group="4"] .uploader-group{background:#473024;border-color:#dfaa8c;color:#ffe9d8}
+#queue li[data-uploader-group="5"]{border-right:4px solid #b0d18a}#queue li[data-uploader-group="5"] .uploader-group{background:#2b3a24;border-color:#b0d18a;color:#ecffd9}
+#queue li[data-declined=true]{background:#24232c;border-color:#71717f}#queue li[data-declined=true]>strong{color:#c2becb;text-decoration:line-through}#queue li[data-declined=true] .queue-state{background:#34333f;color:#e6e3ec}
+#queue .queue-actions button[data-action=decline]{margin-left:auto;border-color:#cd8499;color:#ffe1eb}.playlist-warning{padding:10px;border:1px solid #bb9a5b;border-radius:8px;color:#ffe6ad;background:#302619}#playlist-order-help[hidden],.playlist-warning[hidden]{display:none}
