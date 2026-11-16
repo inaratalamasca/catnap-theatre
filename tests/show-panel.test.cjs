@@ -12,6 +12,7 @@ async function settle() { await tick(); await tick(); }
 async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissionGranted=true,connectError='',legacyGrant=false,linked=true,playerInitiallySelected=true,holdPlay=false}={}) {
   const dom = new JSDOM(fs.readFileSync(path.join(extension,'show.html'),'utf8'),{url:'chrome-extension://fixture/show.html',runScripts:'outside-only'});
   const w=dom.window, messages=[],copies=[],permissions=[];
+  let pendingPermission;
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:playerInitiallySelected?22:null,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
@@ -21,7 +22,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
   w.setInterval=fn=>{poll=fn;return 0;};
   w.CatnapPackage={inboxOnly};
-  w.chrome={permissions:{request:async value=>{permissions.push(value);return permissionGranted;}},runtime:{sendMessage:async message=>{
+  w.chrome={permissions:{request:async value=>{permissions.push(value);if(pendingPermission){const request=pendingPermission;pendingPermission=null;return request;}return permissionGranted;}},runtime:{sendMessage:async message=>{
     messages.push(structuredClone(message));let data;
     const statusSnapshot=message.action==='status'?snapshot():null;
     const delay=delayed.get(message.action);if(delay){delayed.delete(message.action);await delay;}
@@ -51,6 +52,7 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
   return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),
     rejectNext:(action,error)=>failures.set(action,error),
+    holdPermission(){let release;pendingPermission=new Promise(resolve=>{release=resolve;});return release;},
     holdNext(action){let release;delayed.set(action,new Promise(resolve=>{release=resolve;}));return release;},
     async poll(){poll();await settle();},
     async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
@@ -357,4 +359,19 @@ test('pending Sync is a single explicit operation and source-tab changes preserv
   release();await settle();await settle();
   assert.equal(f.messages.filter(message=>message.action==='sync-playlist').length,1);
   assert.equal(f.state().inboxId,'other-inbox');
+});
+
+test('an idle Pause finishing cannot unlock queued setup while Connect still awaits permission',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  const releasePause=f.holdNext('pause');await f.click('pause');
+  const grant=f.holdPermission();await f.click('connect-suno');
+  releasePause();await settle();
+  assert.equal(f.w.document.body.getAttribute('aria-busy'),'true','pending Connect keeps the panel busy after Pause ends');
+  await f.click('playlists');
+  assert.equal(f.messages.some(message=>message.action==='playlists'),false);
+  assert.equal(f.element('playlists').disabled,true);
+  grant(true);await settle();await settle();
+  assert.deepEqual(f.messages.filter(message=>['pause','connect-suno','playlists'].includes(message.action)).map(message=>message.action),['pause','connect-suno','playlists']);
+  assert.equal(f.w.document.body.hasAttribute('aria-busy'),false);
+  assert.equal(f.element('playlists').disabled,false);
 });

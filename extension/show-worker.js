@@ -1,4 +1,4 @@
-/* Catnap managed show worker, version 0.6.7.
+/* Catnap managed show worker, version 0.6.8.
  * Change summary: optional read-only uploader intake, private show queue,
  * saved inbox discovery, explicit player binding, verified MCP playlist writes
  * and bounded AP polling. Setup selections do not depend on a live Theatre.
@@ -6,7 +6,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.7';
+  const SCRIPT_VERSION = '0.6.8';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
@@ -112,8 +112,12 @@
       state.inboxName=data.inbox.name;state.lastRead={at:Date.now(),pending:normalized.total,held:normalized.held.length};state.error='';
       await save(state);
       try{await publishState(state);}catch(error){
-        state.error='Inbox read and running order saved. Theatre did not receive the update: '+text(error.message,240);
-        await save(state);
+        // Attach only the warning to the current, still-matching show record;
+        // do not replace newer saved fields with the pre-handoff snapshot.
+        const current=await get();
+        if(current.id!==state.id||current.inboxId!==state.inboxId||current.mode!==state.mode)throw Error('The show changed after the inbox read was saved.');
+        current.error='Inbox read and running order saved. Theatre did not receive the update: '+text(error.message,240);
+        await save(current);return current;
       }
       return state;
     }finally{reading=false;}
@@ -130,8 +134,10 @@
     latest.entries=latest.entries.map(entry=>{const clip=metadata.get(entry.sunoId);return clip?{...entry,durationSeconds:clip.durationSeconds,artworkUrl:entry.preferredSource==='youtube'?entry.artworkUrl:clip.artworkUrl||entry.artworkUrl}:entry;});
     latest.lastPlaylistSync={at:Date.now(),...result};latest.error='';await save(latest);
     try{await publishState(latest);}catch(error){
-      latest.error='Suno playlist verified and saved. Theatre did not receive the update: '+text(error.message,240);
-      await save(latest);return {...result,playerUpdateWarning:latest.error};
+      const current=await get();
+      if(current.id!==state.id||current.inboxId!==state.inboxId||current.playlistId!==state.playlistId)throw Error('The show or destination changed after the playlist result was saved.');
+      current.error='Suno playlist verified and saved. Theatre did not receive the update: '+text(error.message,240);
+      await save(current);return {...result,playerUpdateWarning:current.error};
     }
     return result;
   }

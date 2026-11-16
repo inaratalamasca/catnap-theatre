@@ -1,12 +1,12 @@
-/* Catnap host-only Inbox & show window, version 0.6.7.
+/* Catnap host-only Inbox & show window, version 0.6.8.
  * Change summary: ordered setup actions, saved inbox selection, explicit queue
  * commands and clipboard-only announcements. Playback never queues extra starts.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.7', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.6.8', $=id=>document.getElementById(id);
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='',playerChoice;
-  let actionTail=Promise.resolve(),waiting=0,refreshRevision=0,failureRevision=0,lastFailure='';
+  let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
   const status=value=>{$('status').textContent=value;};
   async function send(action,extra={}){const reply=await chrome.runtime.sendMessage({target:'catnap-show-worker',action,...extra});if(!reply?.ok)throw Error(reply?.error||'Show controls unavailable.');return reply.data;}
@@ -64,14 +64,14 @@
     ++refreshRevision;
     const expectedFailure=failureRevision;
     const run=async()=>{
-      const ownsBusy=!busy;if(ownsBusy){busy=true;document.body.setAttribute('aria-busy','true');}status(progress);
+      active++;busy=true;document.body.setAttribute('aria-busy','true');status(progress);
       try{
         // Failed target selection must not send queued Read/Sync to the old
         // saved inbox or playlist. A later distinct click can try again.
         if(queue&&expectedFailure!==failureRevision){status('Previous step failed: '+lastFailure+' Check the selection, then click the next step again.');return;}
         const result=await fn(),message=typeof success==='function'?success(result):success;if(message)status(message);
       }catch(error){lastFailure=error.message;failureRevision++;status(lastFailure);}
-      finally{if(ownsBusy){busy=false;document.body.removeAttribute('aria-busy');}try{await refresh();}catch(error){status(error.message);}}
+      finally{active--;busy=active>0;if(!busy)document.body.removeAttribute('aria-busy');try{await refresh();}catch(error){status(error.message);}}
     };
     if(interrupt)return run();
     // Queue setup changes and their next button click instead of silently
