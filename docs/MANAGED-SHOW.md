@@ -145,3 +145,9 @@ bash scripts/build-dev.sh --output /absolute/path/to/a/new/output-folder
 The builder refuses overwrites and emits Theatre + Inbox, Inbox-only and Radio-only unpacked folders, root-manifest ZIPs and SHA-256 files. Each contains first-party licensing and setup instructions. The two playlist creators also include optional companion source/installers; Radio-only needs no companion. No event CSVs, private identity records, browser configuration or runtime credentials are included.
 
 The Inbox-only creator does not enforce manual playback: its LP/AP choice selects the submission inbox, and playback stays with Suno or a separately managed Theatre.
+
+### Selection and YouTube view in 0.8.1
+
+Choosing an upcoming track changes the loaded song, not its queue position. Only actual completion or an explicit order/hold action may rearrange the running order. The managed Suno projection follows that same order.
+
+Playing a YouTube video fills the Theatre window without a permanent custom control strip. Move to the right-edge midpoint or focus its restore button with the keyboard to return to artwork view; Escape also restores when the parent Theatre has keyboard focus. The normal header Window view action expands the same video again. Native YouTube controls remain available.

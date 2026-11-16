@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Catnap Radio — Development",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Broadcast music from your selected Suno or AIU Player tab to an authorized audio relay. No microphone or recording.",
   "minimum_chrome_version": "120",
   "permissions": [

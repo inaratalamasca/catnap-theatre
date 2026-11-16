@@ -1,5 +1,12 @@
 # Changes
 
+## 0.8.1 preview — stable selection and clear video
+
+- Selecting, loading or starting an upcoming song leaves its queue position and managed playlist projection unchanged. Real completion and explicit Move/Hold/Release still update the running order.
+- Remove the permanent custom button strip from window-filling YouTube playback. A small restore action appears at the right edge on hover or keyboard focus; Escape and the normal Window view header action preserve the same video.
+- Keep Theatre available while Radio is live. Theatre reopens the presentation; a separate On Air button opens Radio controls. The explicit Hide Theatre preference still applies.
+- Keep the existing native companion, audio transport, authorization and Lite0.5.0 unchanged. Activate the new folder only between broadcasts.
+
 ## 0.8.0 preview — fair rotation and managed playlist order
 
 - Keep held submissions out of the managed Suno playlist. On confirmed predecessor completion, release only that uploader's next entry at the current ready tail; subsequent entries remain held. Starting, skipping and replaying do not release extra submissions.

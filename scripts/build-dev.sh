@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Catnap development package builder, version 0.8.0.
+# Catnap development package builder, version 0.8.1.
 # Change summary: explicit public source allowlists, independently loadable
 # Theatre/Inbox/Radio packages, root manifests and SHA-256 checksums. Radio is a
 # separate minimal capture tool and never includes the inbox/native companion.
 # Builds files only. It never installs extensions, registers a native host,
 # contacts services, reads browser profiles or deploys a package.
 set -euo pipefail
-SCRIPT_VERSION='0.8.0'
+SCRIPT_VERSION='0.8.1'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR=''

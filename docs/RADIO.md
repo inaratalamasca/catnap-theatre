@@ -113,3 +113,7 @@ checks. The successful 0.6.10 Dev1 statuses/lyrics report does not establish the
 new features.
 
 Implementation reference: [Chrome tab capture](https://developer.chrome.com/docs/extensions/reference/api/tabCapture).
+
+### Reopening Theatre while Radio is live
+
+In 0.8.1, the page has separate Theatre and On Air actions. Theatre opens the presentation; On Air opens Radio controls. The explicit Hide Theatre preference still hides Theatre for radio-only use. Neither closing nor reopening Theatre restarts the active audio broadcast. The companion is unchanged from 0.8.0.

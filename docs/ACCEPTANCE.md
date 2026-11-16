@@ -1,6 +1,15 @@
 # Host acceptance checklist
 
-Current preview: 0.8.0 development, November 16, 2026. Activate between broadcasts in a test profile. Theatre Lite0.5.0 remains unchanged.
+Current preview: 0.8.1 development, November 16, 2026. Activate between broadcasts in a test profile. Theatre Lite0.5.0 remains unchanged.
+
+## 0.8.1 selection and presentation checks
+
+- [x] Synthetic queue tests: Load third then second preserves entry IDs/order and playlist projection through refresh; real completion still records played order and fair tail release.
+- [x] Synthetic Theatre/Radio tests: close/reopen Theatre while live, distinct Radio action, and the explicit hide preference.
+- [ ] Real host: select several upcoming Suno/YouTube entries without their rows moving; complete a song and verify fair rotation separately.
+- [ ] Real host: window-filling YouTube has no permanent Catnap control strip; restore using the right edge or Escape, then reopen Window view without restarting video.
+- [ ] Real host: close Theatre while Radio is live and reopen it using Theatre, while On Air opens only Radio controls.
+
 
 ## 0.8.0 fair rotation and playlist checks
 
