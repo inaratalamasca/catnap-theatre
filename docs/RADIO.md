@@ -117,3 +117,5 @@ Implementation reference: [Chrome tab capture](https://developer.chrome.com/docs
 ### Reopening Theatre while Radio is live
 
 In 0.8.1, the page has separate Theatre and On Air actions. Theatre opens the presentation; On Air opens Radio controls. The explicit Hide Theatre preference still hides Theatre for radio-only use. Neither closing nor reopening Theatre restarts the active audio broadcast. The companion is unchanged from 0.8.0.
+
+The 0.8.2 UI update retains separate Theatre/On Air actions and the unchanged 0.8 companion/audio transport. Activate only between broadcasts.

@@ -1,15 +1,16 @@
-/* Catnap managed show worker, version 0.8.0.
+/* Catnap managed show worker, version 0.8.2.
  * Change summary: optional read-only uploader intake, private show queue,
  * saved inbox discovery, explicit player binding, verified MCP playlist writes
  * and bounded AP polling. Setup selections do not depend on a live Theatre.
  * Fair holds and actual played history project into explicitly managed Suno
- * playlists; completion reconciliation does not block the player controls.
+ * playlists without sorting the visible rows; completed anchors stay protected.
+ * Completion reconciliation does not block the player controls.
  * Readiness reports local permission/context facts, never a service probe.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.8.0';
+  const SCRIPT_VERSION = '0.8.2';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
@@ -299,7 +300,9 @@
       if(!health.linked)throw Error('Reconnect Theatre before changing its local running order.');
       if(health.currentId)protectedIds.add(health.currentId);
     }
-    const boundary=state.entries.reduce((last,entry,index)=>protectedIds.has(entry.id)?Math.max(last,index):last,-1);
+    // Completed rows remain in place, so the editable suffix starts after every
+    // loaded or completed anchor, not just the current source.
+    const boundary=state.entries.reduce((last,entry,index)=>protectedIds.has(entry.id)||CatnapInboxCore.wasPlayed(entry)?Math.max(last,index):last,-1);
     return {protectedIds,boundary};
   }
   async function saveLocalQueue(state){

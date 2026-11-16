@@ -1,5 +1,13 @@
 # Changes
 
+## 0.8.2 preview — stable completion and visible video exit
+
+- Keep finished songs in their existing Theatre and control-panel row positions. Completion history stays separate, and managed Suno playlist projection still reflects actual played order. Fair repeat releases continue to join the ready tail.
+- Show one compact Exit video button throughout window-filling YouTube playback. Restore the same video to artwork view while it keeps playing; pending Play cannot expand it again after an explicit exit.
+- Mark completed Theatre rows Played, retaining deliberate replay and existing source warnings. Protect completed anchors during explicit upcoming edits.
+- Preserve existing saved order during upgrade; prior automatically moved rows are not reconstructed from incomplete history. Start a fresh test show to verify new ordering without old saved moves.
+- Native companion, audio transport, authorization, compatible Host Controls0.4.8 and Lite0.5.0 are unchanged.
+
 ## 0.8.1 preview — stable selection and clear video
 
 - Selecting, loading or starting an upcoming song leaves its queue position and managed playlist projection unchanged. Real completion and explicit Move/Hold/Release still update the running order.

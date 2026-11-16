@@ -810,3 +810,34 @@ test('selecting third then second keeps saved order and verified playlist clean 
   }
   await tick();assert.equal(f.calls.mcp.length,0,'Load and observations do not request playlist writes');
 });
+
+test('paired video completion and replay preserve panel order through saved observations and inbox refresh',async()=>{
+  const third='12345678-1234-4234-8234-111111111111';
+  const entries=[entry('one',{uploaderId:'first'}),entry('two',{uploaderId:'second',sunoId:SECOND,sunoUrl:song(SECOND)}),entry('paired',{uploaderId:'third',preferredSource:'youtube',sunoId:third,sunoUrl:song(third),youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12'})];
+  const order=entries.map(entry=>entry.id),rows=[row('paired',{uploader_id:'third',suno_url:song(third),youtube_url:entries[2].youtubeUrl}),row('two',{uploader_id:'second',suno_url:song(SECOND)}),row('one',{uploader_id:'first'})];
+  const f=fixture({state:{entries,playerTabId:7},rows});
+  for(const [revision,phase] of [[1,'ready'],[2,'playing'],[3,'ended'],[4,'playing'],[5,'ended']]){
+    const result=await f.send({target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision,
+      playback:{phase,generation:1,current:{id:entries[2].id},source:'youtube',completedEntryIds:revision>=3?[entries[2].id]:[]}},f.player);
+    assert.equal(result.ok,true);assert.deepEqual(f.state().entries.map(entry=>entry.id),order);assert.equal(f.state().playback.index,2);
+    await f.control('import');assert.deepEqual(f.state().entries.map(entry=>entry.id),order);assert.equal(f.state().playback.current.id,entries[2].id);
+  }
+  const paired=f.state().entries[2];assert.equal(paired.playedOrder,1);assert.ok(Number.isFinite(paired.playedAt));assert.equal(paired.preferredSource,'youtube');
+  assert.equal(f.calls.mcp.length,0,'without a destination, local completion does not use Suno');
+});
+
+test('paired completion projects actual native history without changing visible queue positions',async()=>{
+  const third='12345678-1234-4234-8234-111111111111';
+  const entries=[entry('one'),entry('two',{sunoId:SECOND,sunoUrl:song(SECOND)}),entry('paired',{preferredSource:'youtube',sunoId:third,sunoUrl:song(third),youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',playedAt:1000,playedOrder:1})];
+  const f=fixture({managed:true,state:{playlistId:PLAYLIST,entries}});
+  assert.equal((await f.control('sync-playlist')).ok,true);assert.deepEqual(f.calls.mcp[0].ids,[third,SONG,SECOND]);
+  assert.deepEqual(f.state().entries.map(entry=>entry.id),entries.map(entry=>entry.id));assert.equal(f.state().playlistDirty,false);
+});
+
+test('explicit edits cannot cross a completed anchor that remains after earlier unplayed entries',async()=>{
+  const entries=[entry('one'),entry('two'),entry('finished',{playedAt:1000,playedOrder:1}),entry('four')];
+  const f=fixture({state:{entries}});
+  assert.equal((await f.control('queue-move',{entryId:entries[3].id,beforeEntryId:entries[0].id})).ok,false);
+  assert.equal((await f.control('queue-hold',{entryId:entries[0].id,held:true})).ok,false);
+  assert.deepEqual(f.state().entries.map(entry=>entry.id),entries.map(entry=>entry.id));assert.equal(f.calls.mcp.length,0);
+});

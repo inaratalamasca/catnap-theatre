@@ -1,6 +1,6 @@
 # Inbox playlists and managed shows · 0.8.0 development
 
-**0.8.0 fair rotation:** held entries stay out of the managed Suno playlist. A completed song releases just that uploader's next submission at the current tail. Managed playlist order follows played/current/ready show order at explicit sync and optional AP two-minute checks. Manual Decline is a separate, confirmed uploader change; there is no automatic Decline.
+**0.8.2 managed show:** held entries stay out of the managed Suno playlist. A completed song releases just that uploader's next submission at the current tail. Visible rows keep their positions on completion. The managed Suno projection follows actual played history plus the unplayed ready order at explicit sync and optional AP two-minute checks. Manual Decline is a separate, confirmed uploader change; there is no automatic Decline.
 
 **0.7.0 presentation update:** YouTube expands to the Theatre's browser window on Play. The small controls let you restore Artwork view, pause or load the next song; no monitor fullscreen is requested. Quiet Load still does not start audio. Red video badges identify YouTube queue entries. Status text now says Loaded. The single Theatre gear opens Presentation controls, with Radio and Inbox entries at the top and a green, mode-labeled ready status when connected without a reported error. These additions need a real host rehearsal; the 0.6.10 Dev1 lyrics/status confirmation remains separately recorded.
 
@@ -146,8 +146,10 @@ The builder refuses overwrites and emits Theatre + Inbox, Inbox-only and Radio-o
 
 The Inbox-only creator does not enforce manual playback: its LP/AP choice selects the submission inbox, and playback stays with Suno or a separately managed Theatre.
 
-### Selection and YouTube view in 0.8.1
+### Stable rows and YouTube view in 0.8.2
 
-Choosing an upcoming track changes the loaded song, not its queue position. Only actual completion or an explicit order/hold action may rearrange the running order. The managed Suno projection follows that same order.
+Selecting, playing and finishing a song keeps its Theatre and control-panel row in place. A Played badge records completion. The completion sequence is stored independently so the managed Suno playlist may still reflect actual played order; held repeats stay out until release at the ready tail. Explicit Move/Hold/Release can change the order.
 
-Playing a YouTube video fills the Theatre window without a permanent custom control strip. Move to the right-edge midpoint or focus its restore button with the keyboard to return to artwork view; Escape also restores when the parent Theatre has keyboard focus. The normal header Window view action expands the same video again. Native YouTube controls remain available.
+Playing a YouTube video fills the Theatre window. One visible Exit video button at the middle-right edge restores artwork view immediately while preserving the same video and playback. The normal header Window view action expands it again. Native YouTube controls remain. Escape can also restore when keyboard focus is in the parent Theatre.
+
+Upgrades preserve the last saved order. Earlier automatic moves are not reconstructed from incomplete history, because that could undo deliberate host moves. A fresh test show is the clearest check of the new stable-row behavior.

@@ -1,13 +1,22 @@
 # Host acceptance checklist
 
-Current preview: 0.8.1 development, November 16, 2026. Activate between broadcasts in a test profile. Theatre Lite0.5.0 remains unchanged.
+Current preview: 0.8.2 development, November 16, 2026. Activate between broadcasts in a test profile. Theatre Lite0.5.0 remains unchanged.
+
+## 0.8.2 completion and video-exit checks
+
+Ina reports a paired YouTube/Suno row still reached the front in0.8.1, probably after completion, and the hidden video-restore action was not discoverable. Real0.8.1 acceptance is incomplete. Synthetic diagnosis reproduces completion sorting for either source, independently of native playlist Sync.
+
+- [ ] Real host: fresh paired YouTube entry loads, plays, finishes and replays without changing its row position in either window. Confirm Played status and one repeat released at the ready tail.
+- [ ] Real host: use the visible Exit video button before the end; video keeps playing in artwork view. Reopen Window view without restarting it.
+- [ ] Real host: refresh/reopen preserves stable rows, manual holds/releases and intended moves. Verify managed Suno projection separately.
+
 
 ## 0.8.1 selection and presentation checks
 
 - [x] Synthetic queue tests: Load third then second preserves entry IDs/order and playlist projection through refresh; real completion still records played order and fair tail release.
 - [x] Synthetic Theatre/Radio tests: close/reopen Theatre while live, distinct Radio action, and the explicit hide preference.
 - [ ] Real host: select several upcoming Suno/YouTube entries without their rows moving; complete a song and verify fair rotation separately.
-- [ ] Real host: window-filling YouTube has no permanent Catnap control strip; restore using the right edge or Escape, then reopen Window view without restarting video.
+- [ ] Real host: window-filling YouTube has no permanent Catnap control strip; restore using the visible Exit video action or Escape, then reopen Window view without restarting video.
 - [ ] Real host: close Theatre while Radio is live and reopen it using Theatre, while On Air opens only Radio controls.
 
 
