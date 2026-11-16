@@ -1,6 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Inbox &amp; show controls</title><link rel="stylesheet" href="presentation-panel.css"><link rel="stylesheet" href="show.css"></head>
 <body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.8</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
+<section id="control-mode" class="control-mode-card" aria-labelledby="control-mode-title" aria-live="polite" data-mode="checking">
+<p class="eyebrow">Playback controls</p><h2 id="control-mode-title">Checking playback connection…</h2><p id="control-mode-detail">The saved show connection is being checked.</p><p id="bound-player" class="connection-target"></p><p id="selected-player" class="connection-target"></p>
+</section>
+<p id="inbox-status" class="inbox-summary" role="status" aria-live="polite" aria-atomic="true">Inbox Submissions: Not read yet</p><p id="inbox-error" class="inbox-error" role="status" aria-live="polite" hidden></p>
 <p id="status" role="status" aria-live="polite">Loading show…</p>
 <main>
 <section><h2>Show setup</h2><div class="columns"><label>Party type<select id="mode"><option value="lp">Listening party · manual</option><option value="ap">Afterparty</option></select></label><label>Show name<input id="show-name" maxlength="100" placeholder="Tonight’s show"></label></div>
@@ -8,9 +12,9 @@
 <div class="row"><button id="grant-inbox" type="button">Enable inbox &amp; Suno access</button><button id="discover" type="button">Find my inboxes</button></div>
 <label>Inbox<select id="inbox"><option value="">Choose your inbox</option></select></label>
 <div class="row"><button id="import" class="primary" type="button">Read Pending submissions</button><button id="new-show" type="button">New show</button></div>
-<label class="check"><input id="watch" type="checkbox">Update AP inbox and selected playlist every 2 minutes</label><small id="inbox-status">Reads only Pending submissions. Acceptance, release and cleanup stay manual.</small></section>
-<section id="theatre-playback"><h2>Theatre playback</h2><label>Playing Suno / Theatre tab<select id="player-tab"><option value="">Choose the tab you intend to share</option></select></label>
-<div class="row"><button id="bind-player" class="primary" type="button">Use this Theatre for the show</button><button id="unbind-player" type="button">Return to ordinary Suno</button></div>
+<label class="check"><input id="watch" type="checkbox">Update AP inbox and selected playlist every 2 minutes</label><small>Counts show the last successful inbox read. Reads Pending only, oldest first. Acceptance, release and cleanup stay manual.</small></section>
+<section id="theatre-playback"><h2>Theatre playback</h2><label>Selected Suno / Theatre tab<select id="player-tab"><option value="">Choose the tab you intend to share</option></select></label>
+<div class="row mode-choices"><button id="bind-player" class="mode-choice" type="button" aria-pressed="false">Use this Theatre for the show</button><button id="unbind-player" class="mode-choice" type="button" aria-pressed="false">Return to ordinary Suno</button></div>
 <label class="check"><input id="autoplay" type="checkbox">Autoplay the next song · AP only</label><small id="autoplay-help">Manual mode stops at the end. Load next changes artwork and warning without playing audio.</small>
 <div class="row playback"><button id="previous" type="button">Load previous</button><button id="next" type="button">Load next</button><button id="play" class="primary" type="button">Play</button><button id="pause" type="button">Pause</button></div>
 <button id="reload-lyrics" type="button">Reload lyrics</button><small>Refresh lyrics for the loaded Suno song.</small>

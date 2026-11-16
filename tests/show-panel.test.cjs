@@ -70,6 +70,75 @@ test('LP starts with autoplay off and disabled; AP permits a separate explicit t
   assert.equal(f.messages.some(message=>message.action==='play'),false);
 });
 
+test('the verified LP connection has a persistent active Inbox mode and matching active button',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  assert.equal(f.element('control-mode-title').textContent,'Inbox show controls active');
+  assert.equal(f.element('control-mode').dataset.mode,'inbox');
+  assert.match(f.element('control-mode-detail').textContent,/LP · manual advance.*stop at the end.*Load.*quietly/);
+  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno \(tab 22\)/);
+  assert.equal(f.element('bind-player').getAttribute('aria-pressed'),'true');assert.equal(f.element('bind-player').disabled,true);
+  assert.equal(f.element('unbind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('unbind-player').disabled,false);
+  await f.click('playlists');
+  assert.equal(f.element('control-mode-title').textContent,'Inbox show controls active','ordinary action status cannot replace the mode card');
+  assert.equal(f.messages.some(message=>['bind-player','play'].includes(message.action)),false);
+});
+
+test('active AP mode distinguishes manual advance from explicitly enabled autoplay',async t=>{
+  const f=await fixture({mode:'ap'});t.after(()=>f.dom.window.close());
+  assert.match(f.element('control-mode-detail').textContent,/AP · manual advance/);
+  await f.change('autoplay',true);assert.match(f.element('control-mode-detail').textContent,/AP · autoplay on.*starts automatically/);
+  assert.equal(f.messages.some(message=>message.action==='play'),false);
+});
+
+test('an unbound show displays ordinary Suno mode even after choosing a tab',async t=>{
+  const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('control-mode-title').textContent,'Suno playlist controls');
+  assert.equal(f.element('control-mode').dataset.mode,'suno');assert.equal(f.element('bound-player').hidden,true);
+  assert.equal(f.element('unbind-player').getAttribute('aria-pressed'),'true');assert.equal(f.element('unbind-player').disabled,true);
+  await f.change('player-tab','22');
+  assert.equal(f.element('control-mode-title').textContent,'Suno playlist controls');
+  assert.match(f.element('selected-player').textContent,/Selecting a tab does not connect it/);
+  assert.equal(f.element('bind-player').disabled,false);
+  assert.equal(f.messages.some(message=>['bind-player','play','load'].includes(message.action)),false);
+});
+
+test('an unhealthy saved binding warns about uncertain control without claiming ordinary Suno',async t=>{
+  const f=await fixture({linked:false});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('control-mode-title').textContent,'Inbox show needs reconnecting');
+  assert.equal(f.element('control-mode').dataset.mode,'reconnect');
+  assert.match(f.element('control-mode-detail').textContent,/reloaded.*uncertain/);
+  assert.match(f.element('bound-player').textContent,/Saved connection: Suno.*not verified/);
+  assert.equal(f.element('bind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('bind-player').disabled,false);
+  assert.equal(f.element('unbind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('unbind-player').disabled,false);
+});
+
+test('choosing another tab keeps the actual controlled target visible until explicit activation',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.tabs.push({id:23,title:'Other Suno tab',kind:'suno'});await f.poll();await f.change('player-tab','23');
+  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno \(tab 22\)/);
+  assert.match(f.element('selected-player').textContent,/Selected tab: Other Suno tab \(tab 23\).*has not changed the controlled tab/);
+  assert.equal(f.element('bind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('bind-player').disabled,false);
+  assert.equal(f.element('control-mode-title').textContent,'Inbox show controls active');
+  assert.equal(f.messages.some(message=>['bind-player','load','play'].includes(message.action)),false);
+});
+
+test('inbox summary prominently reports the read snapshot and retains counters separately from an error',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.state().lastRead={at:1794765600000,pending:11,held:0};f.state().error='Fixture read needs attention';await f.poll();
+  assert.match(f.element('inbox-status').textContent,/^Inbox Submissions: 11 Pending · 0 held · \(.+\)$/);
+  assert.equal(f.element('inbox-status').tagName,'P');assert.equal(f.element('inbox-status').getAttribute('role'),'status');
+  assert.equal(f.element('inbox-error').hidden,false);assert.equal(f.element('inbox-error').textContent,'Fixture read needs attention');
+  f.state().lastRead=null;f.state().error='';await f.poll();
+  assert.equal(f.element('inbox-status').textContent,'Inbox Submissions: Not read yet');assert.equal(f.element('inbox-error').hidden,true);
+});
+
+test('Inbox-only always explains that Suno controls playback and exposes no managed-mode claim',async t=>{
+  const f=await fixture({inboxOnly:true});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('control-mode-title').textContent,'Suno playlist controls');
+  assert.match(f.element('control-mode-detail').textContent,/extension updates playlists.*Suno controls song playback/);
+  assert.equal(f.element('bound-player').hidden,true);assert.equal(f.element('selected-player').hidden,true);
+});
+
 test('host notes and uploader names render as text, with an explicit disclaimer badge',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
   assert.equal(f.element('current-note').textContent,f.state().entries[0].note);
@@ -307,7 +376,8 @@ test('saved inbox read with a stale player reports its partial handoff clearly w
   f.state().error='Inbox read and running order saved. Theatre did not receive the update: Fixture connection is stale.';
   await f.click('import');
   assert.match(f.element('status').textContent,/running order saved.*did not receive/);
-  assert.match(f.element('inbox-status').textContent,/running order saved.*did not receive/);
+  assert.match(f.element('inbox-error').textContent,/running order saved.*did not receive/);
+  assert.match(f.element('inbox-status').textContent,/Inbox Submissions: 2 Pending · 0 held/);
   assert.equal(f.w.document.querySelectorAll('#queue li').length,2);
   assert.equal(f.messages.filter(message=>message.action==='import').length,1);
   assert.equal(f.messages.some(message=>['bind-player','play','load'].includes(message.action)),false);

@@ -1,6 +1,6 @@
 /* Catnap host-only Inbox & show window, version 0.6.8.
- * Change summary: ordered setup actions, saved inbox selection, explicit queue
- * commands and clipboard-only announcements. Playback never queues extra starts.
+ * Change summary: verified playback-mode display, prominent inbox totals and
+ * ordered setup actions. Playback never queues extra starts.
  */
 (() => {
   'use strict';
@@ -9,10 +9,27 @@
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
   const status=value=>{$('status').textContent=value;};
+  const label=(id,value)=>{const element=$(id);if(element.textContent!==value)element.textContent=value;};
   async function send(action,extra={}){const reply=await chrome.runtime.sendMessage({target:'catnap-show-worker',action,...extra});if(!reply?.ok)throw Error(reply?.error||'Show controls unavailable.');return reply.data;}
   function options(select,items,current,empty){
     const signature=JSON.stringify([items,current]);if(select.dataset.signature===signature){select.value=String(current||'');return;}
     select.dataset.signature=signature;select.replaceChildren(new Option(empty,''),...items.map(row=>new Option(row.name,String(row.id))));select.value=String(current||'');
+  }
+  function controlMode(data,chosen){
+    const s=data.state,inboxOnly=globalThis.CatnapPackage?.inboxOnly===true,bound=!inboxOnly&&Number.isInteger(s.playerTabId),linked=bound&&data.playbackHealth?.linked===true;
+    const ordinary=!bound,kind=linked?'inbox':ordinary?'suno':'reconnect',autoplay=s.mode==='ap'&&s.autoplay;
+    $('control-mode').dataset.mode=kind;
+    label('control-mode-title',linked?'Inbox show controls active':ordinary?'Suno playlist controls':'Inbox show needs reconnecting');
+    label('control-mode-detail',linked?`${s.mode==='lp'?'LP · manual advance':autoplay?'AP · autoplay on':'AP · manual advance'}. ${autoplay?'The next song starts automatically.':'Songs stop at the end. Load the next song quietly, then press Play.'}`:ordinary?inboxOnly?'This extension updates playlists. Suno controls song playback.':'Suno controls playback and its next-song behavior. Choose a Theatre tab, then select “Use this Theatre for the show” for Inbox control.':`${data.playbackHealth?.reason||'The saved Theatre connection could not be verified.'} Playback control is uncertain until you reconnect or return to ordinary Suno.`);
+    const tabName=id=>data.tabs.find(tab=>tab.kind==='suno'&&tab.id===id)?.title||'Suno / Theatre';
+    label('bound-player',bound?`${linked?'Currently controlled':'Saved connection'}: ${tabName(s.playerTabId)} (tab ${s.playerTabId})${linked?'':' · not verified'}`:'');
+    $('bound-player').hidden=!bound;
+    const different=bound&&chosen&&chosen!==s.playerTabId;
+    label('selected-player',inboxOnly?'':chosen?`Selected tab: ${tabName(chosen)} (tab ${chosen}). ${different?'This selection has not changed the controlled tab.':linked?'This is the controlled tab.':'Selecting a tab does not connect it.'}`:'No Theatre tab selected.');
+    $('selected-player').hidden=inboxOnly;
+    const same=linked&&chosen===s.playerTabId;
+    $('bind-player').setAttribute('aria-pressed',String(same));$('bind-player').classList.toggle('is-active',same);$('bind-player').disabled=!chosen||same;
+    $('unbind-player').setAttribute('aria-pressed',String(ordinary));$('unbind-player').classList.toggle('is-active',ordinary);$('unbind-player').disabled=ordinary;
   }
   function render(data){
     snapshot=data;const s=data.state,linked=data.playbackHealth?.linked===true,p=linked?(s.playback||{}):{},entry=linked?s.entries.find(e=>e.id===p.current?.id):null;
@@ -24,6 +41,7 @@
     // This selects a target only; it never connects or starts another tab.
     const chosen=playerChoice!==undefined?(available(playerChoice)?playerChoice:null):[s.playerTabId,data.suggestedTabId].find(available);
     options($('player-tab'),playerTabs.map(t=>({id:t.id,name:t.title})),chosen,'Choose your playing Theatre tab');
+    controlMode(data,chosen);
     if(s.inboxes)inboxes=s.inboxes;
     const availableInboxes=[...(inboxes[s.mode]||[])];
     if(s.inboxId&&!availableInboxes.some(row=>row.id===s.inboxId))availableInboxes.push({id:s.inboxId,name:s.inboxName||'Selected inbox · Find my inboxes to verify'});
@@ -33,7 +51,9 @@
     $('autoplay').checked=s.autoplay;$('autoplay').disabled=s.mode==='lp';
     $('watch').checked=s.watch?.enabled===true;$('watch').disabled=s.mode!=='ap';
     if(document.activeElement!==$('warning-seconds'))$('warning-seconds').value=s.warningSeconds;
-    $('inbox-status').textContent=s.error||s.lastRead? s.error||`Last read: ${s.lastRead.pending} Pending submissions · ${s.lastRead.held} held · ${new Date(s.lastRead.at).toLocaleTimeString()}`:'Reads Pending only. Acceptance, release and cleanup stay manual.';
+    const read=s.lastRead,readTime=read?new Date(read.at):null;
+    label('inbox-status',read?`Inbox Submissions: ${read.pending} Pending · ${read.held} held · (${Number.isNaN(readTime.getTime())?'time unavailable':readTime.toLocaleTimeString()})`:'Inbox Submissions: Not read yet');
+    label('inbox-error',s.error||'');$('inbox-error').hidden=!s.error;
     $('playback-status').textContent=linked?`${data.playbackHealth.phase||p.phase||'Ready'}${p.error?' · '+p.error:''} · ${s.mode==='ap'&&s.autoplay?'AP autoplay':'Manual advance'}`:(data.playbackHealth?.reason||'Choose your Suno tab, then Load or Play to connect the show.');
     $('autoplay-help').textContent=linked?'Manual mode stops at the end. Load next changes artwork and warning without playing audio.':'Playback is not connected. Load or Play reconnects the selected Theatre; ordinary Suno playback is not yet controlled.';
     $('current-title').textContent=entry?entry.title:'No song loaded';
