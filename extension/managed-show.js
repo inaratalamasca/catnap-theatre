@@ -1,11 +1,13 @@
-/* Catnap Theatre managed-show presentation, version 0.8.0.
+/* Catnap Theatre managed-show presentation, version 0.8.1.
  * Change summary: managed Suno lyrics prepare the matching native details
  * panel; stale and YouTube slots cannot borrow old native lyrics. A second
  * toggle cancels pending playback; reload-safe binding
  * status, first-entry Play, trusted native
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. One YouTube stage expands within the Theatre viewport on Play,
- * with view/playback/exit controls and no browser fullscreen. Local held rows
+ * without a permanent custom control strip or browser fullscreen. A discreet
+ * edge restore button appears on hover/focus; ordinary controls return with
+ * the artwork layout. Local held rows
  * stay disabled, repeat releases join the ready tail, and observations retain
  * the actual completion sequence. Row Load resolves stable submission IDs.
  * Source status stays above the progress bar. Host-only notes
@@ -13,7 +15,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.8.0';
+  const SCRIPT_VERSION='0.8.1';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -29,9 +31,13 @@
 #catnap-theater-root .ct-managed-warning[hidden]{display:none}
 #catnap-theater-root.ct-managed-window-video>.ct-managed-media-stage{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important;z-index:24!important;background:#000}
 #catnap-theater-root.ct-managed-window-video>.ct-header,#catnap-theater-root.ct-managed-window-video>.ct-main,#catnap-theater-root.ct-managed-window-video>.ct-bottom{visibility:hidden}
-#catnap-theater-root .ct-managed-video-controls{position:absolute;right:18px;bottom:94px;z-index:35;display:flex;flex-wrap:wrap;gap:6px;padding:8px;max-width:calc(100% - 24px);border:1px solid #8c7caa;border-radius:12px;background:#10121bec;box-shadow:0 5px 24px #0008;font:12px/1.3 system-ui}
-#catnap-theater-root .ct-managed-video-controls button{padding:7px 10px;border:1px solid #695b80;border-radius:7px;background:#242031;color:#fff}
-#catnap-theater-root.ct-managed-window-video>.ct-managed-video-controls{left:50%;right:auto;bottom:16px;transform:translateX(-50%);width:max-content}
+/* Keep the embedded player's controls clear. This small edge target remains
+   reachable even when pointer/keyboard focus has entered the cross-origin frame.
+   Do not depend on pointer events or key events crossing that frame boundary. */
+#catnap-theater-root .ct-managed-video-restore{position:fixed;right:4px;top:calc(50% - 22px);z-index:35;width:44px;height:44px;padding:0;border:1px solid #8c7caa;border-radius:9px;background:#10121bec;color:#fff;font:25px/1 system-ui;opacity:0;cursor:pointer}
+#catnap-theater-root .ct-managed-video-restore:hover,#catnap-theater-root .ct-managed-video-restore:focus{opacity:1}
+#catnap-theater-root .ct-managed-video-restore:focus-visible{outline:3px solid #e4b86e;outline-offset:2px}
+#catnap-theater-root .ct-managed-video-restore[hidden],#catnap-theater-root .ct-managed-video-window[hidden]{display:none!important}
 #catnap-theater-root .ct-managed-yt{display:inline-flex;align-items:center;justify-content:center;width:19px;height:13px;margin-left:6px;border-radius:4px;background:#df202c;vertical-align:middle}
 #catnap-theater-root .ct-managed-yt svg{width:8px;height:8px;fill:white}
 
@@ -88,25 +94,29 @@
   }
   function videoControls(stage,snapshot){
     const video=adapter?.videoView?.(),youtube=(snapshot.current?.playbackSource||snapshot.current?.preferredSource)==='youtube';
-    let controls=stage.querySelector('.ct-managed-video-controls');
-    if(!youtube||!video?.available){controls?.remove();return;}
-    if(!controls){
-      controls=document.createElement('div');controls.className='ct-managed-video-controls';controls.setAttribute('role','group');controls.setAttribute('aria-label','YouTube view and playback');
-      const button=(name,label,action)=>{const item=document.createElement('button');item.type='button';item.className=name;item.textContent=label;item.onclick=action;controls.append(item);return item;};
-      button('ct-managed-video-view','Window view',()=>{adapter?.setWindowView?.(!adapter.videoView().expanded);render();});
-      button('ct-managed-video-toggle','Play',()=>{void command('toggle').catch(displayError);});
-      button('ct-managed-video-next','Load next',()=>{void command('next').catch(displayError);});
-      button('ct-managed-video-close','Close Theatre',()=>view()?.open(false));stage.append(controls);
+    let windowButton=stage.querySelector('.ct-managed-video-window'),restoreButton=stage.querySelector('.ct-managed-video-restore');
+    if(!youtube||!video?.available){windowButton?.remove();restoreButton?.remove();return;}
+    if(!windowButton){
+      windowButton=document.createElement('button');windowButton.type='button';windowButton.className='ct-header-action ct-managed-video-window';windowButton.textContent='Window view';
+      windowButton.title='Fill the Theatre window without browser fullscreen';
+      windowButton.onclick=()=>{adapter?.setWindowView?.(true);render();};
+      stage.querySelector('.ct-header-actions')?.prepend(windowButton);
     }
-    const toggle=controls.querySelector('.ct-managed-video-view');toggle.textContent=video.expanded?'Artwork view':'Window view';toggle.setAttribute('aria-pressed',String(video.expanded));toggle.title=video.expanded?'Restore artwork layout · Esc also works while Theatre controls are focused':'Fill the Theatre window without browser fullscreen';
-    if(controls.dataset.expanded!==String(video.expanded)){controls.dataset.expanded=String(video.expanded);if(video.expanded&&stage.contains(document.activeElement)&&!controls.contains(document.activeElement))toggle.focus();}
-    controls.querySelector('.ct-managed-video-toggle').textContent=['playing','starting'].includes(snapshot.phase)?'Pause':'Play';
-    controls.querySelector('.ct-managed-video-next').disabled=snapshot.nextIndex<0;
+    if(!restoreButton){
+      restoreButton=document.createElement('button');restoreButton.type='button';restoreButton.className='ct-managed-video-restore';restoreButton.textContent='↙';
+      restoreButton.setAttribute('aria-label','Restore artwork view');restoreButton.title='Restore artwork view · Esc also works while Theatre controls are focused';
+      restoreButton.onclick=()=>{adapter?.setWindowView?.(false);render();stage.querySelector('.ct-managed-video-window')?.focus();};
+      stage.append(restoreButton);
+    }
+    windowButton.setAttribute('aria-pressed',String(video.expanded));
+    restoreButton.hidden=!video.expanded;
+    // No focus transfer on expansion: the recovery control must stay invisible
+    // until deliberately reached, and view changes never command playback.
     adapter?.refreshVideoView?.();
   }
   function restoreVideoOnEscape(event){
     if(!active||!(event.key==='Escape'||event.code==='Escape')||!adapter?.videoView?.().expanded)return false;
-    event.preventDefault();event.stopImmediatePropagation();adapter.setWindowView(false);render();return true;
+    event.preventDefault();event.stopImmediatePropagation();adapter.setWindowView(false);render();root()?.querySelector('.ct-managed-video-window')?.focus();return true;
   }
   function playbackStatus(stage,text){
     const line=stage?.querySelector('.ct-managed-playback-status');if(!line)return;
@@ -130,7 +140,7 @@
     else{art.removeAttribute('src');frame.classList.add('ct-no-art');}
     const lyricText=readManagedLyrics(snapshot,native);
     if(stage.dataset.managedLyrics!==String(entry?.id)+String(lyricText)){
-      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · Play fills the Theatre window. Use Artwork view to restore the layout.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
+      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · Play fills the Theatre window. Hover the right edge or Tab to Restore artwork view for show controls.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
     }
     select('.ct-up-next-label').textContent=snapshot.autoplay?'UP NEXT · AP AUTOPLAY':'UP NEXT · LOAD MANUALLY';
     select('.ct-up-next-title').textContent=snapshot.queue[snapshot.nextIndex]?.title||(snapshot.queue.some(CatnapManagedPlayer.isHeld)?'No unheld songs remain':'End of show queue');
@@ -157,7 +167,7 @@
     else await guard({action:'disable',generation:0});
     active=false;coordinator=null;adapter=null;show=null;timing={elapsed:0,duration:0};
     view()?.cancelNativeLyrics?.();
-    const stage=root();if(stage){delete stage.dataset.managedShow;delete stage.dataset.managedLyrics;playbackStatus(stage,'');stage.querySelector('.ct-managed-lineup')?.remove();stage.querySelector('.ct-managed-warning')?.remove();stage.querySelector('.ct-managed-video-controls')?.remove();stage.classList.remove('ct-managed-window-video');stage.querySelector('.ct-progress').disabled=false;}
+    const stage=root();if(stage){delete stage.dataset.managedShow;delete stage.dataset.managedLyrics;playbackStatus(stage,'');stage.querySelector('.ct-managed-lineup')?.remove();stage.querySelector('.ct-managed-warning')?.remove();stage.querySelector('.ct-managed-video-window')?.remove();stage.querySelector('.ct-managed-video-restore')?.remove();stage.classList.remove('ct-managed-window-video');stage.querySelector('.ct-progress').disabled=false;}
     return {enabled:false};
   }
   async function update(next){
