@@ -1,8 +1,8 @@
-// Version 0.2.11: recover plain multilingual native lyrics without Copy/section tags.
+// Version 0.6.10: managed lyric reload/recovery obeys the staged song identity.
 // Presentation only: read audio progress; never seek, pause, or restart playback.
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.2.11';
+  const SCRIPT_VERSION='0.6.10';
   if(globalThis.catnapLyricScrollVersion===SCRIPT_VERSION)return;
   globalThis.catnapLyricScrollVersion=SCRIPT_VERSION;
   const preference='catnap-lyrics-auto-scroll-v1';
@@ -48,6 +48,9 @@
     return '';
   }
   function recoverNativeLyrics(){
+    // Managed shows deliberately stage ahead of the native player. Only its
+    // identity-bound reader may fill this pane, including YouTube/quiet slots.
+    if(globalThis.CatnapManagedShow?.active)return;
     const lyrics=root?.querySelector('.ct-lyrics-content');
     if(!lyrics?.querySelector('.ct-lyrics-empty'))return;
     const text=lyricsWithoutCopy();if(!text)return;
@@ -59,6 +62,12 @@
   async function reloadLyrics(){
     if(!reloadButton?.isConnected||reloadButton.disabled)return;
     const control=reloadButton,song=currentSong();
+    if(globalThis.CatnapManagedShow?.active){
+      try{control.disabled=true;control.textContent='Reloading…';globalThis.CatnapManagedShow.reloadLyrics();motion={};control.title='Requested lyrics for the selected Suno show entry.';}
+      catch(error){control.title=String(error?.message||'Load the selected Suno song before reloading lyrics.');}
+      finally{control.disabled=false;control.textContent='Reload lyrics';}
+      return;
+    }
     const details=document.querySelector('button[aria-label="Playbar: Toggle song details panel"]');
     if(!song||!details){control.title='Suno song details are unavailable. Try again once the player has loaded.';return;}
     control.disabled=true;control.textContent='Reloading…';
@@ -86,14 +95,19 @@
     root=next;motion={};button=null;reloadButton=null;
     const heading=root.querySelector('.ct-lyrics-heading');
     if(!heading)return;
+    // DOM-visible ownership also coordinates with a companion running in a
+    // different extension's isolated world, where our globals are not shared.
+    root.setAttribute('data-catnap-lyrics-owner','theatre');
+    root.setAttribute('data-catnap-lyrics-owner-version',SCRIPT_VERSION);
     const existing=heading.querySelector('.ct-lyrics-auto');
-    if(existing?.getAttribute('data-catnap-lyrics-version')===SCRIPT_VERSION)return;
+    if(existing?.getAttribute('data-catnap-lyrics-version')===SCRIPT_VERSION&&existing.getAttribute('data-catnap-lyrics-owner')==='theatre'&&heading.querySelector('.ct-lyrics-reload[data-catnap-lyrics-owner="theatre"]'))return;
     // Upgrade an already-open player. Disconnecting the old toggle also stops
     // an older companion in the other extension from moving this lyric pane.
     existing?.remove();heading.querySelector('.ct-lyrics-reload')?.remove();
     const makeButton=(className,text)=>{
       const el=document.createElement('button');el.type='button';el.className=className;el.textContent=text;
       el.setAttribute('data-catnap-lyrics-version',SCRIPT_VERSION);
+      el.setAttribute('data-catnap-lyrics-owner','theatre');
       Object.assign(el.style,{float:'right',font:'500 11px system-ui',letterSpacing:'normal',padding:'3px 8px',marginTop:'-5px',marginLeft:'8px',border:'1px solid #665780',borderRadius:'6px',color:'#e4deef',background:'transparent',cursor:'pointer'});
       heading.insertBefore(el,heading.querySelector('.ct-heading-rule'));return el;
     };

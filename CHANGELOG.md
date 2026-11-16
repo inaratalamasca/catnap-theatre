@@ -1,5 +1,133 @@
 # Changes
 
+## 0.8.2 preview — stable completion and visible video exit
+
+- Keep finished songs in their existing Theatre and control-panel row positions. Completion history stays separate, and managed Suno playlist projection still reflects actual played order. Fair repeat releases continue to join the ready tail.
+- Show one compact Exit video button throughout window-filling YouTube playback. Restore the same video to artwork view while it keeps playing; pending Play cannot expand it again after an explicit exit.
+- Mark completed Theatre rows Played, retaining deliberate replay and existing source warnings. Protect completed anchors during explicit upcoming edits.
+- Preserve existing saved order during upgrade; prior automatically moved rows are not reconstructed from incomplete history. Start a fresh test show to verify new ordering without old saved moves.
+- Native companion, audio transport, authorization, compatible Host Controls0.4.8 and Lite0.5.0 are unchanged.
+
+## 0.8.1 preview — stable selection and clear video
+
+- Selecting, loading or starting an upcoming song leaves its queue position and managed playlist projection unchanged. Real completion and explicit Move/Hold/Release still update the running order.
+- Remove the permanent custom button strip from window-filling YouTube playback. A small restore action appears at the right edge on hover or keyboard focus; Escape and the normal Window view header action preserve the same video.
+- Keep Theatre available while Radio is live. Theatre reopens the presentation; a separate On Air button opens Radio controls. The explicit Hide Theatre preference still applies.
+- Keep the existing native companion, audio transport, authorization and Lite0.5.0 unchanged. Activate the new folder only between broadcasts.
+
+## 0.8.0 preview — fair rotation and managed playlist order
+
+- Keep held submissions out of the managed Suno playlist. On confirmed predecessor completion, release only that uploader's next entry at the current ready tail; subsequent entries remain held. Starting, skipping and replaying do not release extra submissions.
+- Preserve actual played order, host moves and sticky manual Release across inbox refreshes. Held rows and repeated uploaders have distinct labels/colour.
+- Reconcile an explicitly managed playlist to played/current/ready order using supported MCP removal and tail additions with readback. Protect current audio, unrelated tracks and incomplete writes. New Catnap playlists are owned automatically; existing destinations require an explicit management choice.
+- Add host-confirmed Decline with the reason “Only one song at a time, please.” Verify the exact submission in Declined before excluding it locally. No automatic Decline, Accepted-as-Played changes or MP3 access.
+- Add the native companion's fixed remove-clips allowlist entry using existing library-write authorization. Update the companion when removal/reordering is required; ordinary reads/additions remain compatible with an older helper.
+- Preserve Lite0.5.0, installed/current folders and the active0.6.10 broadcast. Real0.8.0 provider/playback/Decline acceptance remains separate from fixture checks.
+
+## 0.7.0 preview — independent Radio and AIU player publishing
+
+- Added an independently packaged Radio broadcaster: no Theatre, Inbox, Suno OAuth or native helper. Captures the explicitly selected Suno or AIU party-player tab using the existing stereo Opus/WHIP path.
+- Added the AIU party source to combined Theatre broadcasting while keeping Theatre/managed playback scripts restricted to Suno. An upper-right Radio/On Air control opens broadcasting options on AIU.
+- Source-bound On Air indicators, green AIU Theatre logo and white/grey No Radio state follow actual publisher connection status. A radio-only-use preference hides the Theatre launcher when off-air. Toolbar LIVE/error badges remain.
+- Presentation controls identify Inbox versus Suno playlist mode and show green success separately from closed/disconnected/error status.
+- Added a live-only Catnap listener reminder beside On Air, larger fitted artwork and a compact managed-source status line above the progress bar.
+- Managed YouTube Play expands inside the browser's Theatre window with restore controls, without requesting monitor fullscreen; quiet Load remains held. YouTube queue entries use a small red video badge.
+- Condensed the host song card around a small artwork thumbnail; clicking copies its safe public image URL, with keyboard/clipboard fallback and no private notes included.
+- Added a clean-install-only stream-name prompt and origin-bound local publish-token remembering with session-only/Forget controls.
+- Added Catnap-only busy preflight and explicit confirmed takeover, ready for the separately configured individual-key service. Normal Start does not take over; legacy relays retain normal publishing without the new takeover feature.
+- Added per-show local Move up/down and Hold/Release, preserved through manual/AP inbox reads with new arrivals appended. Loaded/playing and completed entries stay fixed; invalid sources cannot be released. Upcoming edits preserve current audio and do not reorder Suno playlist membership or order.
+- Added opt-in repeat-uploader holds until the earlier submission finishes, with persistent per-entry Release host overrides for approved multipart sequences. Current held-in-show totals update independently of the last Pending read; the Inbox-only creator retains FIFO intake without these controls.
+- Exercised local controls in isolated tests and synthetic desktop/mobile Chromium with invented data. New 0.7.0 live AP/resync, completion and broadcast acceptance remains pending.
+- Lite 0.5.0 and its existing downloads remain unchanged. Current 0.6.10 Dev1 activation/status/lyrics confirmation remains historical evidence, not live acceptance of these new changes.
+
+
+## 0.6.10 host verification — November 16, 2026
+
+- Ina confirmed loading 0.6.10 in Dev1: the status indicators match the setup and lyrics work in Inbox mode.
+- Intake retries, playlist updates, AP, YouTube/Discord/HQ and advanced live acceptance remain separate checks. This records a host result; no runtime, archive, version or Lite change was made.
+
+## 0.6.10 development — November 15, 2026
+
+- Keep Theatre Lite 0.5.0 separate and available unchanged for ordinary Suno hosts. Lite gains no Inbox controls or connector requirement.
+- Add prominent Suno/Inbox readiness indicators and labeled red/green checks for access, configuration, loaded data and verified results. Tie positive evidence to the current target; keep old counts separate from a newer failed check.
+- Grey the combined Theatre's top integration indicators as Not in use during ordinary Suno playback, without revoking authorization or preventing show preparation. The Inbox-only creator retains active status.
+- Status uses local facts and prior explicit operations, not automatic uploader/MCP network probes. Retain the grouped controls and all prior lyrics, manual-playback and intake fixes; the subsequent host status/lyrics result is recorded above.
+
+## 0.6.9 development — November 15, 2026
+
+- Group Presentation, Inbox & show and Close together with consistent button styling. Explicitly label the Theatre list INBOX SHOW ORDER or SUNO PLAYLIST.
+- Show the verified playback mode prominently: active Inbox show, ordinary Suno, or a saved Inbox connection needing repair. Identify the controlled tab separately from a selected destination and mark the active mode button.
+- Enlarge the last successful read summary to Inbox Submissions: N Pending · N held · (time), with errors separate from counts. Explain AP autoplay accurately instead of retaining manual-only helper text.
+- Retain the 0.6.8 lyrics and setup fixes. Current live screenshots still show 0.6.7; 0.6.9 actual lyrics/intake and mixed-source acceptance remain pending.
+
+## 0.6.8 development — November 15, 2026
+
+- Preserve raw newlines when reading plain native lyrics. A fresh Chromium differential reproduces the 0.6.7 failure with normal whitespace and confirms the corrected reader, including unrelated artwork and Copy controls.
+- Scope lyrics to the exact current-song heading and nearby native Styles control before considering unrelated page markers. Keep stale-song rejection and quiet/YouTube lyric clearing.
+- Repair inbox setup sequencing and selection state so quick successive setup clicks are retained and a stale Theatre does not make a saved inbox or playlist selection appear to fail. Playlist writes remain verified and are never blindly retried.
+- The host confirmed the 0.6.7 Reload lyrics button appears but lyrics stay missing. Real 0.6.8 lyrics and intake retries remain pending; accepted 0.6.6 audio/manual behavior is preserved.
+
+## 0.6.7 development — November 15, 2026
+
+- Reuse the ordinary native song-details preparation and lyrics reader in managed mode. Open/refresh only the matching loaded Suno song; delayed callbacks and lyric repair cannot fill a staged-next or YouTube slot with the previous song's words.
+- Add a clearly labeled Reload lyrics button directly to Inbox & show playback, retaining the Presentation Controls action. Reload uses the same bounded reader without starting, pausing or advancing audio.
+- Mark Theatre-owned lyric controls so the compatible advanced Host Controls companion can defer without replacing the new reader.
+- The host confirmed the complete 0.6.6 manual LP sequence. Lyrics appeared after returning to ordinary Suno and disappeared after re-enabling the managed show; this separate presentation correction still needs host confirmation.
+
+## 0.6.6 development — November 15, 2026
+
+- Recognize Suno's explicit `active-audio-play` music element beside its `silent-audio` helper. Actual native music uses a blob URL without the song UUID; the helper made the former generic audio lookup ambiguous.
+- Prefer exactly one identified native music element; duplicate/empty identified elements and ambiguous unknown sources remain held. Never treat the silent helper as a song.
+- Retain muted preparation, quiet Load, manual ending, source checks and cancellation. The actual 0.6.5 trial selected the song but reported audio not found; this focused DOM correction still needs host confirmation.
+
+## 0.6.5 development — November 15, 2026
+
+- Add a bounded, muted native preparation step only after explicit Play, so a cold Suno player can finish loading without an audible lead-in. Quiet Load never enters preparation. Pause, stop, a different entry and timeout close preparation.
+- Keep exact song/source verification before audible playback. Loading failures report only safe readiness facts, without audio URLs or account data.
+- Preserve an operator's chosen Suno tab when native tab titles change; closing that chosen tab holds instead of silently targeting another one.
+- Live 0.6.4 linking and quiet staging succeeded, but cold Play timed out after finding the native control. The 0.6.5 preparation change still requires host rehearsal.
+
+## 0.6.4 development — November 15, 2026
+
+- Correct Copy now playing to use the inbox's Discord user mention when available, with an `@name` fallback. Keep uploader identity host-only, avoid mass mentions, and never send chat automatically.
+- Match Suno's actual accessible row Play control: current markup uses a labelled DIV with role=button inside a deeper song group. Keep exact song/row scoping and reject disabled or ambiguous controls.
+- Apply the same lookup to managed native-control routing. Preserve the 0.6.3 quiet-load, stale-session recovery and LP end guards without changing OAuth scopes or companion protocol.
+- The host confirmed quiet staging in 0.6.3; real 0.6.4 Play and end-of-track behavior still need confirmation.
+
+## 0.6.3 development — November 15, 2026
+
+- Verify the live Theatre/page lease and native guard instead of showing a stale Manual advance status after a page reload. Explicit Load/Next/Previous/Play can reconnect the selected Theatre without rebinding during inbox imports or setup changes.
+- Start the first FIFO entry from an explicit Play on a fresh show; Load and advance remain silent, and a held first entry is not skipped.
+- Route known native Suno playback controls through an active managed show and harden native media boundaries, including detached media and earlier native event handlers.
+- Add an optional whole-operation coordination hook for the advanced controller, while keeping native callbacks under their existing exact show/tab lease.
+- Keep the Inbox-only package explicit about its playlist-only role. Preserve Suno profile-scope authorization and existing native companion compatibility.
+
+## 0.6.2 development — November 15, 2026
+
+- Host confirmed 0.6.2 authorization, playlist creation, Suno playlist playback and clean HQ rebroadcast together. Mixed-source/manual-warning/AP behavior remains separately pending live acceptance.
+
+- Add `profile:read` to Suno sign-in: a live playlist-read error identified it as required. Older grants need an explicit Connect Suno and fresh approval.
+- Migrate the cached OAuth client registration during explicit connection; old-grant automatic refresh must not pair an old refresh token with a newly registered client.
+- Preserve queue data, pinned development identities and existing native protocol compatibility. The Store beta and production aliases are unchanged.
+- Include opt-in owner-only sanitized native failure categories for incident diagnosis; logging stays disabled by default and does not record credentials or playlist contents.
+
+## 0.6.1 development — November 15, 2026
+
+- Request Suno authorization-site access when Connect Suno is clicked, before any sign-in request. Declining the grant leaves the account disconnected.
+- Keep connection failures beside Connect Suno; identify registration, token exchange and network failures without exposing credentials or provider response bodies.
+- Show the actual extension version in broadcast controls instead of the old component label.
+- Uses the existing restricted 0.6.0 native companion/protocol. No companion reinstall, new MCP tools or wider access is required.
+- Live OAuth rehearsal remains pending; this patch fixes a missing permission flow and improves diagnosis, without claiming the reported connection failure is resolved.
+
+## 0.6.0 development — 2026-11-15
+
+- Added optional read-only AIU LP/AP Pending intake with FIFO ordering, separate submission identities, uploader notes and tri-state disclaimer/radio flags. New arrivals append without restarting a playing entry.
+- Added shared Suno MCP playlist creation/sync with OAuth/PKCE, membership readback and a narrowly scoped native companion. Linux, Windows and macOS installer/launcher smoke checks pass on their respective CI systems; browser/account acceptance remains pending.
+- Added a mixed Suno/YouTube show queue with no Suno placeholders in managed mode. Paired sources prefer YouTube; missing/blocked sources hold for a host decision.
+- Added manual LP Load/Play separation, optional AP autoplay, timed warning overlays on advance, host-only context and clipboard announcements. Native source/loop guards prevent automatic next-song startup in focused and real-browser synthetic tests; live Suno/Discord/HQ behavior needs rehearsal.
+- Added a separate Catnap Inbox creator package without Theatre/capture permissions, using the same sync engine. Pinned distinct development IDs and purple/amber icons; no LLM or cue sheet is required.
+- Kept existing installed extensions and the submitted 0.5.0 Store beta separate. The v1 listener metadata is cleared during external-source entries until its schema supports those sources; private uploader notes never enter it.
+
 ## 0.5.0 early-access publication — 2026-11-15
 
 - Consolidated the existing broadcast, controls/visualizer and toolbar-icon changes into main.

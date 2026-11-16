@@ -42,7 +42,7 @@ function workerFixture(){
  const state={broadcastSourceTabId:7,broadcastToken:'broadcaster:private'},calls=[],readers=[];let handler;
  const extensionID='test',url=p=>'chrome-extension://test/'+p;
  const chrome={runtime:{id:extensionID,getURL:url,getContexts:async()=>[{}],onMessage:{addListener:f=>{handler=f;}},sendMessage:async m=>m.action==='status'?{state:'idle'}:{state:'connecting'}},storage:{session:{get:async key=>({[key]:state[key]}),set:async value=>Object.assign(state,value),remove:async key=>{delete state[key];}}},action:{onClicked:{addListener(){}},setBadgeText(){},setBadgeBackgroundColor(){}},permissions:{contains:async()=>true},tabs:{get:async id=>({id,url:'https://suno.com/playlist/'+ids[0]}),sendMessage:async(id,message)=>{readers.push({id,message});return {ok:true};}},tabCapture:{getMediaStreamId:async()=> 'opaque'}};
- const sandbox={chrome,URL,AbortSignal,CatnapBroadcast:B,CatnapBroadcastMetadata:M,importScripts(){},fetch:async(url,options)=>{calls.push({url,...options});return {ok:true};}};
+ const sandbox={chrome,URL,AbortSignal,CatnapBroadcast:B,CatnapBroadcastMetadata:M,CatnapBroadcastSource:require('../extension/broadcast-source.js'),importScripts(){},fetch:async(url,options)=>{calls.push({url,...options});return {ok:true};}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-worker.js'),'utf8'),sandbox);
  const send=(message,sender)=>new Promise(resolve=>{if(handler(message,sender,resolve)!==true)resolve();});
  return {state,calls,readers,send,url,source:{id:'test',tab:{id:7},frameId:0,url:'https://suno.com/playlist/'+ids[0]}};

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.2.0
+// @version      0.7.0
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,11 +12,12 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.2.0 alpha
- * Change: standalone layouts/settings; contain artwork; preserve native playback.
+ * CATNAP THEATRE · v0.7.0 development
+ * Change: responsive square artwork uses available stage space; managed source
+ * status sits above progress and a live Catnap listener link stays in the header.
  *
- * DOM-only presentation layer. Suno retains ownership of audio, queue, repeat,
- * shuffle, and playback. Up Next shows visible playlist order only.
+ * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
+ * managed mode uses a source-bound guard and the separate show coordinator.
  * No Suno API calls, audio downloads or login access.
  *
  * Toggle: small "Catnap Theater" button on Suno playlist/song pages.
@@ -26,7 +27,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.2.0';
+  const SCRIPT_VERSION = '0.7.0';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;
@@ -36,6 +37,9 @@
   const ROOT_ID = 'catnap-theater-root';
   const LAUNCH_ID = 'catnap-theater-launch';
   const STORAGE_KEY = 'catnap-theater-active-v1';
+  // Only the isolated Radio adapter sets these display flags. No capture or
+  // playback action is exposed through this UI bridge.
+  const radioUi = {live:false,hideTheatreButton:false,state:'idle'};
   const TRACK_RE = /\/song\/([0-9a-f-]{24,})/i;
   const LABELS = {
     title: 'a[aria-label^="Playbar: Title for "]',
@@ -71,8 +75,7 @@
     lyrics: '',
     didExpandLyrics: '',
     didExpandCaption: '',
-    didOpenDetails: '',
-    didRefreshDetails: '',
+    lyricPreparation: null,
     timerFast: null,
     timerSlow: null,
     lyricRetries: 0,
@@ -134,8 +137,14 @@
 #${ROOT_ID} button:focus-visible, #${ROOT_ID} input:focus-visible { outline: 2px solid #c69cff; outline-offset: 4px; }
 #${ROOT_ID} .ct-header {
   flex: none; height: 64px; padding: 8px clamp(20px,2.5vw,45px);
-  display: flex; align-items: center; gap: clamp(12px,2.6vw,42px);
+  display: flex; align-items: center; gap: clamp(10px,1.5vw,24px);
 }
+#${ROOT_ID} .ct-header-actions {display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}
+#${ROOT_ID} .ct-header-actions .ct-header-action {display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 11px;border:1px solid #77618c;border-radius:8px;background:rgba(34,27,48,.7);color:#eadff5;font:600 12px/1.2 system-ui;white-space:nowrap}
+#${ROOT_ID} .ct-header-actions .ct-popout-controls {width:34px;padding:0}
+#${ROOT_ID} .ct-popout-controls svg {width:18px;height:18px;display:block}
+#${ROOT_ID} .ct-header-actions .ct-header-action:hover {background:#3b2b4d;border-color:#b69acb}
+#${ROOT_ID} .ct-header-actions .ct-close {width:34px;padding:0;font-size:21px}
 #${ROOT_ID} .ct-brand { display: flex; align-items: center; gap: 11px; opacity: .92; flex: 0 0 auto; }
 #${ROOT_ID} .ct-brand svg { height: 34px; width: 34px; flex: none; color: #d7caec; }
 #${ROOT_ID} .ct-brand-main { letter-spacing: .13em; font-size: 13px; font-weight: 650; line-height: 1.3; }
@@ -143,20 +152,23 @@
 #${ROOT_ID} .ct-up-next { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 1px; text-align: center; overflow: hidden; }
 #${ROOT_ID} .ct-up-next-label { color: #a88bbf; font-size: 9px; font-weight: 700; letter-spacing: .2em; white-space: nowrap; }
 #${ROOT_ID} .ct-up-next-title { color: #ddd8e6; font-size: clamp(12px,1.1vw,16px); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#${ROOT_ID} .ct-aiu { flex: 0 0 clamp(108px,12.5vw,170px); max-width: 170px; height: 49px; display: flex; align-items: center; justify-content: flex-end; overflow: hidden; }
-#${ROOT_ID} .ct-aiu-logo { max-width: 100%; max-height: 47px; width: auto; height: auto; object-fit: contain; display: block; }
+#${ROOT_ID} .ct-aiu { flex: 0 0 clamp(108px,12.5vw,170px); max-width: 170px; height: 49px; display: flex; flex-direction:column; align-items:flex-end; justify-content:center; overflow: hidden; }
+#${ROOT_ID} .ct-aiu-logo { max-width: 100%; max-height: 33px; width: auto; height: auto; object-fit: contain; display: block; filter:brightness(0) invert(1); }
+#${ROOT_ID} .ct-radio-status { display:block; padding:0; margin-top:2px; color:#959aa8; font:600 9px/11px system-ui,sans-serif; white-space:nowrap; }
+#${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-aiu-logo { filter:brightness(0) saturate(100%) invert(82%) sepia(35%) saturate(754%) hue-rotate(78deg) brightness(105%) contrast(95%); }
+#${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-radio-status, #${ROOT_ID} .ct-aiu.ct-radio-on-air .ct-aiu-fallback { color:#8df2ac; }
 #${ROOT_ID} .ct-aiu-fallback { display: none; text-align: right; font-size: 12px; font-weight: 850; color: #f7f4ff; letter-spacing: -.035em; line-height: 1; }
 #${ROOT_ID} .ct-aiu-fallback small { display: block; font-size: 9px; font-weight: 550; letter-spacing: .23em; margin-top: 4px; }
 #${ROOT_ID} .ct-main {
   flex: 1 1 auto; min-height: 0; width: 100%;
-  display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr);
+  display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr);
   gap: clamp(22px, 3vw, 58px); padding: 0 clamp(20px, 2.5vw, 45px) 14px;
 }
 #${ROOT_ID} .ct-showcase { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-#${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; min-height: 0; min-width: 0; display:flex; justify-content:center; align-items:center; }
+#${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; width:100%; min-height: 0; min-width: 0; display:grid; place-items:center; container-type:size; }
 #${ROOT_ID} .ct-art-frame {
-  position: relative; width: auto; height: 100%; max-height: 100%; max-width: 100%;
-  aspect-ratio: 1 / 1; overflow: hidden; flex: 0 1 auto;
+  position: relative; width: 100%; height: 100%; width:min(100cqw,100cqh); height:min(100cqw,100cqh); max-height: 100%; max-width: 100%;
+  aspect-ratio: 1 / 1; overflow: hidden; flex: none;
   border-radius: clamp(12px,1.1vw,20px); background: linear-gradient(135deg,#22132d,#101b30 70%,#181020);
   box-shadow: 0 23px 60px rgba(0,0,0,.48),0 0 0 1px rgba(222,170,250,.38),0 0 40px rgba(128,54,172,.08);
 }
@@ -164,7 +176,7 @@
 #${ROOT_ID} .ct-art { width: 100%; height: 100%; object-fit: contain; display: block; }
 #${ROOT_ID} .ct-no-art .ct-art { display: none; }
 #${ROOT_ID} .ct-no-art::after { content: '♪'; position: absolute; inset: 0; display: grid; place-items: center; color: #9f8eaf; font-size: min(14vw, 160px); font-weight: 200; }
-#${ROOT_ID} .ct-meta { flex: 0 0 auto; min-height: 0; padding: 17px 0 2px; width: min(100%, calc(100dvh - 290px)); max-width: 920px; align-self: center; }
+#${ROOT_ID} .ct-meta { flex: 0 0 auto; min-height: 0; padding: 12px 0 4px; width: 100%; max-width: 100%; align-self: center; }
 #${ROOT_ID} .ct-song-title { font-size: clamp(23px, 2.35vw, 41px); font-weight: 730; letter-spacing: -.035em; line-height: 1.14; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #${ROOT_ID} .ct-artist { font-size: clamp(16px,1.45vw,23px); font-weight: 400; color: #b9b2c8; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #${ROOT_ID} .ct-desc { font-size: clamp(13px,.96vw,16px); line-height: 1.48; color: #aba7b7; margin-top: 12px; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -195,6 +207,9 @@
 #${ROOT_ID} .ct-player-buttons button svg { width: 22px; height: 22px; }
 #${ROOT_ID} .ct-player-buttons .ct-toggle { background: linear-gradient(135deg,#cf9bf5,#9d9de5); color: #100b1c; border-radius: 50%; width: 43px; height:43px; opacity: 1; box-shadow: 0 1px 14px rgba(194,141,245,.17); }
 #${ROOT_ID} .ct-toggle svg { width: 22px; height: 22px; }
+#${ROOT_ID} .ct-progress-stack {flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#${ROOT_ID} .ct-managed-playback-status {font:500 11px/1.3 system-ui;color:#b9aec8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#${ROOT_ID} .ct-managed-playback-status[hidden] {display:none}
 #${ROOT_ID} .ct-progress-layout { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
 #${ROOT_ID} .ct-clock { font-size: clamp(12px,.92vw,15px); color: #b3adc4; letter-spacing: .04em; font-variant-numeric: tabular-nums; flex: none; min-width: 43px; text-align: center; }
 #${ROOT_ID} .ct-progress {
@@ -211,7 +226,7 @@
   #${ROOT_ID} .ct-brand svg { height:26px; width:26px; }
   #${ROOT_ID} .ct-brand-main { font-size: 11px; }
   #${ROOT_ID} .ct-aiu { flex-basis: 114px; height: 42px; }
-  #${ROOT_ID} .ct-aiu-logo { max-height: 40px; }
+  #${ROOT_ID} .ct-aiu-logo { max-height: 28px; }
   #${ROOT_ID} .ct-up-next-label { font-size: 8px; }
   #${ROOT_ID} .ct-up-next-title { font-size: 12px; }
   #${ROOT_ID} .ct-main { gap: 14px; padding: 0 16px 12px; grid-template-columns: minmax(0, 1.12fr) minmax(250px, .88fr); }
@@ -222,15 +237,18 @@
   #${ROOT_ID} .ct-bottom { padding: 10px 15px; min-height: 63px; }
 }
 @media (max-width: 610px) {
+  #${ROOT_ID} .ct-header {height:auto;min-height:96px;flex-wrap:wrap;gap:6px 12px}
+  #${ROOT_ID} .ct-header-actions {flex-basis:100%;justify-content:flex-end}
+  #${ROOT_ID} .ct-aiu {margin-left:auto}
   #${ROOT_ID} .ct-brand-sub { display:none; }
   #${ROOT_ID} .ct-brand { gap:4px; }
   #${ROOT_ID} .ct-brand-main { max-width: 68px; font-size: 10px; line-height:1.2; }
   #${ROOT_ID} .ct-up-next-label { letter-spacing: .04em; }
   #${ROOT_ID} .ct-aiu { flex-basis: 85px; }
   #${ROOT_ID} .ct-main { display:flex; flex-direction: column; gap: 13px; }
-  #${ROOT_ID} .ct-showcase { flex: 0 0 49%; flex-direction: row; align-items:center; gap: 12px; }
-  #${ROOT_ID} .ct-art-wrap { flex: 0 0 43%; height:100%; }
-  #${ROOT_ID} .ct-meta { flex:1; min-width: 0; }
+  #${ROOT_ID} .ct-showcase { flex: 0 0 60%; flex-direction: column; align-items:stretch; gap: 0; }
+  #${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; width:100%; height:auto; }
+  #${ROOT_ID} .ct-meta { flex:0 0 auto; min-width:0; padding:8px 0 0; text-align:center; }
   #${ROOT_ID} .ct-desc { display: none; }
   #${ROOT_ID} .ct-lyrics-panel { flex: 1; }
   #${ROOT_ID} .ct-player-buttons button { width: 28px; }
@@ -245,20 +263,30 @@
   }
 
   function showLauncher() {
-    if (!state.launch) {
+    if (!state.launch?.isConnected) {
       const button = DOC.createElement('button');
       button.id = LAUNCH_ID;
       button.type = 'button';
-      button.setAttribute('aria-label', 'Open Catnap Theater Mode');
-      button.innerHTML = ICONS.cat + '<span>Catnap Theater</span>';
+      button.innerHTML = ICONS.cat + '<span class="ct-launch-label">Theatre</span>';
+      // Radio has a separate On Air control. This launcher must always reopen
+      // Theatre, including after closing its presentation during a broadcast.
       button.addEventListener('click', () => toggle());
       DOC.documentElement.appendChild(button);
       state.launch = button;
     }
-    state.launch.style.display = (!state.open && isOnSongPage()) ? 'inline-flex' : 'none';
-    // Important: #launch CSS uses !important for display, so use setProperty.
-    state.launch.style.setProperty('display', (!state.open && isOnSongPage()) ? 'inline-flex' : 'none', 'important');
+    state.launch.setAttribute('aria-label', 'Open Catnap Theatre');
+    state.launch.title = 'Open Catnap Theatre';
+    const visible = !state.open && !radioUi.hideTheatreButton && (radioUi.live || isOnSongPage());
+    // The launcher CSS uses !important, so keep the display decision here.
+    state.launch.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
   }
+
+  globalThis.CatnapTheatreRadioUI = Object.freeze({update(next) {
+    radioUi.live = next?.state === 'live' && next.source === true;
+    radioUi.state = ['idle','starting','connecting','reconnecting','live','error'].includes(next?.state) ? next.state : 'idle';
+    radioUi.hideTheatreButton = next?.hideTheatreButton === true;
+    showLauncher();
+  }});
 
   function createRoot() {
     const root = DOC.createElement('div');
@@ -275,7 +303,9 @@
         <div class="ct-aiu" title="AI:Underground">
           <img class="ct-aiu-logo" src="${chrome.runtime.getURL('assets/aiu-logo.png')}" alt="AI:Underground" />
           <span class="ct-aiu-fallback" aria-hidden="true">AI:<small>UNDERGROUND</small></span>
+          <div class="ct-radio-caption"><button type="button" class="ct-radio-status" data-catnap-radio-status="true" aria-label="No Radio · open Radio controls">No Radio</button></div>
         </div>
+        <div class="ct-header-actions" role="group" aria-label="Theatre control windows"></div>
       </header>
       <main class="ct-main">
         <section class="ct-showcase" aria-label="Now playing">
@@ -297,11 +327,12 @@
           <button type="button" class="ct-toggle" title="Play or pause (Space)" aria-label="Play">${ICONS.play}</button>
           <button type="button" class="ct-next" title="Next track (Shift+Right)" aria-label="Next track">${ICONS.next}</button>
         </div>
+        <div class="ct-progress-stack"><div class="ct-managed-playback-status" role="status" hidden></div>
         <div class="ct-progress-layout">
           <span class="ct-clock ct-elapsed">0:00</span>
           <input type="range" class="ct-progress" min="0" max="1000" step="1" value="0" aria-label="Seek song position" />
           <span class="ct-clock ct-duration">--:--</span>
-        </div>
+        </div></div>
       </footer>`;
     DOC.documentElement.appendChild(root);
     state.root = root;
@@ -327,11 +358,12 @@
       aiuLogo.style.display = 'none';
       query('.ct-aiu-fallback', root).style.display = 'block';
     });
-    state.ui.previous.addEventListener('click', () => clickNative(LABELS.prev));
-    state.ui.next.addEventListener('click', () => clickNative(LABELS.next));
+    state.ui.previous.addEventListener('click', () => theatreStep('previous'));
+    state.ui.next.addEventListener('click', () => theatreStep('next'));
     state.ui.play.addEventListener('click', () => toggleNativePlayback());
     state.ui.progress.addEventListener('input', (event) => {
       const ratio = Number(event.target.value) / 1000;
+      if(globalThis.CatnapManagedShow?.active){globalThis.CatnapManagedShow.seek(ratio);return;}
       setNativeSeek(ratio);
       const duration = secondsFromNative().duration;
       if (duration > 0) state.ui.elapsed.textContent = clock(duration * ratio);
@@ -365,6 +397,8 @@
       syncSong(true);
       syncProgress();
     } else {
+      globalThis.CatnapManagedShow?.closed();
+      cancelNativeLyrics();
       state.open = false;
       if (state.root) state.root.remove();
       state.root = null;
@@ -401,7 +435,25 @@
     return true;
   }
 
-  function toggleNativePlayback() {
+  async function requestShowIntent(action){
+    if(!globalThis.CatnapManagedShow||!globalThis.chrome?.runtime?.sendMessage)return false;
+    const result=await chrome.runtime.sendMessage({target:'catnap-show-intent',action});
+    if(result?.ok===false)throw Error(result.error||'The show could not reconnect.');
+    return result?.handled===true;
+  }
+  async function theatreStep(action){
+    try{
+      if(globalThis.CatnapManagedShow?.active){managedCommand(action);return;}
+      if(globalThis.CatnapManagedShow&&await requestShowIntent(action))return;
+      clickNative(action==='previous'?LABELS.prev:LABELS.next);
+    }catch(error){if(state.ui.desc)state.ui.desc.textContent=error.message;}
+  }
+  async function toggleNativePlayback() {
+    if(globalThis.CatnapManagedShow?.active){managedCommand('toggle');return;}
+    // A visible native Pause remains Pause. Recover a show only for an
+    // explicit start, never turn pausing an ordinary song into Play entry zero.
+    if (clickNative(LABELS.pause)) return;
+    try{if(globalThis.CatnapManagedShow&&await requestShowIntent('toggle'))return;}catch(error){if(state.ui.desc)state.ui.desc.textContent=error.message;return;}
     // If Suno is already playing, always use its own Pause button.
     if (clickNative(LABELS.pause)) return;
     // Cold start: playlist Play must take priority over the idle Playbar Play.
@@ -484,6 +536,7 @@
   }
 
   function seekBy(seconds) {
+    if(globalThis.CatnapManagedShow?.active){const info=globalThis.CatnapManagedShow.progress();if(info?.duration)globalThis.CatnapManagedShow.seek((info.elapsed+seconds)/info.duration);return;}
     const info = secondsFromNative();
     if (info.duration > 0) setNativeSeek((info.elapsed + seconds) / info.duration);
   }
@@ -491,6 +544,13 @@
   function syncProgress() {
     if (!state.open || !state.root) return;
     const ui = state.ui;
+    const managed=globalThis.CatnapManagedShow?.active?globalThis.CatnapManagedShow.progress():null;
+    if(managed){
+      const ratio=managed.duration?Math.max(0,Math.min(1,managed.elapsed/managed.duration)):0;
+      ui.progress.value=String(Math.round(ratio*1000));ui.progress.style.setProperty('--ct-progress',(ratio*100).toFixed(2)+'%');
+      ui.elapsed.textContent=clock(managed.elapsed||0);ui.duration.textContent=managed.duration?clock(managed.duration):'--:--';
+      ui.play.innerHTML=managed.paused?ICONS.play:ICONS.pause;ui.play.setAttribute('aria-label',managed.paused?'Play loaded song':'Pause');ui.play.title=managed.paused?'Play loaded song (Space)':'Pause (Space)';return;
+    }
     const info = secondsFromNative();
     const slider = query(LABELS.progress);
     const audio = audioElement();
@@ -543,6 +603,98 @@
     const images = queryAll('img[alt^="Image for "]');
     if (!images.length) return null; // panel image absent (or older Suno markup)
     return images.some(img => normalized(img.alt.replace(/^Image for\s*/i, '')) === normalized(song.title));
+  }
+
+  function canonicalSongId(value) {
+    try {const url=new URL(value,location.href);return ['suno.com','www.suno.com'].includes(url.hostname)?/^\/song\/([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\/?$/i.exec(url.pathname)?.[1]?.toLowerCase()||'':'';}catch{return '';}
+  }
+
+  function lyricsPanelWithoutCopy(song) {
+    // Some current panels expose plain lyrics without a Copy lyrics control.
+    // An exact song heading and native Styles control keep this scan bounded.
+    const headings=queryAll('h3').filter(h=>!state.root?.contains(h)&&queryAll('a[href]',h).some(a=>canonicalSongId(a.href)===song.id));
+    for(const heading of headings){
+      let panel=heading.parentElement;
+      for(let depth=0;panel&&depth<3;depth++,panel=panel.parentElement){
+        if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
+        const styles=query('button[aria-label="Copy styles to clipboard"]',panel);
+        const ids=new Set(queryAll('h3 a[href]',panel).map(a=>canonicalSongId(a.href)).filter(Boolean));
+        if(styles&&ids.size===1&&ids.has(song.id))return {panel,styles};
+      }
+    }
+    return null;
+  }
+
+  function panelIdentityMatches(song) {
+    // An exact song link within the bounded native Styles panel is stronger
+    // evidence than unrelated artwork or Copy controls elsewhere on the page.
+    if(lyricsPanelWithoutCopy(song))return true;
+    const imageMatch=panelImageMatches(song);if(imageMatch===false)return false;
+    const copy=query(LABELS.lyricsCopy);
+    // Prefer a canonical identity when this panel exposes one. Equal titles
+    // alone must not defeat an explicitly different song link in a stale panel.
+    let panel=copy?.parentElement;
+    for(let depth=0;panel&&depth<6;depth++,panel=panel.parentElement){
+      if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
+      const ids=new Set(queryAll('h3 a[href]',panel).map(a=>canonicalSongId(a.href)).filter(Boolean));
+      if(ids.size)return ids.size===1&&ids.has(song.id);
+    }
+    return imageMatch;
+  }
+
+  function cancelNativeLyrics() {
+    const preparation=state.lyricPreparation;
+    if(preparation?.timer!==null&&preparation?.timer!==undefined)clearTimeout(preparation.timer);
+    state.lyricPreparation=null;
+  }
+
+  function prepareNativeLyrics(song,{reload=false,key=song?.id,isCurrent=()=>true}={}) {
+    const current=()=>state.open&&isCurrent()&&canonicalSongId(song?.href)===song?.id&&readSong()?.id===song.id;
+    if(!current())return '';
+    if(reload||state.lyricPreparation?.songId!==song.id||state.lyricPreparation?.key!==key){
+      cancelNativeLyrics();state.lyricPreparation={songId:song.id,key,timer:null,opened:false,openRetried:false,refreshed:false,refreshing:false,unknownPanelHeld:false};
+      state.didExpandLyrics='';state.didExpandCaption='';
+    }
+    const preparation=state.lyricPreparation,valid=()=>state.lyricPreparation===preparation&&current();
+    if(preparation.refreshing)return '';
+    const identity=panelIdentityMatches(song),hasCopy=!!query(LABELS.lyricsCopy),hasPanel=hasCopy||!!lyricsPanelWithoutCopy(song)||queryAll('img[alt^="Image for "]').length>0;
+    const refresh=reload&&hasPanel||identity===false||identity===null&&hasCopy;
+    if(refresh&&!preparation.refreshed){
+      const button=query(LABELS.songDetails);
+      if(button){
+        preparation.refreshed=true;preparation.opened=true;preparation.refreshing=true;preparation.unknownPanelHeld=identity===null;
+        button.click();
+        const observedClosed=!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song);
+        preparation.timer=setTimeout(()=>{
+          preparation.timer=null;preparation.refreshing=false;if(!valid())return;
+          const closedAtRetry=!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song);
+          if(closedAtRetry||panelIdentityMatches(song)===false)query(LABELS.songDetails)?.click();
+          // With no identity markers, seeing the old panel actually close is
+          // the minimum proof that a deliberate reopen replaced its contents.
+          // React may finish that close after click() returns. A positively
+          // identified current plain panel is also safe and must remain open.
+          if(observedClosed||closedAtRetry||panelIdentityMatches(song)===true)preparation.unknownPanelHeld=false;
+        },250);
+        return '';
+      }
+    }
+    if(!preparation.opened&&!hasCopy&&!lyricsPanelWithoutCopy(song)){
+      const button=query(LABELS.songDetails);if(button){
+        preparation.opened=true;button.click();
+        // A native toggle issued before a managed handoff may still commit
+        // after our own open, leaving the panel closed. Retry once after the
+        // native UI settles; every callback retains song + generation identity.
+        preparation.timer=setTimeout(()=>{
+          preparation.timer=null;if(!valid()||preparation.openRetried)return;
+          if(!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song)){
+            preparation.openRetried=true;query(LABELS.songDetails)?.click();
+          }
+        },1000);
+      }
+    }
+    if(!valid()||panelIdentityMatches(song)===false||preparation.unknownPanelHeld)return '';
+    expandNativeText(song);
+    return getLyrics(song);
   }
 
   function findCover(song) {
@@ -686,9 +838,19 @@
   }
 
   function getLyrics(song) {
-    if (panelImageMatches(song) === false) return '';
-    const copy = query(LABELS.lyricsCopy);
-    if (!copy) return '';
+    if (panelIdentityMatches(song) === false) return '';
+    const found=lyricsPanelWithoutCopy(song);
+    const copy = found?query(LABELS.lyricsCopy,found.panel):query(LABELS.lyricsCopy);
+    if (!copy) {
+      if(!found)return '';
+      const candidates=queryAll('div,p',found.panel).filter(el=>!el.children.length&&
+        !(found.styles.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_PRECEDING)&&
+        !el.closest('button,[role="button"],nav,[role="status"],[role="alert"]')&&
+        (el.textContent||'').trim().split('\n').filter(line=>line.trim()).length>=2);
+      // Native CSS may collapse rendered innerText to one line. The ordinary
+      // fallback reads raw textContent; retain those actual lyric line breaks.
+      return (candidates.sort((a,b)=>(b.textContent||'').length-(a.textContent||'').length)[0]?.textContent||'').trim().slice(0,42000);
+    }
     const isControl = node => node.matches('button,[role="button"],input,select,textarea,[aria-hidden="true"]');
     function boundedText(node) {
       if (!node || node === DOC.body || node === DOC.documentElement || node === state.root || node.contains(state.root)) return null;
@@ -809,6 +971,7 @@
 
   function syncSong(firstRun = false) {
     if (!state.open || !state.root) return;
+    if(globalThis.CatnapManagedShow?.active){globalThis.CatnapManagedShow.render();return;}
     const song = readSong();
     syncUpNext(song);
     if (!song) {
@@ -840,38 +1003,12 @@
     }
     setArtwork(findCover(song));
 
-    // The details panel is native Suno UI, underneath the theater overlay.
-    // Some Suno builds keep the previously selected song in the details panel
-    // when the playlist auto-advances. Try re-opening that native panel once.
-    let refreshingDetails = false;
-    if (panelImageMatches(song) === false && state.didRefreshDetails !== song.id) {
-      const button = query(LABELS.songDetails);
-      if (button) {
-        refreshingDetails = true;
-        state.didRefreshDetails = song.id;
-        button.click();
-        setTimeout(() => {
-          if (!state.open || state.songId !== song.id) return;
-          if (!query(LABELS.lyricsCopy) || panelImageMatches(song) === false) {
-            query(LABELS.songDetails)?.click();
-          }
-        }, 250);
-      }
-    }
-    if (!refreshingDetails && state.didOpenDetails !== song.id && !query(LABELS.lyricsCopy)) {
-      const toggleButton = query(LABELS.songDetails);
-      if (toggleButton) {
-        toggleButton.click();
-        state.didOpenDetails = song.id;
-      }
-    }
-    expandNativeText(song);
+    const lyrics = prepareNativeLyrics(song);
     const desc = getDescription(song);
-    if (desc !== state.caption) {
+    if (desc !== state.caption || state.ui.desc.textContent !== desc) {
       state.caption = desc;
       state.ui.desc.textContent = desc;
     }
-    const lyrics = getLyrics(song);
     if (lyrics && lyrics !== state.lyrics) {
       state.lyrics = lyrics;
       writeLyrics(lyrics);
@@ -902,15 +1039,20 @@
     if (event.code === 'Space') {
       event.preventDefault(); event.stopPropagation(); toggleNativePlayback();
     } else if (event.code === 'ArrowLeft' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); clickNative(LABELS.prev);
+      event.preventDefault(); event.stopPropagation(); theatreStep('previous');
     } else if (event.code === 'ArrowRight' && event.shiftKey) {
-      event.preventDefault(); event.stopPropagation(); clickNative(LABELS.next);
+      event.preventDefault(); event.stopPropagation(); theatreStep('next');
     } else if (event.code === 'ArrowLeft') {
       event.preventDefault(); event.stopPropagation(); seekBy(-5);
     } else if (event.code === 'ArrowRight') {
       event.preventDefault(); event.stopPropagation(); seekBy(5);
     }
   }
+
+  function managedCommand(action){Promise.resolve(globalThis.CatnapManagedShow.command(action)).catch(error=>{if(state.ui.desc)state.ui.desc.textContent=error.message;});}
+  // An isolated-world adapter for the optional managed queue. It exposes no
+  // credentials/page internals and leaves ordinary Theatre unchanged when off.
+  globalThis.CatnapTheatreView={open:toggle,nativeSong:readSong,nativeInfo:secondsFromNative,nativeCover:findCover,nativeLyrics:getLyrics,prepareNativeLyrics,cancelNativeLyrics,writeLyrics,nativeSeek:setNativeSeek};
 
   function init() {
     installCss();

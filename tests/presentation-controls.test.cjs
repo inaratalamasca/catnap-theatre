@@ -45,6 +45,8 @@ test('presentation canvas exposes one Controls entry and no visible or focusable
     assert.equal(node.hidden,true);assert.equal(node.getAttribute('inert'),'');
     assert.equal(node.getAttribute('aria-hidden'),'true');assert.equal(node.tabIndex,-1);
   }
+  assert.equal(root.getAttribute('data-catnap-lyrics-owner'),'theatre');
+  for(const selector of ['.ct-lyrics-auto','.ct-lyrics-reload'])assert.equal(root.querySelector(selector).getAttribute('data-catnap-lyrics-owner'),'theatre');
   const entry=root.querySelector('.ct-header .ct-popout-controls');
   assert.equal(root.querySelectorAll('.ct-popout-controls').length,1);
   assert.equal(entry.hidden,false);assert.equal(entry.getAttribute('aria-label'),'Theatre controls');
@@ -52,6 +54,17 @@ test('presentation canvas exposes one Controls entry and no visible or focusable
   assert.deepEqual(JSON.parse(JSON.stringify(messages)),[{target:'presentation-worker',action:'open'}]);
   for(const selector of ['.ct-toggle','.ct-prev','.ct-next','.ct-progress','.ct-close'])assert.equal(root.querySelector(selector).hidden,false);
   assert.equal(nativeClicks(),0);dom.window.close();
+});
+
+test('visible popout Reload lyrics reaches the hidden Theatre-owned handler without playback',async()=>{
+ const f=await fixture(),html=fs.readFileSync(path.join(extension,'presentation-panel.html'),'utf8'),panel=new JSDOM(html,{url:'chrome-extension://test/presentation-panel.html?control=fixture',runScripts:'outside-only'});let detailClicks=0;
+ try{
+  const details=f.w.document.createElement('button');details.setAttribute('aria-label','Playbar: Toggle song details panel');details.onclick=()=>detailClicks++;f.w.document.body.append(details);
+  const w=panel.window;w.setInterval=()=>0;w.chrome={runtime:{getURL:file=>'chrome-extension://test/'+file,sendMessage:async message=>{const {target,control,...args}=message;return f.send(args);}}};
+  for(const file of ['helpers.js','presentation-panel.js'])w.eval(fs.readFileSync(path.join(extension,file),'utf8'));await new Promise(resolve=>setImmediate(resolve));
+  const reload=w.document.getElementById('reload-lyrics');assert.ok(reload);assert.equal(reload.textContent,'Reload lyrics');assert.equal(reload.hidden,false);assert.equal(reload.disabled,false);reload.click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(detailClicks,1);assert.equal(f.root.querySelector('.ct-lyrics-reload').disabled,true);assert.equal(f.nativeClicks(),0);
+ }finally{panel.window.close();f.dom.window.close();}
 });
 
 test('presentation allowlist reuses banners and lyric controls while excluding playback',async()=>{
@@ -69,13 +82,13 @@ test('presentation allowlist reuses banners and lyric controls while excluding p
 });
 
 test('presentation worker reuses a window per source and never changes broadcast binding',async()=>{
-  const stored={broadcastSourceTabId:77},created=[],forwarded=[],listeners=[],removed=[];
+  const stored={broadcastSourceTabId:77},created=[],forwarded=[],listeners=[],removed=[],radioOpened=[];
   const windows=new Map();let counter=0;
   const chrome={runtime:{id:'test',getURL:file=>'chrome-extension://test/'+file,onMessage:{addListener:fn=>listeners.push(fn)}},
     storage:{session:{get:async key=>({[key]:structuredClone(stored[key])}),set:async value=>Object.assign(stored,structuredClone(value))}},
     windows:{onRemoved:{addListener:fn=>removed.push(fn)},create:async value=>{const window={id:++counter,...value};created.push(window);windows.set(window.id,window);return window;},update:async id=>{if(!windows.has(id))throw Error('Closed');return windows.get(id);}},
     tabs:{get:async id=>({id,url:'https://suno.com/playlist/fixture'}),sendMessage:async(id,message)=>{forwarded.push({id,message});return {open:true};}}};
-  vm.runInNewContext(fs.readFileSync(path.join(extension,'presentation-control-worker.js'),'utf8'),{chrome,crypto:{randomUUID:()=>String(counter+1)},console});
+  vm.runInNewContext(fs.readFileSync(path.join(extension,'presentation-control-worker.js'),'utf8'),{chrome,crypto:{randomUUID:()=>String(counter+1)},console,openPanel:async tab=>radioOpened.push(tab.id)});
   const send=(message,sender)=>new Promise(resolve=>listeners[0]({target:'presentation-worker',...message},{id:'test',...sender},resolve));
   await send({action:'open'},{tab:{id:10},url:'https://suno.com/playlist/a'});
   await send({action:'open'},{tab:{id:10},url:'https://suno.com/playlist/a'});assert.equal(created.length,1);
@@ -85,6 +98,8 @@ test('presentation worker reuses a window per source and never changes broadcast
   const rejected=await send({action:'button',name:'clearOverlay',control:nonce},{url:'https://suno.com/playlist/b',tab:{id:20}});
   assert.match(rejected.error,/Untrusted/);assert.equal(forwarded.length,1);
   assert.equal(stored.broadcastSourceTabId,77);assert.equal(created[0].type,'popup');
+  const opened=await send({action:'open-radio',control:nonce},{url:first});assert.equal(opened.opened,true);assert.deepEqual(radioOpened,[10]);assert.equal(forwarded.length,1,'Radio opens controls rather than forwarding a capture command');
+  assert.match((await send({action:'open-radio',control:nonce},{url:'https://suno.com/',tab:{id:20}})).error,/Untrusted/);assert.equal(radioOpened.length,1);
 });
 
 test('queued popout actions preserve rapid font increments and banner-before-show order',async()=>{

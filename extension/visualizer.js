@@ -150,7 +150,7 @@
     }
     function receive(message,sender){
       if(message?.target!=='catnap-visualizer-levels'||sender.id!==window.chrome.runtime.id||sender.tab)return;
-      const worker=window.chrome.runtime.getURL('broadcast-worker.js');
+      const worker=window.chrome.runtime.getURL(window.chrome.runtime.getManifest?.().background?.service_worker||'broadcast-worker.js');
       if(sender.url&&sender.url!==worker)return;
       if(message.live===false){broadcast=null;update();return;}
       const values=sanitizeBands(message.bands);if(!values)return;

@@ -1,12 +1,22 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Catnap music broadcast</title><link rel="stylesheet" href="broadcast.css"></head><body>
-<h1>Catnap music broadcast <small>DEV 0.3.0</small></h1>
-<p>Music from this Suno tab. Discord voices stay separate.</p>
+<p id="build-version" class="eyebrow">CATNAP THEATRE · DEVELOPMENT</p>
+<h1>Catnap music broadcast</h1>
+<p>Music from your selected Suno or AIU player tab. Discord voices stay separate.</p>
+<p id="source" class="source" aria-live="polite">Select the playing tab with the Catnap toolbar icon.</p>
 <label>Relay WHIP address<input id="endpoint" type="url" autocomplete="off" spellcheck="false"></label>
-<label>Publish token<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the private publish token"></label>
-<p class="help">Token stays in this browser session only. Never share it with listeners.</p>
-<div class="buttons"><button id="start">Start music broadcast</button><button id="stop">Stop</button></div>
+<label>Publish token<input id="token" type="password" autocomplete="off" spellcheck="false" aria-describedby="token-status token-help" placeholder="Paste the private publish token" data-token-state="missing"></label>
+<p id="token-status" class="token-status" role="status" aria-live="polite" data-state="missing"><span class="status-dot" aria-hidden="true"></span><span id="token-status-label">No token entered</span></p>
+<p id="token-help" class="help">“Token entered” means text is present, not that the relay has validated it. A changed token is used on the next Start.</p>
+<button id="show-controls" type="button">Inbox, playlists &amp; show controls ↗</button>
+<label id="theatre-preference" class="check"><input id="hide-theatre" type="checkbox">Hide the Theatre button; show On Air while broadcasting</label>
+<label class="check"><input id="remember-token" type="checkbox" checked>Keep token between updates on this browser</label>
+<button id="forget-token" type="button">Forget saved token</button>
+<p id="token-storage-status" class="help" role="status">Remembering is on for this relay origin. Changes or Start save the token locally.</p>
+<p class="help">Turn Keep token off for session-only use. Forget removes the saved copy without stopping an active broadcast. Never share the token with listeners.</p>
+<div class="buttons"><button id="start">Start music broadcast</button><span id="on-air" role="status" aria-live="polite" data-live="false"><span class="status-dot" aria-hidden="true"></span><span id="on-air-label">Not live</span></span><button id="stop">Stop</button></div>
 <p id="status" role="status">Ready.</p>
+<button id="takeover" type="button" hidden>Take over broadcast…</button>
 <label>Music level <progress id="level" max="1" value="0"></progress></label>
-<p class="help">Stereo Opus · 256 kbps target · no microphone · no recording.<br>Keep this Suno tab open. Closing this panel does not stop broadcasting.</p>
+<p class="help">Stereo Opus · 256 kbps target · no microphone · no recording.<br>Keep the source tab open. Closing this panel does not stop broadcasting.</p>
 <p class="help">Listeners: mute Discord’s stream audio, keep individual voices audible, and play the HQ music link. Test alongside Discord sharing before a show.</p>
-<script src="broadcast-core.js"></script><script src="broadcast-panel.js"></script></body></html>
+<script src="package-mode.js"></script><script src="broadcast-core.js"></script><script src="broadcast-panel.js"></script></body></html>

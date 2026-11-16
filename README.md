@@ -1,10 +1,16 @@
 # Catnap Theatre
 
-**Catnap Theatre 0.5.0 · early access for Chrome and Brave.** Theatre options live in a persistent control window, with optional music-reactive background bars. Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
+**0.8.2 development branch:** Theatre + Inbox adds fair rotation, a managed Suno playlist that follows the show, and manual uploader Decline. The separate Inbox-only creator and Radio-only broadcaster remain available. Radio supports Suno and the [AIU party player](https://party.aiu.fm/party). See [managed show setup](docs/MANAGED-SHOW.md) and [Radio setup](docs/RADIO.md). This preview does not activate an installed extension or replace Theatre Lite0.5.0/the submitted Store beta.
+
+With repeat-uploader holding enabled, later submissions stay out of the managed playlist. Finishing the uploader's earlier song releases just the next one at the current tail; a third remains held until the second finishes. Moves, manual Hold/Release and actual played order persist through resync. Manually released entries keep their override. The host can explicitly Decline an upcoming submission with a reason; there is no automatic Decline or automatic Accepted/Played inbox marking. Held rows and repeated uploaders have visible labels/colour. Managed playlist reconciliation protects current playback and unrelated tracks. See the [rotation guide](docs/MANAGED-SHOW.md#local-running-order-and-holds); live0.8.0 acceptance remains pending.
+
+The 0.8.2 hotfix also keeps finished tracks in their existing visible positions and adds one clearly visible Exit video button during full-window YouTube playback. Completion history remains separate from row order. Theatre still reopens while Radio is live. No companion update is needed from 0.8.0 or 0.8.1.
+
+**Catnap Theatre Lite 0.5.0 · current presentation release for Chrome and Brave.** Theatre options live in a persistent control window, with optional music-reactive background bars. Open Theatre → **Controls ↗** for layout, lyrics, visuals, branding, banners and visualizer settings. Closing the control window keeps Theatre running. See the [controls guide](docs/PRESENTATION-CONTROLS.md), [background bars guide](docs/BACKGROUND-VISUALIZER.md) and [broadcast pilot guide](docs/BROADCAST-PILOT.md).
 
 A simple theatre overlay for people hosting Suno listening parties. Suno plays the music; Catnap displays the artwork, lyrics, visible playlist and host messages. No AI, Discord bot, uploader account, SSH tunnel or backend service is required.
 
-[Download 0.5.0](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) · [Project overview](https://github.com/inaratalamasca/catnap-studio) · [Listen](https://listen.catnapradio.com/)
+[Download Theatre Lite 0.5.0](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) · [Project overview](https://github.com/inaratalamasca/catnap-studio) · [Listen](https://listen.catnapradio.com/)
 
 **Early access, not a browser-store release.** Ina has used standalone 0.5.0 successfully in Brave. The integrated companion and compatible controller were also loaded and connected in the primary profile. The toolbar icon revision passed isolated browser checks. These observations do not complete every item in the [acceptance checklist](docs/ACCEPTANCE.md). Install or switch builds between shows, because extension reloads interrupt active capture.
 
@@ -14,7 +20,9 @@ A simple theatre overlay for people hosting Suno listening parties. Suno plays t
 
 ![Three-column preview with original sample material](docs/screenshots/lineup-fixture.png)
 
-## Try it between shows
+Theatre Lite is the unchanged 0.5.0 edition for ordinary Suno hosting. It has no AIU Inbox controls and needs no uploader account or Suno playlist companion. The optional Theatre + Inbox development edition is separate; hosts who do not use AIU inboxes can keep using Lite.
+
+## Try Theatre Lite between shows
 
 1. Download and extract the ZIP from the [0.5.0 release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0). Use a separate Chrome/Brave profile for your first test. Do not enable the older Catnap Theatre extension in the same test profile.
 2. Open `chrome://extensions`, enable Developer mode and choose **Load unpacked**.

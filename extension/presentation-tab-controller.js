@@ -1,4 +1,4 @@
-/* Catnap presentation adapter, version 0.5.0.
+/* Catnap presentation adapter, version 0.7.0. Read-only playback mode accompanies connection status.
  * Reuse the Theatre's real settings and existing visual/lyric handlers. The
  * allowlist deliberately excludes native playback, queue and broadcast actions.
  */
@@ -23,9 +23,17 @@
     if (!found) throw Error('Open Theatre in the linked Suno tab to use this control.');
     return found;
   }
+  function playbackError() {
+    if(globalThis.CatnapManagedShow?.active!==true)return '';
+    try{
+      const value=globalThis.CatnapManagedShow.snapshot?.()?.error;
+      return typeof value==='string'?value.replace(/\b(?:https?|blob|data):\S+/gi,'[source]').replace(/[\u0000-\u001f\u007f]+/g,' ').trim().slice(0,240):'';
+    }catch{return 'Managed playback status is unavailable.';}
+  }
   function snapshot() {
     const current = root();
-    const result = {settings:globalThis.CatnapPresentationSettings.read(),open:!!current,
+    const result = {settings:globalThis.CatnapPresentationSettings.read(),connected:true,open:!!current,
+      playbackMode:globalThis.CatnapManagedShow?.active===true?'inbox':'suno',playbackError:playbackError(),
       sourceTitle:document.title.slice(0,160),visual:{},autoScroll:true,reloadDisabled:false,presets:[],recent:[],visualizer:globalThis.CatnapVisualizer?.status?.()||{source:'none',state:'quiet'}};
     if (!current) return result;
     for (const [name,[selector,property]] of Object.entries(fields)) result.visual[name]=current.querySelector(selector)?.[property];

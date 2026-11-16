@@ -33,12 +33,89 @@ test('publish is audio-only, authenticated and marks live only once connected; s
 test('authentication failure stops capture and local monitor without falsely reporting live',async()=>{
  const f=fixture({fetch:async()=>({status:401})});assert.equal(await f.publisher.start({endpoint,token:'bad'}),false);assert.equal(f.publisher.state,'error');assert.equal(f.track.stopped,1);assert.equal(f.monitorClosed(),1);assert.ok(f.statuses.at(-1).message.includes('token'));assert.equal(f.statuses.some(s=>s.state==='live'),false);
 });
+test('Catnap preflight distinguishes a busy stream and bad keys without echoing provider content',async()=>{
+ for (const [status,message] of [[409,'Another host is broadcasting. Wait for them to stop, then try again.'],[401,'Relay rejected the publish token.'],[403,'Relay rejected the publish token.'],[503,'Relay availability check failed. Try again shortly.']]) {
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return {status,text(){throw Error('Provider text must never be read');}};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'invented-secret'}),false);
+  assert.equal(f.statuses.at(-1).message,message);assert.equal(f.publisher.state,'error');
+  assert.equal(calls.length,1);assert.equal(calls[0].url,'https://listen.catnapradio.com/hosts/api/publish-check');
+  assert.equal(calls[0].headers.Authorization,'Bearer invented-secret');assert.equal(calls[0].body,'{}');
+  assert.equal(calls[0].credentials,'omit');assert.equal(calls[0].redirect,'error');
+  assert.equal(f.track.stopped,1);assert.equal(f.monitorClosed(),1);assert.equal(f.statuses.some(s=>s.state==='live'),false);
+  assert.equal(JSON.stringify(f.statuses).includes('invented-secret'),false);
+ }
+});
+test('Catnap available and legacy preflight responses proceed once; other relays do not use Catnap preflight',async()=>{
+ for (const status of [200,404,405]) {
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return url.includes('/hosts/api/')?{status}:{status:201,headers:new Headers({Location:'/live/session/test'}),text:async()=>SDP};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'invented-secret'}),true);
+  assert.equal(calls.length,2);assert.equal(calls[1].url,B.DEFAULT_ENDPOINT);assert.equal(calls[1].method,'POST');
+  await f.publisher.stop();
+ }
+ const f=fixture();assert.equal(await f.publisher.start({endpoint}),true);
+ assert.deepEqual(f.calls.map(call=>call.url),[endpoint]);await f.publisher.stop();
+});
+test('Stop during Catnap preflight prevents a late grant from publishing or replacing newer status',async()=>{
+ for(const takeover of [false,true]){
+ let resolveCheck;const calls=[];
+ const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});if(url.includes('/hosts/api/'))return new Promise(resolve=>{resolveCheck=resolve;});return {status:201,headers:new Headers({Location:'/live/session/new'}),text:async()=>SDP};}});
+ const old=f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'old-key',takeover});
+ while(!resolveCheck)await new Promise(resolve=>setImmediate(resolve));
+ await f.publisher.stop();assert.equal(await old,false);
+ assert.equal(await f.publisher.start({endpoint,token:'new-key'}),true);
+ const replacement=f.publisher.resources;
+ resolveCheck({status:200});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ assert.equal(calls.filter(call=>call.url===B.DEFAULT_ENDPOINT).length,0);
+ assert.equal(calls.filter(call=>call.url===endpoint&&call.method==='POST').length,1);
+ await f.publisher.stop();
+ }
+});
+test('only an explicit Catnap takeover sends the takeover flag; legacy/custom relays cannot execute it',async()=>{
+ for(const takeover of [undefined,false,'true',true]){
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return url.includes('/hosts/api/')?{status:200}:{status:201,headers:new Headers({Location:'/live/session/test'}),text:async()=>SDP};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,takeover,token:'private-fixture'}),true);
+  assert.deepEqual(JSON.parse(calls[0].body),takeover===true?{takeover:true}:{});
+  assert.equal(JSON.stringify(f.statuses).includes('private-fixture'),false);await f.publisher.stop();
+ }
+ const legacy=fixture({fetch:async()=>({status:404})});
+ assert.equal(await legacy.publisher.start({endpoint:B.DEFAULT_ENDPOINT,takeover:true}),false);
+ assert.equal(legacy.statuses.at(-1).message,'Broadcast takeover is unavailable on this relay.');
+ const custom=fixture();await assert.rejects(custom.publisher.start({endpoint,takeover:true}),/only on the Catnap relay/);
+ assert.equal(custom.calls.length,0);assert.equal(custom.publisher.resources,null);
+});
 test('stop during capture also stops a late-resolving captured stream',async()=>{
  let resolve;const f=fixture({capture:()=>new Promise(r=>{resolve=r;})});const starting=f.publisher.start({endpoint});await f.publisher.stop();resolve(f.stream);await starting;await new Promise(r=>setImmediate(r));assert.equal(f.track.stopped,1);assert.equal(f.publisher.state,'idle');assert.equal(f.calls.length,0);
 });
 test('stop racing with WHIP allocation deletes the late remote session',async()=>{
  let resolvePost;const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});if(options.method==='POST')return new Promise(r=>{resolvePost=r;});return {};}});
  const starting=f.publisher.start({endpoint,token:'broadcaster:secret'});while(!resolvePost)await new Promise(r=>setImmediate(r));await f.publisher.stop();resolvePost({status:201,headers:new Headers({Location:'/live/session/late'}),text:async()=>SDP});await starting;await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).method,'DELETE');assert.equal(calls.at(-1).headers.Authorization,'Bearer broadcaster:secret');assert.equal(f.publisher.state,'idle');
+});
+test('late peer-failure cleanup cannot mark a newer live broadcast as failed or allow another Start',async()=>{
+ let releaseOld,closed=0;
+ const f=fixture({monitor:async()=>({close:()=>++closed===1?new Promise(resolve=>{releaseOld=resolve;}):Promise.resolve()})});
+ await f.publisher.start({endpoint});
+ f.pc.connectionState='failed';f.pc.onconnectionstatechange();
+ assert.equal(typeof releaseOld,'function');
+ await f.publisher.stop();assert.equal(f.publisher.state,'idle');
+ await f.publisher.start({endpoint});const replacement=f.publisher.resources;
+ assert.equal(f.publisher.state,'live');
+ releaseOld();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ await assert.rejects(f.publisher.start({endpoint}),/already/);
+ await f.publisher.stop();
+});
+test('late Stop cleanup cannot mark a replacement broadcast idle',async()=>{
+ let releaseOld,closed=0;
+ const f=fixture({monitor:async()=>({close:()=>++closed===1?new Promise(resolve=>{releaseOld=resolve;}):Promise.resolve()})});
+ await f.publisher.start({endpoint});
+ const firstStop=f.publisher.stop();assert.equal(typeof releaseOld,'function');
+ await f.publisher.stop();assert.equal(f.publisher.state,'idle');
+ await f.publisher.start({endpoint});const replacement=f.publisher.resources;
+ releaseOld();await firstStop;
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ await assert.rejects(f.publisher.start({endpoint}),/already/);
+ await f.publisher.stop();
 });
 test('video or missing audio is rejected and released',async()=>{
  const track={stopped:0,stop(){this.stopped++;}};const f=fixture({capture:async()=>({getTracks:()=>[track],getAudioTracks:()=>[],getVideoTracks:()=>[track]})});assert.equal(await f.publisher.start({endpoint}),false);assert.equal(track.stopped,1);assert.equal(f.pc.closed,undefined);
@@ -50,4 +127,16 @@ test('Chromium tab capture keeps legacy mandatory constraints separate from trac
  const sandbox={CatnapBroadcast:{Publisher:class{constructor(options){env=options;}}},navigator:{mediaDevices:{getUserMedia:async value=>{requested=value;if(Object.keys(value.audio).some(k=>k!=='mandatory'))throw Error('Malformed legacy capture constraints');return stream;}}},chrome:{runtime:{id:'test',getURL:p=>'chrome-extension://test/'+p,onMessage:{addListener(){}}}},setInterval,clearInterval,Float32Array,Math};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-offscreen.js'),'utf8'),sandbox);
  assert.equal(await env.capture('opaque-stream-id'),stream);assert.equal(requested.video,false);assert.equal(requested.audio.mandatory.chromeMediaSource,'tab');assert.equal(requested.audio.mandatory.chromeMediaSourceId,'opaque-stream-id');assert.equal(applied.echoCancellation,false);assert.equal(applied.noiseSuppression,false);assert.equal(applied.autoGainControl,false);assert.equal(applied.channelCount.ideal,2);
+});
+test('offscreen accepts takeover only as strict boolean from its own worker, never a source page',async()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');let handler;const starts=[];
+ const chrome={runtime:{id:'ours',getURL:p=>'chrome-extension://ours/'+p,getManifest:()=>({background:{service_worker:'broadcast-worker.js'}}),onMessage:{addListener:f=>{handler=f;}},sendMessage:async()=>{}}};
+ const sandbox={chrome,CatnapBroadcast:{Publisher:class{async start(options){starts.push(options);}async stop(){}}},setInterval,clearInterval,Float32Array,Math};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-offscreen.js'),'utf8'),sandbox);
+ const message={target:'broadcast-offscreen',action:'start',takeover:true,endpoint:B.DEFAULT_ENDPOINT};
+ assert.equal(handler(message,{id:'ours',url:'https://suno.com/',tab:{id:1}},()=>{}),undefined);assert.equal(starts.length,0);
+ for(const takeover of [true,'true',false]){
+  await new Promise(resolve=>{assert.equal(handler({...message,takeover},{id:'ours',url:chrome.runtime.getURL('broadcast-worker.js')},resolve),true);});
+  assert.equal(starts.at(-1).takeover,takeover===true);
+ }
 });

@@ -1,5 +1,5 @@
 /* Catnap optional music broadcaster, version 0.3.0.
- * Change summary: bounded audio-only WHIP lifecycle, explicit cleanup and stereo Opus.
+ * Change summary: bounded WHIP lifecycle, stereo Opus and private Catnap publish preflight.
  * This module has no Suno/Discord API, microphone, recording or content-script bridge.
  */
 (function (root, factory) {
@@ -55,6 +55,8 @@
     async start(options) {
       if (this.state !== 'idle' && this.state !== 'error') throw Error('A broadcast is already starting or running.');
       const url = endpoint(options.endpoint), token = String(options.token || '').trim();
+      const takeover = options.takeover === true;
+      if (takeover && url !== DEFAULT_ENDPOINT) throw Error('Broadcast takeover is available only on the Catnap relay.');
       if (/[\r\n]/.test(token)) throw Error('Invalid token.');
       const generation = ++this.generation;
       const r = {controller:new AbortController(), token, url, pc:null, stream:null, monitor:null, session:null};
@@ -90,6 +92,22 @@
         await sender.setParameters(params); current();
         await bounded(this.env.gather(r.pc), r.controller.signal, 12000); current();
         const headers = {'Content-Type':'application/sdp'}; if (token) headers.Authorization = 'Bearer ' + token;
+        // Native MediaMTX can answer WHIP before deciding whether a path already
+        // has a publisher. Catnap's own relay provides a private preflight that
+        // distinguishes a busy stream from a rejected key. Other relays retain
+        // their existing behavior; old Catnap installations can return 404/405.
+        if (url === DEFAULT_ENDPOINT) {
+          const checkHeaders = {'Content-Type':'application/json'};
+          if (token) checkHeaders.Authorization = 'Bearer ' + token;
+          const check = await bounded(this.env.fetch(new URL('/hosts/api/publish-check', url).href, {
+            method:'POST', headers:checkHeaders, body:takeover?'\u007b"takeover":true\u007d':'{}', signal:r.controller.signal,
+            redirect:'error', credentials:'omit'
+          }), r.controller.signal, 12000); current();
+          if (check.status === 409) throw Error('Another host is broadcasting. Wait for them to stop, then try again.');
+          if (check.status === 401 || check.status === 403) throw Error('Relay rejected the publish token.');
+          if (takeover && [404,405].includes(check.status)) throw Error('Broadcast takeover is unavailable on this relay.');
+          if (![200,404,405].includes(check.status)) throw Error('Relay availability check failed. Try again shortly.');
+        }
         const response = await bounded(this.env.fetch(url, {method:'POST',headers,body:r.pc.localDescription.sdp,signal:r.controller.signal,redirect:'error',credentials:'omit'}), r.controller.signal, 12000, response => {
           // If Stop wins a race with a successful POST, release that newly allocated session.
           if (response.status === 201) {
@@ -123,8 +141,19 @@
       r.token = '';
       if (this.resources === r) this.resources = null;
     }
-    async fail(r, message) { ++this.generation; await this.cleanup(r); this.report('error', message); }
-    async stop(message = 'Stopped. Local Suno playback continues.') { ++this.generation; await this.cleanup(this.resources); this.report('idle', message); }
+    async fail(r, message) {
+      if (this.resources !== r) return;
+      const generation = ++this.generation;
+      await this.cleanup(r);
+      // Old monitor/relay cleanup can finish after Stop and a newer Start.
+      // It may release its own resources, never replace the new peer's status.
+      if (generation === this.generation && (!this.resources || this.resources === r)) this.report('error', message);
+    }
+    async stop(message = 'Stopped. Local playback continues.') {
+      const generation = ++this.generation, r = this.resources;
+      await this.cleanup(r);
+      if (generation === this.generation && (!this.resources || this.resources === r)) this.report('idle', message);
+    }
   }
   return {VERSION,BITRATE,DEFAULT_ENDPOINT,endpoint,permissionOrigin,sessionURL,stereoSDP,Publisher};
 });

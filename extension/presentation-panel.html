@@ -2,9 +2,10 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Theatre controls</title><link rel="stylesheet" href="presentation-panel.css"></head>
 <body>
-<header><p class="eyebrow">CATNAP THEATRE</p><h1>Presentation controls</h1><p id="source">Linking to your Suno tab…</p></header>
+<header><p class="eyebrow" id="build-label">CATNAP THEATRE · DEVELOPMENT 0.7.0</p><h1>Presentation controls</h1><p id="source">Linking to your Suno tab…</p></header>
 <p id="status" role="status" aria-live="polite">Ready.</p>
 <main>
+<section class="control-launchers"><h2>Control windows</h2><div class="row"><button id="radio-controls" type="button" aria-label="Radio controls">Radio</button><button id="show-controls" type="button" aria-label="Inbox and show controls">Inbox</button></div><small>Radio broadcasting and optional Inbox, playlist and show setup each have their own window.</small></section>
 <section><h2>Layout &amp; lyrics</h2>
 <label>Layout<select id="layout"><option value="duet">Artwork + lyrics</option><option value="lineup">Playlist + artwork + lyrics</option><option value="art">Artwork focus</option></select></label>
 <label>Lyrics size<span class="row"><button id="font-down" type="button" aria-label="Smaller lyrics">A−</button><output id="font-value">21 px</output><button id="font-up" type="button" aria-label="Larger lyrics">A+</button></span></label>

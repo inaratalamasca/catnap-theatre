@@ -1,5 +1,8 @@
 # Persistent Theatre controls — development version 0.5.0
 
+In the 0.7.0 preview, one small gear in Theatre opens this window. Radio and Inbox buttons at the top open their own controls. The top status box identifies Inbox mode versus Suno playlist mode; it turns green only after the linked Theatre is open and no current presentation/managed-playback error is reported. Linking, a closed Theatre and unavailable state remain neutral; errors remain red. Radio's live status is separate.
+
+
 Open Theatre in your Suno tab and click **Controls ↗** in its header.
 A separate control window stays open while you work in other tabs. Choosing
 Controls again brings that same window forward. Closing the window

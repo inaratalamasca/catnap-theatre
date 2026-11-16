@@ -1,0 +1,17 @@
+<!-- Catnap Radio toolbar icon, version 0.7.0. Original teal radio tower.
+     Render with ImageMagick at 384 DPI, then Lanczos-resize to 16/32/48/128
+     square pixels, depth 8, stripped metadata. No external assets or fonts. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="back" x2="1" y2="1">
+      <stop stop-color="#103d43"/><stop offset="1" stop-color="#091c2b"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="122" height="122" rx="27" fill="url(#back)" stroke="#389e9f" stroke-width="4"/>
+  <g fill="none" stroke="#69edcd" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M43 28 C26 40 26 59 43 71 M85 28 C102 40 102 59 85 71"/>
+    <path d="M31 16 C5 35 5 65 31 84 M97 16 C123 35 123 65 97 84" opacity=".72"/>
+    <path d="M64 52 L43 108 M64 52 L85 108 M53 83 H75 M48 96 H80"/>
+  </g>
+  <circle cx="64" cy="42" r="10" fill="#e1fff4"/>
+</svg>

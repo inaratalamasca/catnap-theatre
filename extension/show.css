@@ -1,0 +1,58 @@
+/* Catnap show controls, version 0.8.0.
+ * Change summary: persistent playback mode, clear active controls and prominent
+ * inbox read totals. Host-only notes never enter the stage.
+ */
+body{max-width:920px;margin:auto}header h1{margin-bottom:8px}h3{font-size:20px;margin:8px 0}.columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{flex-wrap:wrap}.playback button{flex:1;white-space:nowrap}#warning-seconds{max-width:88px}#current-note{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;border:1px solid #54466b;padding:12px;border-radius:9px;font:inherit;background:#100e1a}#current-note:empty{display:none}.warning-badge{color:#f4ce86}.warning-badge[data-warning=yes]{border:1px solid #967039;border-radius:8px;padding:9px}#queue{padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}#queue li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:12px;border:1px solid #3c354e;border-radius:10px}#queue li[aria-current=true]{border-color:#86d3cc;background:#15312f}#queue li small{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}#queue li>.queue-state{grid-column:2;grid-row:1;align-self:start}#queue .source{color:#c9a2f2;font-weight:650}#copy-fallback{width:100%;box-sizing:border-box;white-space:pre-wrap}footer{padding:4px 8px 24px}@media(max-width:450px){.columns{grid-template-columns:1fr}.playback button{flex:1 0 35%}}
+
+.control-mode-card{margin-bottom:16px;gap:7px;border-width:2px}
+.control-mode-card h2{margin:0;font-size:21px;line-height:1.25;color:inherit}
+.control-mode-card p{margin:0;overflow-wrap:anywhere}
+.control-mode-card[data-mode=inbox]{background:#122c29;border-color:#72c9b7;color:#e0fff4}
+.control-mode-card[data-mode=suno]{background:#25252b;border-color:#73737f}
+.control-mode-card[data-mode=reconnect]{background:#362a16;border-color:#e2b362;color:#ffe7b6}
+.control-mode-card .connection-target{font-size:12px;color:inherit}
+.mode-choice{min-height:46px;font-size:13px;line-height:1.3;border-width:2px}
+button.mode-choice[aria-pressed=false]{opacity:1}
+button.mode-choice.is-active{background:#18413a;border-color:#78d3bc;color:#e7fff5;opacity:1}
+button.mode-choice.is-active::before{content:'✓ ';font-weight:800}
+.inbox-summary{margin:0;padding:14px;border:2px solid #aa89ca;border-radius:10px;background:#292039;color:#fff5ff;font-size:18px;line-height:1.45;font-weight:700;overflow-wrap:anywhere}
+.inbox-error{margin:10px 0 0;padding:12px;border:1px solid #d7a16b;border-radius:9px;background:#342719;color:#ffe2b9;font-size:14px;overflow-wrap:anywhere}
+@media(max-width:450px){.mode-choices{align-items:stretch}.mode-choice{flex-basis:100%}.inbox-summary{font-size:17px;padding:12px}.control-mode-card h2{font-size:20px}}
+
+#integration-readiness{padding:0;margin-bottom:14px;grid-template-columns:1fr 1fr;gap:10px;border:0;background:transparent}
+.connection-card{padding:13px;border:1px solid #685574;border-radius:11px;background:#201a2b;overflow-wrap:anywhere}
+.connection-card h2{margin:0 0 8px;font-size:13px;color:inherit}
+.readiness-line{display:flex;gap:9px;align-items:center;margin:0;font-size:14px;line-height:1.4}
+#integration-use{grid-column:1/-1;margin:0;color:#c2b8cd;font-size:12px}
+.connection-card[data-state=inactive]{border-color:#61616e;background:#25252c;color:#d2d2dc}
+.connection-card[data-state=ready]{border-color:#66b49c;background:#172b26;color:#ddfff0}
+.connection-card[data-state=missing]{border-color:#c77380;background:#321f29;color:#ffe4e8}
+.status-dot{display:inline-block;width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#ef8a9b;box-shadow:0 0 0 1px #ffffff28}
+[data-state=ready]>.status-dot,[data-state=ready]>.readiness-line>.status-dot{background:#77d6ac}
+[data-state=inactive]>.readiness-line>.status-dot{background:#a3a3b0}
+.readiness-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.readiness-list li{display:flex;align-items:baseline;gap:9px;font-size:12px;line-height:1.45;color:#eadfe9}
+.readiness-list .status-dot{align-self:center}
+@media(max-width:450px){#integration-readiness{grid-template-columns:1fr}.connection-card{padding:11px}}
+/* 0.7.0: compact host song card; remote artwork is an explicit copy control. */
+.current-summary{display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;align-items:start}.current-text{min-width:0}.current-text h3{margin:0 0 6px}.current-text p{margin:4px 0;overflow-wrap:anywhere}.artwork-copy{position:relative;width:104px;height:104px;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#100e1a;border:1px solid #655275;border-radius:9px}.artwork-copy img{width:100%;height:100%;object-fit:contain}.artwork-copy img[hidden],#artwork-placeholder[hidden]{display:none}.artwork-copy:enabled{cursor:copy}.artwork-copy:focus-visible{outline:2px solid #a4e9c0;outline-offset:3px}#artwork-placeholder{font-size:11px;color:#aaa}.current-note-label{margin-top:12px}#current-note{margin:5px 0 12px}.current-text #current-warning[data-warning=yes]{margin-top:8px}@media(max-width:450px){.current-summary{grid-template-columns:80px minmax(0,1fr);gap:11px}.artwork-copy{width:80px;height:80px}.current-text h3{font-size:18px}}
+
+/* Local show controls never imply provider-playlist reordering. */
+.local-show-tools{display:grid;gap:5px;padding:10px 0}.local-show-tools[hidden],.queue-actions[hidden],.queue-state[hidden],.queue-hold-reason[hidden]{display:none}
+#queue .queue-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:3px}#queue .queue-actions[hidden]{display:none}#queue .queue-actions button{min-height:32px;padding:5px 10px;font-size:12px;line-height:1.25}#queue .queue-actions button[data-action^=move-]{min-width:34px;font-size:16px}
+.queue-state{border:1px solid #635374;border-radius:6px;padding:3px 6px;font-size:11px;white-space:nowrap;color:#ddd0ea}#queue li[data-held=true]{border-color:#967039}.queue-hold-reason{color:#f1cc8f;overflow-wrap:anywhere}
+
+#queue li>strong{min-width:0;overflow-wrap:anywhere}
+
+/* 0.8: state labels remain readable without color, while repeated uploader
+ * chips and matching right edges make related submissions easy to scan. */
+#queue li[data-held=true]{background:#3b2232;border-color:#f39cb8;border-left:5px solid #f39cb8}#queue li[data-held=true] .queue-state{background:#62283f;border-color:#ffc0d4;color:#fff0f5}.queue-hold-reason{color:#ffe1b0}
+#queue .uploader-group{grid-column:1/-1;justify-self:start;padding:3px 7px;border:1px solid;border-radius:6px;font-size:11px;font-weight:650;overflow-wrap:anywhere}.uploader-group[hidden]{display:none}
+#queue li[data-uploader-group="0"]{border-right:4px solid #c7a0ed}#queue li[data-uploader-group="0"] .uploader-group{background:#39274b;border-color:#c7a0ed;color:#f0ddff}
+#queue li[data-uploader-group="1"]{border-right:4px solid #7ed7ce}#queue li[data-uploader-group="1"] .uploader-group{background:#193b38;border-color:#7ed7ce;color:#d8fff9}
+#queue li[data-uploader-group="2"]{border-right:4px solid #e1c675}#queue li[data-uploader-group="2"] .uploader-group{background:#40361e;border-color:#e1c675;color:#fff1bd}
+#queue li[data-uploader-group="3"]{border-right:4px solid #8ebcf0}#queue li[data-uploader-group="3"] .uploader-group{background:#24364e;border-color:#8ebcf0;color:#e1efff}
+#queue li[data-uploader-group="4"]{border-right:4px solid #dfaa8c}#queue li[data-uploader-group="4"] .uploader-group{background:#473024;border-color:#dfaa8c;color:#ffe9d8}
+#queue li[data-uploader-group="5"]{border-right:4px solid #b0d18a}#queue li[data-uploader-group="5"] .uploader-group{background:#2b3a24;border-color:#b0d18a;color:#ecffd9}
+#queue li[data-declined=true]{background:#24232c;border-color:#71717f}#queue li[data-declined=true]>strong{color:#c2becb;text-decoration:line-through}#queue li[data-declined=true] .queue-state{background:#34333f;color:#e6e3ec}
+#queue .queue-actions button[data-action=decline]{margin-left:auto;border-color:#cd8499;color:#ffe1eb}.playlist-warning{padding:10px;border:1px solid #bb9a5b;border-radius:8px;color:#ffe6ad;background:#302619}#playlist-order-help[hidden],.playlist-warning[hidden]{display:none}

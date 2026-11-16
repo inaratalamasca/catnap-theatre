@@ -1,14 +1,16 @@
-// Catnap Theatre standalone companion, version 0.5.0.
-// Changes: presentation options live in the persistent control window; the
-// canvas retains only its Controls entry point and normal playback/navigation.
+// Catnap Theatre standalone companion, version 0.7.0.
+// Changes: one accessible gear opens controls; clean profiles get one optional
+// stream-name introduction when Theatre is opened. Existing names stay intact.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.5.0';
+  const SCRIPT_VERSION = '0.7.0';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
+  const NAME_PROMPT_KEY='catnap-stream-name-prompt-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';
+  let namePromptSeen=false,namePromptEligible=false,namePrompt=null,namePromptPending=false;
   const element=(tag,attributes={},text='')=>{
     const el=document.createElement(tag);
     for(const [key,value] of Object.entries(attributes))el.setAttribute(key,String(value));
@@ -16,6 +18,7 @@
   };
   async function save(next){
     prefs=settings(next);paint();
+    if(namePromptEligible&&prefs.brand&&prefs.brand!==defaults.brand)void finishNamePrompt();
     globalThis.CatnapVisualizer?.refreshSettings?.();
     try{await chrome.storage.local.set({[STORAGE_KEY]:prefs});if(status)status.textContent='Settings saved in this browser profile.';}
     catch{if(status)status.textContent='Settings work for this tab, but browser storage is unavailable.';}
@@ -23,6 +26,34 @@
   // Isolated-world adapter: both control surfaces use this same validator,
   // preferences object, repaint and profile storage write.
   globalThis.CatnapPresentationSettings=Object.freeze({read:()=>({...prefs}),save});
+  async function finishNamePrompt(){
+    namePromptSeen=true;namePromptEligible=false;namePrompt?.remove();namePrompt=null;
+    try{await chrome.storage.local.set({[NAME_PROMPT_KEY]:true});}catch{/* Dismissed for this page even if profile storage is unavailable. */}
+  }
+  function streamNamePrompt(){
+    if(!root?.isConnected||namePromptSeen||!namePromptEligible||namePrompt?.isConnected)return;
+    namePrompt?.remove();
+    namePrompt=element('section',{class:'ct-stream-name-prompt',role:'region','aria-labelledby':'ct-stream-name-title'});
+    namePrompt.append(element('h2',{id:'ct-stream-name-title'},'Name your stream'),element('p',{},'Example stream name: Catnap Radio. Open Presentation and edit Host name to use your own name.'));
+    const actions=element('div',{class:'ct-stream-name-actions'}),open=element('button',{type:'button',class:'ct-stream-name-open'},'Open Presentation'),keep=element('button',{type:'button',class:'ct-stream-name-keep'},'Use Catnap Radio');
+    const note=element('p',{class:'ct-stream-name-status',role:'status'},'You can change this later with the gear button.');
+    open.disabled=keep.disabled=namePromptPending;
+    keep.onclick=()=>{if(!namePromptPending)void finishNamePrompt();};
+    open.onclick=async()=>{
+      if(namePromptPending)return;namePromptPending=true;open.disabled=keep.disabled=true;
+      try{
+        const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});
+        if(result?.opened!==true)throw Error('Presentation did not open.');
+        await finishNamePrompt();
+      }catch{
+        const current=namePrompt?.querySelector('.ct-stream-name-status');if(current)current.textContent='Presentation could not open. Try again, or use Catnap Radio for now.';
+      }finally{
+        namePromptPending=false;
+        for(const button of namePrompt?.querySelectorAll('button')||[])button.disabled=false;
+      }
+    };
+    actions.append(open,keep);namePrompt.append(actions,note);root.append(namePrompt);
+  }
   function hideOptionControls(){
     if(!root)return;
     // These nodes retain the existing local handlers used by the popout and
@@ -56,7 +87,6 @@
 #catnap-theater-root::before {opacity:.3}
 #catnap-theater-root .ct-lyrics-content {font-size:var(--ct-lyric-size,21px)}
 #catnap-theater-root .ct-standalone-tools[hidden],#catnap-theater-root .ct-visual-tools[hidden],#catnap-theater-root .ct-lyrics-auto,#catnap-theater-root .ct-lyrics-reload {display:none!important}
-#catnap-theater-root .ct-popout-controls {flex:none;font:13px system-ui;padding:7px 10px;border:1px solid #77618c;border-radius:8px;white-space:nowrap}
 #catnap-theater-root .ct-standalone-tools summary {cursor:pointer;padding:7px 10px;border:1px solid #77618c;border-radius:8px;list-style:none}
 #catnap-theater-root .ct-settings-panel {position:absolute;top:40px;right:0;width:300px;max-height:75vh;overflow:auto;padding:15px;background:#161322;border:1px solid #77618c;border-radius:12px;display:grid;gap:11px;box-shadow:0 10px 35px #000b;letter-spacing:normal}
 #catnap-theater-root .ct-settings-panel label {display:grid;gap:5px;font-size:13px}
@@ -64,14 +94,13 @@
 #catnap-theater-root .ct-settings-panel .ct-check {display:flex;gap:8px;align-items:center}
 #catnap-theater-root .ct-settings-panel .ct-font-row {display:flex;align-items:center;gap:10px}
 #catnap-theater-root .ct-settings-panel a {color:#a8dfef;text-decoration:underline}
-#catnap-theater-root .ct-close {padding:6px;font-size:19px;flex:none}
 #catnap-theater-root .ct-lineup {display:none;min-height:0;overflow-y:auto;border:1px solid #4b3a5b;border-radius:12px;padding:12px;background:#0d0e19}
 #catnap-theater-root .ct-lineup h2 {font:700 12px system-ui;letter-spacing:.15em;color:#d8bee9;margin:0 0 8px}
 #catnap-theater-root .ct-lineup small {display:block;color:#a9a3b5;font-size:11px;line-height:1.4;margin-bottom:10px}
 #catnap-theater-root .ct-track {display:block;width:100%;padding:10px 5px;text-align:left;border-bottom:1px solid #34283e;border-radius:3px;font-size:13px;overflow-wrap:anywhere}
 #catnap-theater-root .ct-track:disabled {cursor:default;opacity:.65}
 #catnap-theater-root .ct-track[aria-current="true"] {color:#f5d391;border-left:3px solid #ebc987;padding-left:8px;background:#33283c;opacity:1}
-#catnap-theater-root[data-layout="lineup"] .ct-main {grid-template-columns:minmax(170px,.36fr) minmax(0,.95fr) minmax(280px,.8fr);gap:20px}
+#catnap-theater-root[data-layout="lineup"] .ct-main {grid-template-columns:minmax(150px,.3fr) minmax(0,1.2fr) minmax(250px,.75fr);gap:clamp(12px,1.5vw,24px)}
 #catnap-theater-root[data-layout="lineup"] .ct-lineup {display:block}
 #catnap-theater-root[data-layout="art"] .ct-main {grid-template-columns:1fr}
 #catnap-theater-root[data-layout="art"] .ct-lyrics-panel {display:none}
@@ -80,8 +109,22 @@
 #catnap-theater-root[data-layout="art"] .ct-desc {display:none}
 #catnap-theater-root[data-layout="art"] .ct-song-title {font-size:clamp(20px,2vw,32px)}
 #catnap-theater-root .ct-brand-sub {font-size:8px;letter-spacing:.08em}
-@media(max-width:950px){#catnap-theater-root[data-layout="lineup"] .ct-main{grid-template-columns:160px minmax(0,1fr) minmax(220px,1fr);gap:12px}#catnap-theater-root .ct-aiu {flex-basis:90px}}
-@media(max-width:700px){#catnap-theater-root[data-layout="lineup"] .ct-main{display:flex}#catnap-theater-root[data-layout="lineup"] .ct-lineup{display:none}#catnap-theater-root .ct-up-next {display:none}#catnap-theater-root .ct-standalone-tools{margin-left:auto}#catnap-theater-root .ct-settings-panel{right:-100px}}
+#catnap-theater-root .ct-stream-name-prompt {position:absolute;top:76px;right:18px;z-index:30;width:min(360px,calc(100% - 36px));max-height:calc(100% - 94px);overflow:auto;padding:15px;border:1px solid #9c81b6;border-radius:12px;background:#191424f5;color:#f5efff;box-shadow:0 8px 30px #0008;letter-spacing:normal}
+#catnap-theater-root .ct-stream-name-prompt h2 {margin:0 0 8px;font:700 18px/1.3 system-ui}
+#catnap-theater-root .ct-stream-name-prompt p {margin:0 0 11px;font:13px/1.45 system-ui}
+#catnap-theater-root .ct-stream-name-actions {display:flex;gap:8px;flex-wrap:wrap}
+#catnap-theater-root .ct-stream-name-actions button {padding:8px 10px;border:1px solid #aa8ac5;border-radius:7px;background:#49325f;color:#fff;font:600 12px/1.3 system-ui;cursor:pointer}
+#catnap-theater-root .ct-stream-name-actions button:focus-visible {outline:2px solid #cfa7f0;outline-offset:3px}
+#catnap-theater-root .ct-stream-name-prompt .ct-stream-name-status {margin:10px 0 0;font-size:11px;color:#d0c2dc}
+@media(max-width:950px){#catnap-theater-root[data-layout="lineup"] .ct-main{grid-template-columns:140px minmax(0,1.15fr) minmax(210px,.8fr);gap:12px}#catnap-theater-root .ct-aiu {flex-basis:90px}}
+@media(max-width:700px){
+#catnap-theater-root[data-layout="lineup"] .ct-main{display:grid;grid-template-columns:minmax(96px,.32fr) minmax(0,1fr);grid-template-rows:minmax(0,1.3fr) minmax(110px,.7fr);gap:10px}
+#catnap-theater-root[data-layout="lineup"] .ct-lineup{display:block;grid-column:1;grid-row:1 / span 2;padding:9px;overflow-x:hidden}
+#catnap-theater-root[data-layout="lineup"] .ct-showcase{grid-column:2;grid-row:1;min-height:0}
+#catnap-theater-root[data-layout="lineup"] .ct-lyrics-panel{grid-column:2;grid-row:2;min-height:0}
+#catnap-theater-root[data-layout="art"] .ct-showcase{flex:1 1 auto;width:100%}
+#catnap-theater-root .ct-up-next{display:none}#catnap-theater-root .ct-standalone-tools{margin-left:auto}#catnap-theater-root .ct-settings-panel{right:-100px}
+}
 `;
     root.appendChild(style);
     tools=element('div',{class:'ct-standalone-tools',hidden:'',inert:'','aria-hidden':'true',tabindex:'-1'});tools.inert=true;
@@ -103,14 +146,16 @@
     tools.querySelector('.ct-lounge').href=chrome.runtime.getURL('lounge.html');
     root.appendChild(tools);
     const header=root.querySelector('.ct-header');
-    const controls=element('button',{type:'button',class:'ct-popout-controls','aria-label':'Theatre controls',title:'Open persistent Theatre controls'},'Controls ↗');
-    header.insertBefore(controls,header.querySelector('.ct-aiu'));
-    const close=element('button',{type:'button',class:'ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
-    close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));header.appendChild(close);
+    let actions=header.querySelector('.ct-header-actions');if(!actions){actions=element('div',{class:'ct-header-actions',role:'group','aria-label':'Theatre control windows'});header.append(actions);}
+    const controls=element('button',{type:'button',class:'ct-header-action ct-popout-controls','aria-label':'Theatre controls',title:'Open presentation settings'});
+    controls.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9.21 5.26 L10.48 4.86 L9.92 2.22 L14.08 2.22 L13.52 4.86 L14.79 5.26 L14.79 5.26 L15.98 5.88 L17.45 3.61 L20.39 6.55 L18.12 8.02 L18.74 9.21 L18.74 9.21 L19.14 10.48 L21.78 9.92 L21.78 14.08 L19.14 13.52 L18.74 14.79 L18.74 14.79 L18.12 15.98 L20.39 17.45 L17.45 20.39 L15.98 18.12 L14.79 18.74 L14.79 18.74 L13.52 19.14 L14.08 21.78 L9.92 21.78 L10.48 19.14 L9.21 18.74 L9.21 18.74 L8.02 18.12 L6.55 20.39 L3.61 17.45 L5.88 15.98 L5.26 14.79 L5.26 14.79 L4.86 13.52 L2.22 14.08 L2.22 9.92 L4.86 10.48 L5.26 9.21 L5.26 9.21 L5.88 8.02 L3.61 6.55 L6.55 3.61 L8.02 5.88 L9.21 5.26 Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    actions.insertBefore(controls,actions.firstChild);
+    const close=element('button',{type:'button',class:'ct-header-action ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
+    close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));actions.appendChild(close);
     status=tools.querySelector('.ct-settings-status');
     controls.onclick=async()=>{
-      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.textContent='Controls ↗';controls.title='Open persistent Theatre controls';}
-      catch(error){controls.textContent='Controls unavailable';controls.title=error.message||'Could not open controls.';}
+      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.title='Open presentation settings';}
+      catch(error){controls.title=error.message||'Could not open controls.';}
     };
     const logo=element('img',{class:'ct-custom-logo',alt:'Host logo',hidden:''});Object.assign(logo.style,{maxWidth:'100px',height:'36px',objectFit:'contain'});root.querySelector('.ct-brand').prepend(logo);
     function localImage(control,kind){control.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)||file.size>20*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF under 20 MB.';return;}const old=kind==='logo'?logoUrl:backgroundUrl;if(old)URL.revokeObjectURL(old);const url=URL.createObjectURL(file);if(kind==='logo')logoUrl=url;else backgroundUrl=url;paint();status.textContent='Local image loaded for this tab only. It is not included in settings exports.';};}
@@ -136,7 +181,7 @@
     playlist=element('aside',{class:'ct-lineup','aria-label':'Visible Suno playlist'});
     root.querySelector('.ct-main').prepend(playlist);
     observer=new MutationObserver(()=>paint());observer.observe(root.querySelector('.ct-lyrics-content'),{childList:true});
-    hideOptionControls();paint();refreshPlaylist();
+    hideOptionControls();paint();refreshPlaylist();streamNamePrompt();
   }
   function nativeRows(){
     if(!/^\/playlist\//.test(location.pathname))return [];
@@ -159,12 +204,13 @@
   }
   function refreshPlaylist(){
     if(!root?.isConnected||!playlist)return;
+    if(globalThis.CatnapManagedShow?.active)return;
     const rows=nativeRows();
     const current=songId(document.querySelector('a[aria-label^="Playbar: Title for "]')?.href||'');
     const nextSignature=JSON.stringify([location.pathname,current,rows.map(r=>[r.id,r.title,!!r.button])]);
     if(nextSignature===signature)return;signature=nextSignature;
     const scroll=playlist.scrollTop;
-    playlist.replaceChildren(element('h2',{},'PLAYLIST'),element('small',{},'Visible Suno rows only. Not the internal queue. New rows appear when Suno renders them.'));
+    playlist.replaceChildren(element('h2',{},'SUNO PLAYLIST'),element('small',{},'Suno controls playback. These are the visible Suno playlist rows.'));
     if(!rows.length)playlist.append(element('small',{},'Open a Suno playlist. Suno may need to load more rows before they can appear here.'));
     rows.forEach((row,index)=>{
       const button=element('button',{type:'button',class:'ct-track','aria-current':String(row.id===current)},`${String(index+1).padStart(2,'0')}  ${row.title}`);
@@ -176,8 +222,13 @@
   }
   // Isolated-world extension settings never use Suno's page storage. Import accepts
   // a tiny fixed schema; no URLs, script, HTML or file paths are executable fields.
-  chrome.storage.local.get(STORAGE_KEY).then(data=>{
-    try{if(data[STORAGE_KEY])prefs=settings(data[STORAGE_KEY]);}catch{/* Recover unsupported old preferences with defaults. */}
+  Promise.allSettled([chrome.storage.local.get(STORAGE_KEY),chrome.storage.local.get(NAME_PROMPT_KEY)]).then(([profile,flag])=>{
+    const data=profile.status==='fulfilled'?profile.value:{},naming=flag.status==='fulfilled'?flag.value:{};
+    const existing=data[STORAGE_KEY]!==undefined&&data[STORAGE_KEY]!==null;
+    try{if(existing)prefs=settings(data[STORAGE_KEY]);}catch{/* Recover unsupported old preferences with defaults. */}
+    namePromptSeen=naming[NAME_PROMPT_KEY]===true||existing;
+    namePromptEligible=profile.status==='fulfilled'&&flag.status==='fulfilled'&&!namePromptSeen;
+    if(existing&&naming[NAME_PROMPT_KEY]!==true)void finishNamePrompt();
   }).catch(()=>{}).finally(()=>{ready=true;tick();});
   function tick(){
     if(!ready)return;
@@ -185,6 +236,7 @@
     if(!next){observer?.disconnect();root=null;tools=null;playlist=null;status=null;return;}
     if(next!==root)mount(next);
     hideOptionControls();
+    streamNamePrompt();
     refreshPlaylist();
   }
   setInterval(tick,1200);

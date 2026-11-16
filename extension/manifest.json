@@ -1,16 +1,33 @@
 {
   "manifest_version": 3,
-  "name": "Catnap Theatre for Suno — Visualizer Dev",
-  "version": "0.5.0",
-  "description": "Standalone Theatre with pop-out presentation controls, subtle music-reactive background bars and optional HQ audio broadcasting.",
+  "name": "Catnap Theatre + Inbox — Development",
+  "version": "0.8.2",
+  "description": "Suno theatre, optional AIU inbox shows, manual advance and music-only radio broadcasting from Suno or the AIU player.",
   "permissions": [
     "storage",
     "activeTab",
     "tabCapture",
-    "offscreen"
+    "offscreen",
+    "tabs",
+    "alarms",
+    "scripting",
+    "identity",
+    "nativeMessaging"
   ],
   "options_page": "lounge.html",
   "content_scripts": [
+    {
+      "matches": [
+        "https://suno.com/*",
+        "https://www.suno.com/*"
+      ],
+      "js": [
+        "managed-native-guard.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
     {
       "matches": [
         "https://suno.com/*",
@@ -24,7 +41,24 @@
         "standalone.js",
         "visualizer.js",
         "broadcast-metadata.js",
-        "presentation-tab-controller.js"
+        "presentation-tab-controller.js",
+        "managed-player.js",
+        "managed-media.js",
+        "managed-show.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://suno.com/*",
+        "https://www.suno.com/*",
+        "https://party.aiu.fm/party",
+        "https://party.aiu.fm/party/*"
+      ],
+      "js": [
+        "broadcast-source.js",
+        "radio-tab.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
@@ -43,9 +77,9 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'; connect-src https: http:"
+    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data: https://cdn1.suno.ai https://cdn2.suno.ai https://cdn.suno.ai https://i.ytimg.com; style-src 'self'; connect-src https: http:"
   },
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "120",
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
@@ -54,7 +88,7 @@
     "service_worker": "broadcast-worker.js"
   },
   "action": {
-    "default_title": "Catnap Theatre — HQ broadcast controls",
+    "default_title": "Catnap Theatre — radio and inbox controls",
     "default_icon": {
       "16": "assets/icons/theatre-16.png",
       "32": "assets/icons/theatre-32.png",
@@ -67,5 +101,6 @@
     "32": "assets/icons/theatre-32.png",
     "48": "assets/icons/theatre-48.png",
     "128": "assets/icons/theatre-128.png"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA03Fq8RiDoKLGVRlETNv/snogOZifa0ScXdxRxavPxZ5C5e9mwgSLQvuj7k7/OBaJl2IGyzj4DMDahYQ5m2vIB8TE1QjKrWj0y6iRZ7oXR0a1zcLMeaJ0WZzk8JCkPo/bl60Jd0IMOuLt/SqtJZE7SyMTagZC+0ZYgahJ0UxO7cZapSpTdkpHY3cr1Aj7ggEahXo+B9q6UCzs4qFkJBoRdsHGLOt45VgJb2uPidi50GHJ0saYw9HkId65gUNtWMAw4k6bUayDvTHZatcEuzQpT2ZieNpvQ6OOslKyMgWJmATSK1GqGfkCklJLULEytyaQq9oro8I7W8DhZZhoOyam+QIDAQAB"
 }
