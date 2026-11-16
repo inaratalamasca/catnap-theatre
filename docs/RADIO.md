@@ -80,7 +80,9 @@ entry too. The green On Air dot means **this tab** is the live capture source.
 Another Suno tab does not inherit it. The toolbar retains LIVE/error badges.
 
 In Theatre, the AIU logo turns green with small **On Air** text while that tab
-broadcasts. Otherwise it is white with grey **No Radio** text. The combined
+broadcasts. A small `listen.catnapradio.com` link appears beside it only for a
+live capture using Catnap's default relay. A custom relay does not receive an
+invented listener address. Otherwise the logo is white with grey **No Radio** text. The combined
 broadcast panel offers **Hide the Theatre button** for radio-only use; the
 compact On Air entry remains available while live. This preference does not
 stop audio or close an already open Theatre.
@@ -97,8 +99,9 @@ player capture currently sends audio only: it clears any previous public song
 details instead of inventing a title or upcoming list. A signed-in AIU host
 session and playable media remain the host's responsibility.
 
-The publish token stays in extension-session storage, never in the source
-page or a listener link. Page indicators receive only a small status projection.
+The publish token stays in extension-local session or saved profile storage,
+never in the source page or a listener link. Page indicators receive only a
+small status projection and the fixed public Catnap listener address when live.
 Other hosts need their own authorized relay/token. This download does not
 grant access to Catnap's publisher key, create a server or change the player
 website. See [privacy](RELEASE-AND-PRIVACY.md) for the data flow.

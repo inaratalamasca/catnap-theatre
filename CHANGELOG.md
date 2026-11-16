@@ -6,6 +6,7 @@
 - Added the AIU party source to combined Theatre broadcasting while keeping Theatre/managed playback scripts restricted to Suno. An upper-right Radio/On Air control opens broadcasting options on AIU.
 - Source-bound On Air indicators, green AIU Theatre logo and white/grey No Radio state follow actual publisher connection status. A radio-only-use preference hides the Theatre launcher when off-air. Toolbar LIVE/error badges remain.
 - Presentation controls identify Inbox versus Suno playlist mode and show green success separately from closed/disconnected/error status.
+- Added a live-only Catnap listener reminder beside On Air, larger fitted artwork and a compact managed-source status line above the progress bar.
 - Managed YouTube Play expands inside the browser's Theatre window with restore controls, without requesting monitor fullscreen; quiet Load remains held. YouTube queue entries use a small red video badge.
 - Condensed the host song card around a small artwork thumbnail; clicking copies its safe public image URL, with keyboard/clipboard fallback and no private notes included.
 - Added a clean-install-only stream-name prompt and origin-bound local publish-token remembering with session-only/Forget controls.
