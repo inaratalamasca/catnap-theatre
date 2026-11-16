@@ -1,5 +1,6 @@
 // Catnap Theatre standalone companion, version 0.7.0.
-// Changes: one accessible gear opens the separate operator controls.
+// Changes: one accessible gear opens controls; clean profiles get one optional
+// stream-name introduction when Theatre is opened. Existing names stay intact.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
@@ -7,7 +8,9 @@
   const SCRIPT_VERSION = '0.7.0';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
+  const NAME_PROMPT_KEY='catnap-stream-name-prompt-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';
+  let namePromptSeen=false,namePromptEligible=false,namePrompt=null,namePromptPending=false;
   const element=(tag,attributes={},text='')=>{
     const el=document.createElement(tag);
     for(const [key,value] of Object.entries(attributes))el.setAttribute(key,String(value));
@@ -15,6 +18,7 @@
   };
   async function save(next){
     prefs=settings(next);paint();
+    if(namePromptEligible&&prefs.brand&&prefs.brand!==defaults.brand)void finishNamePrompt();
     globalThis.CatnapVisualizer?.refreshSettings?.();
     try{await chrome.storage.local.set({[STORAGE_KEY]:prefs});if(status)status.textContent='Settings saved in this browser profile.';}
     catch{if(status)status.textContent='Settings work for this tab, but browser storage is unavailable.';}
@@ -22,6 +26,34 @@
   // Isolated-world adapter: both control surfaces use this same validator,
   // preferences object, repaint and profile storage write.
   globalThis.CatnapPresentationSettings=Object.freeze({read:()=>({...prefs}),save});
+  async function finishNamePrompt(){
+    namePromptSeen=true;namePromptEligible=false;namePrompt?.remove();namePrompt=null;
+    try{await chrome.storage.local.set({[NAME_PROMPT_KEY]:true});}catch{/* Dismissed for this page even if profile storage is unavailable. */}
+  }
+  function streamNamePrompt(){
+    if(!root?.isConnected||namePromptSeen||!namePromptEligible||namePrompt?.isConnected)return;
+    namePrompt?.remove();
+    namePrompt=element('section',{class:'ct-stream-name-prompt',role:'region','aria-labelledby':'ct-stream-name-title'});
+    namePrompt.append(element('h2',{id:'ct-stream-name-title'},'Name your stream'),element('p',{},'Example stream name: Catnap Radio. Open Presentation and edit Host name to use your own name.'));
+    const actions=element('div',{class:'ct-stream-name-actions'}),open=element('button',{type:'button',class:'ct-stream-name-open'},'Open Presentation'),keep=element('button',{type:'button',class:'ct-stream-name-keep'},'Use Catnap Radio');
+    const note=element('p',{class:'ct-stream-name-status',role:'status'},'You can change this later with the gear button.');
+    open.disabled=keep.disabled=namePromptPending;
+    keep.onclick=()=>{if(!namePromptPending)void finishNamePrompt();};
+    open.onclick=async()=>{
+      if(namePromptPending)return;namePromptPending=true;open.disabled=keep.disabled=true;
+      try{
+        const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});
+        if(result?.opened!==true)throw Error('Presentation did not open.');
+        await finishNamePrompt();
+      }catch{
+        const current=namePrompt?.querySelector('.ct-stream-name-status');if(current)current.textContent='Presentation could not open. Try again, or use Catnap Radio for now.';
+      }finally{
+        namePromptPending=false;
+        for(const button of namePrompt?.querySelectorAll('button')||[])button.disabled=false;
+      }
+    };
+    actions.append(open,keep);namePrompt.append(actions,note);root.append(namePrompt);
+  }
   function hideOptionControls(){
     if(!root)return;
     // These nodes retain the existing local handlers used by the popout and
@@ -77,6 +109,13 @@
 #catnap-theater-root[data-layout="art"] .ct-desc {display:none}
 #catnap-theater-root[data-layout="art"] .ct-song-title {font-size:clamp(20px,2vw,32px)}
 #catnap-theater-root .ct-brand-sub {font-size:8px;letter-spacing:.08em}
+#catnap-theater-root .ct-stream-name-prompt {position:absolute;top:76px;right:18px;z-index:30;width:min(360px,calc(100% - 36px));max-height:calc(100% - 94px);overflow:auto;padding:15px;border:1px solid #9c81b6;border-radius:12px;background:#191424f5;color:#f5efff;box-shadow:0 8px 30px #0008;letter-spacing:normal}
+#catnap-theater-root .ct-stream-name-prompt h2 {margin:0 0 8px;font:700 18px/1.3 system-ui}
+#catnap-theater-root .ct-stream-name-prompt p {margin:0 0 11px;font:13px/1.45 system-ui}
+#catnap-theater-root .ct-stream-name-actions {display:flex;gap:8px;flex-wrap:wrap}
+#catnap-theater-root .ct-stream-name-actions button {padding:8px 10px;border:1px solid #aa8ac5;border-radius:7px;background:#49325f;color:#fff;font:600 12px/1.3 system-ui;cursor:pointer}
+#catnap-theater-root .ct-stream-name-actions button:focus-visible {outline:2px solid #cfa7f0;outline-offset:3px}
+#catnap-theater-root .ct-stream-name-prompt .ct-stream-name-status {margin:10px 0 0;font-size:11px;color:#d0c2dc}
 @media(max-width:950px){#catnap-theater-root[data-layout="lineup"] .ct-main{grid-template-columns:160px minmax(0,1fr) minmax(220px,1fr);gap:12px}#catnap-theater-root .ct-aiu {flex-basis:90px}}
 @media(max-width:700px){#catnap-theater-root[data-layout="lineup"] .ct-main{display:flex}#catnap-theater-root[data-layout="lineup"] .ct-lineup{display:none}#catnap-theater-root .ct-up-next {display:none}#catnap-theater-root .ct-standalone-tools{margin-left:auto}#catnap-theater-root .ct-settings-panel{right:-100px}}
 `;
@@ -135,7 +174,7 @@
     playlist=element('aside',{class:'ct-lineup','aria-label':'Visible Suno playlist'});
     root.querySelector('.ct-main').prepend(playlist);
     observer=new MutationObserver(()=>paint());observer.observe(root.querySelector('.ct-lyrics-content'),{childList:true});
-    hideOptionControls();paint();refreshPlaylist();
+    hideOptionControls();paint();refreshPlaylist();streamNamePrompt();
   }
   function nativeRows(){
     if(!/^\/playlist\//.test(location.pathname))return [];
@@ -176,8 +215,13 @@
   }
   // Isolated-world extension settings never use Suno's page storage. Import accepts
   // a tiny fixed schema; no URLs, script, HTML or file paths are executable fields.
-  chrome.storage.local.get(STORAGE_KEY).then(data=>{
-    try{if(data[STORAGE_KEY])prefs=settings(data[STORAGE_KEY]);}catch{/* Recover unsupported old preferences with defaults. */}
+  Promise.allSettled([chrome.storage.local.get(STORAGE_KEY),chrome.storage.local.get(NAME_PROMPT_KEY)]).then(([profile,flag])=>{
+    const data=profile.status==='fulfilled'?profile.value:{},naming=flag.status==='fulfilled'?flag.value:{};
+    const existing=data[STORAGE_KEY]!==undefined&&data[STORAGE_KEY]!==null;
+    try{if(existing)prefs=settings(data[STORAGE_KEY]);}catch{/* Recover unsupported old preferences with defaults. */}
+    namePromptSeen=naming[NAME_PROMPT_KEY]===true||existing;
+    namePromptEligible=profile.status==='fulfilled'&&flag.status==='fulfilled'&&!namePromptSeen;
+    if(existing&&naming[NAME_PROMPT_KEY]!==true)void finishNamePrompt();
   }).catch(()=>{}).finally(()=>{ready=true;tick();});
   function tick(){
     if(!ready)return;
@@ -185,6 +229,7 @@
     if(!next){observer?.disconnect();root=null;tools=null;playlist=null;status=null;return;}
     if(next!==root)mount(next);
     hideOptionControls();
+    streamNamePrompt();
     refreshPlaylist();
   }
   setInterval(tick,1200);
