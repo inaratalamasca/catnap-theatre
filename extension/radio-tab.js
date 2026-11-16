@@ -1,7 +1,8 @@
 /* Catnap per-tab Radio indicator, version 0.7.0.
  * Displays only sanitized worker state for this exact source tab. Clicking an
  * indicator opens controls; capture always needs the extension toolbar grant.
- * No capture, playback, credentials, relay URLs or page-message bridge here.
+ * No capture, playback, credentials or private relay URL here. Only the fixed
+ * public Catnap listener link may be displayed for its actual live source.
  */
 (function(scope,factory){
   const api=factory();
@@ -9,12 +10,12 @@
   else {scope.CatnapRadioTab=api;if(scope.document&&scope.chrome?.runtime)api.install(scope);}
 })(globalThis,()=>{
   'use strict';
-  const SCRIPT_VERSION='0.7.0',POLL_MS=2000,REQUEST_MS=5000;
+  const SCRIPT_VERSION='0.7.0',POLL_MS=2000,REQUEST_MS=5000,LISTENER='https://listen.catnapradio.com/';
   const ROOT='catnap-theater-root',LAUNCH='catnap-theater-launch',PILL='catnap-radio-indicator',STYLE='catnap-radio-tab-styles';
   const STATES=new Set(['idle','starting','connecting','reconnecting','live','error']),installed=new WeakMap();
   function sanitize(value){
     if(!value||!STATES.has(value.state)||typeof value.source!=='boolean'||typeof value.hideTheatreButton!=='boolean'||typeof value.radioOnly!=='boolean')return null;
-    return {state:value.state,source:value.source,hideTheatreButton:value.hideTheatreButton,radioOnly:value.radioOnly};
+    return {state:value.state,source:value.source,hideTheatreButton:value.hideTheatreButton,radioOnly:value.radioOnly,listenerUrl:value.state==='live'&&value.source===true&&value.listenerUrl===LISTENER?LISTENER:null};
   }
   function trustedSender(runtime,sender){
     if(!runtime?.id||sender?.id!==runtime.id||sender.tab||sender.frameId!==undefined&&sender.frameId!==0)return false;
@@ -27,7 +28,7 @@
     if(!window.document||!window.chrome?.runtime||window.top!==window)return null;
     const document=window.document,runtime=window.chrome.runtime;
     let current={state:'idle',source:false,hideTheatreButton:false,radioOnly:false},pill=null,timer=null,disposed=false,epoch=0,inFlight=false;
-    const boundHeaders=new WeakSet(),createdLabels=new Set();
+    const boundHeaders=new Set(),createdLabels=new Set(),createdCaptions=new Set(),createdLinks=new Set();
     const kind=()=>{try{return window.CatnapBroadcastSource?.kind(window.location.href)||null;}catch{return null;}};
     const live=()=>current.state==='live'&&current.source===true;
     function style(){
@@ -42,9 +43,15 @@
 #${ROOT} .ct-aiu{flex-direction:column;align-items:flex-end;justify-content:center}
 #${ROOT} .ct-aiu-logo{max-height:33px;filter:brightness(0) invert(1)}
 #${ROOT} .ct-aiu .ct-radio-status{display:block;margin:2px 0 0;padding:0;border:0;background:none;color:#959aa8;font:600 9px/11px system-ui,sans-serif;white-space:nowrap;cursor:pointer}
+#${ROOT} .ct-radio-caption{display:flex;align-items:center;justify-content:flex-end;gap:6px;max-width:100%;min-width:0}
+#${ROOT} .ct-radio-listener{color:#b5ebc4;font:500 9px/11px system-ui,sans-serif;text-decoration:none;white-space:nowrap}
+#${ROOT} .ct-radio-listener:hover{text-decoration:underline}
+#${ROOT} .ct-radio-listener[hidden]{display:none!important}
+#${ROOT} .ct-aiu .ct-radio-caption .ct-radio-status{margin:0}
 #${ROOT} .ct-aiu.ct-radio-on-air .ct-aiu-logo{filter:brightness(0) saturate(100%) invert(82%) sepia(35%) saturate(754%) hue-rotate(78deg) brightness(105%) contrast(95%)}
 #${ROOT} .ct-aiu.ct-radio-on-air .ct-radio-status,#${ROOT} .ct-aiu.ct-radio-on-air .ct-aiu-fallback{color:#8df2ac}
 @media(max-width:840px){#${ROOT} .ct-aiu-logo{max-height:28px}}
+@media(max-width:610px){#${ROOT} .ct-radio-caption{gap:4px}#${ROOT} .ct-radio-listener{font-size:8px}#${ROOT} .ct-aiu:has(.ct-radio-listener:not([hidden])){flex-basis:150px;max-width:170px}}
 @media(max-width:520px){#${PILL}[data-source-kind="aiu"]{top:88px!important;right:12px!important;padding:5px 7px!important;font-size:10px!important}}
 `;
       document.documentElement.appendChild(element);
@@ -54,21 +61,39 @@
       catch{if(pill)pill.title='Open Radio controls from the extension toolbar.';}
     }
     function paintHeaders(){
+      // Theatre can close/reopen repeatedly during a long session. Do not keep
+      // removed header nodes or their listeners alive in the status display.
+      for(const label of boundHeaders)if(!label.isConnected){label.removeEventListener('click',open);boundHeaders.delete(label);}
+      for(const group of [createdLabels,createdCaptions,createdLinks])for(const node of group)if(!node.isConnected)group.delete(node);
       for(const header of document.querySelectorAll('#'+ROOT+' .ct-aiu')){
         header.classList.toggle('ct-radio-on-air',live());
         let label=header.querySelector('.ct-radio-status');
         if(!label){label=document.createElement('button');label.type='button';label.className='ct-radio-status';label.dataset.catnapRadioStatus='true';header.appendChild(label);createdLabels.add(label);}
+        let caption=header.querySelector('.ct-radio-caption');
+        if(!caption){caption=document.createElement('div');caption.className='ct-radio-caption';header.append(caption);createdCaptions.add(caption);}
+        if(label.parentElement!==caption)caption.append(label);
+        let link=caption.querySelector('.ct-radio-listener');
+        if(!link){link=document.createElement('a');link.className='ct-radio-listener';link.textContent='listen.catnapradio.com';link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Open the live Catnap listener');caption.insertBefore(link,label);createdLinks.add(link);}
+        if(link.textContent!=='listen.catnapradio.com')link.textContent='listen.catnapradio.com';
+        link.hidden=!(live()&&current.listenerUrl===LISTENER);if(link.hidden)link.removeAttribute('href');else link.href=LISTENER;
         if(!boundHeaders.has(label)){label.addEventListener('click',open);boundHeaders.add(label);}
         const text=live()?'On Air':'No Radio';if(label.textContent!==text)label.textContent=text;
         label.setAttribute('aria-label',text+' · open Radio controls');
         label.title=live()?'This tab is broadcasting. Open Radio controls.':'This tab is not broadcasting. Open Radio controls.';
       }
     }
+    function clearHeaders(){
+      for(const label of boundHeaders){label.removeEventListener('click',open);if(!createdLabels.has(label)){label.textContent='No Radio';label.setAttribute('aria-label','No Radio · open Radio controls');label.title='This tab is not broadcasting. Open Radio controls.';}}boundHeaders.clear();
+      for(const link of createdLinks)link.remove();createdLinks.clear();
+      for(const caption of createdCaptions){for(const child of Array.from(caption.children))if(!createdLabels.has(child))caption.parentElement?.insertBefore(child,caption);caption.remove();}createdCaptions.clear();
+      for(const label of createdLabels)label.remove();createdLabels.clear();
+      for(const header of document.querySelectorAll('#'+ROOT+' .ct-aiu'))header.classList.remove('ct-radio-on-air');
+    }
     function removePill(){if(pill){pill.remove();pill=null;}}
     function render(){
       if(disposed)return;
       const sourceKind=kind();
-      if(!sourceKind){removePill();for(const label of createdLabels)label.remove();createdLabels.clear();for(const header of document.querySelectorAll('#'+ROOT+' .ct-aiu'))header.classList.remove('ct-radio-on-air');return;}
+      if(!sourceKind){removePill();clearHeaders();return;}
       style();paintHeaders();
       const adapter=sourceKind==='suno'&&!current.radioOnly?window.CatnapTheatreRadioUI:null;
       if(typeof adapter?.update==='function'){adapter.update(current,open);removePill();return;}
@@ -100,7 +125,7 @@
     observer.observe(document.documentElement,{childList:true,subtree:true});
     const resume=()=>{void poll();};
     runtime.onMessage?.addListener(receive);window.addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);
-    const api={version:SCRIPT_VERSION,refresh:poll,status:()=>({...current}),dispose(){disposed=true;window.clearInterval(timer);observer.disconnect();runtime.onMessage?.removeListener?.(receive);window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);removePill();for(const label of createdLabels)label.remove();installed.delete(window);}};
+    const api={version:SCRIPT_VERSION,refresh:poll,status:()=>({...current}),dispose(){disposed=true;window.clearInterval(timer);observer.disconnect();runtime.onMessage?.removeListener?.(receive);window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);removePill();clearHeaders();installed.delete(window);}};
     installed.set(window,api);timer=window.setInterval(()=>{void poll();},POLL_MS);void poll();return api;
   }
   return {SCRIPT_VERSION,POLL_MS,sanitize,trustedSender,install};

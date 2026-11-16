@@ -95,3 +95,12 @@ test('a stale status reply cannot erase a newer push and a failed fresh poll rem
   f.response=new Error('Unavailable');await f.api.refresh();assert.equal(f.w.document.getElementById('catnap-radio-indicator').textContent,'Radio');assert.equal(f.api.status().state,'error');assert.equal(f.api.status().hideTheatreButton,true);assert.equal(f.api.status().radioOnly,true);
  }finally{f.close();}
 });
+
+test('Theatre listener link is exact, source-live only, separate from Radio controls and removed on fallback',async()=>{
+ const listener='https://listen.catnapradio.com/',f=await fixture({content:true});try{
+  f.w.CatnapTheatreView.open(true);await flush();const header=f.w.document.querySelector('.ct-aiu'),link=()=>header.querySelector('.ct-radio-listener');
+  for(const value of [{state:'idle',source:false,listenerUrl:listener},{state:'connecting',source:true,listenerUrl:listener},{state:'live',source:false,listenerUrl:listener},{state:'live',source:true,listenerUrl:'https://other.example/player'},{state:'live',source:true,listenerUrl:'javascript:alert(1)'}]){f.push(value);assert.equal(link().hidden,true);assert.equal(link().hasAttribute('href'),false);}
+  f.push({state:'live',source:true,listenerUrl:listener});assert.equal(link().hidden,false);assert.equal(link().href,listener);assert.equal(link().textContent,'listen.catnapradio.com');assert.equal(link().target,'_blank');assert.equal(link().rel,'noopener noreferrer');assert.equal(link().parentElement.querySelector('.ct-radio-status').textContent,'On Air');
+  assert.equal(f.api.status().listenerUrl,listener);f.push({state:'error',source:false,listenerUrl:listener});assert.equal(link().hidden,true);assert.equal(link().hasAttribute('href'),false);assert.equal(f.api.status().listenerUrl,null);assert.equal(f.plays,0);
+ }finally{f.close();}
+});

@@ -100,7 +100,7 @@
 #catnap-theater-root .ct-track {display:block;width:100%;padding:10px 5px;text-align:left;border-bottom:1px solid #34283e;border-radius:3px;font-size:13px;overflow-wrap:anywhere}
 #catnap-theater-root .ct-track:disabled {cursor:default;opacity:.65}
 #catnap-theater-root .ct-track[aria-current="true"] {color:#f5d391;border-left:3px solid #ebc987;padding-left:8px;background:#33283c;opacity:1}
-#catnap-theater-root[data-layout="lineup"] .ct-main {grid-template-columns:minmax(170px,.36fr) minmax(0,.95fr) minmax(280px,.8fr);gap:20px}
+#catnap-theater-root[data-layout="lineup"] .ct-main {grid-template-columns:minmax(150px,.3fr) minmax(0,1.2fr) minmax(250px,.75fr);gap:clamp(12px,1.5vw,24px)}
 #catnap-theater-root[data-layout="lineup"] .ct-lineup {display:block}
 #catnap-theater-root[data-layout="art"] .ct-main {grid-template-columns:1fr}
 #catnap-theater-root[data-layout="art"] .ct-lyrics-panel {display:none}
@@ -116,8 +116,15 @@
 #catnap-theater-root .ct-stream-name-actions button {padding:8px 10px;border:1px solid #aa8ac5;border-radius:7px;background:#49325f;color:#fff;font:600 12px/1.3 system-ui;cursor:pointer}
 #catnap-theater-root .ct-stream-name-actions button:focus-visible {outline:2px solid #cfa7f0;outline-offset:3px}
 #catnap-theater-root .ct-stream-name-prompt .ct-stream-name-status {margin:10px 0 0;font-size:11px;color:#d0c2dc}
-@media(max-width:950px){#catnap-theater-root[data-layout="lineup"] .ct-main{grid-template-columns:160px minmax(0,1fr) minmax(220px,1fr);gap:12px}#catnap-theater-root .ct-aiu {flex-basis:90px}}
-@media(max-width:700px){#catnap-theater-root[data-layout="lineup"] .ct-main{display:flex}#catnap-theater-root[data-layout="lineup"] .ct-lineup{display:none}#catnap-theater-root .ct-up-next {display:none}#catnap-theater-root .ct-standalone-tools{margin-left:auto}#catnap-theater-root .ct-settings-panel{right:-100px}}
+@media(max-width:950px){#catnap-theater-root[data-layout="lineup"] .ct-main{grid-template-columns:140px minmax(0,1.15fr) minmax(210px,.8fr);gap:12px}#catnap-theater-root .ct-aiu {flex-basis:90px}}
+@media(max-width:700px){
+#catnap-theater-root[data-layout="lineup"] .ct-main{display:grid;grid-template-columns:minmax(96px,.32fr) minmax(0,1fr);grid-template-rows:minmax(0,1.3fr) minmax(110px,.7fr);gap:10px}
+#catnap-theater-root[data-layout="lineup"] .ct-lineup{display:block;grid-column:1;grid-row:1 / span 2;padding:9px;overflow-x:hidden}
+#catnap-theater-root[data-layout="lineup"] .ct-showcase{grid-column:2;grid-row:1;min-height:0}
+#catnap-theater-root[data-layout="lineup"] .ct-lyrics-panel{grid-column:2;grid-row:2;min-height:0}
+#catnap-theater-root[data-layout="art"] .ct-showcase{flex:1 1 auto;width:100%}
+#catnap-theater-root .ct-up-next{display:none}#catnap-theater-root .ct-standalone-tools{margin-left:auto}#catnap-theater-root .ct-settings-panel{right:-100px}
+}
 `;
     root.appendChild(style);
     tools=element('div',{class:'ct-standalone-tools',hidden:'',inert:'','aria-hidden':'true',tabindex:'-1'});tools.inert=true;

@@ -30,7 +30,7 @@ async function fixture(){
 }
 test('quiet video Load stays in artwork geometry with one paused iframe and a safe red YouTube icon',async()=>{
  const f=await fixture();try{await f.load();const root=f.root(),frame=f.frame(),stage=root.querySelector('.ct-managed-media-stage');
-  assert.equal(root.classList.contains('ct-managed-window-video'),false);assert.match(root.querySelector('.ct-desc').textContent,/Loaded/);assert.equal(root.querySelector('.ct-desc').textContent.includes('Loaded quietly'),false);assert.equal(stage.parentElement,root);assert.equal(stage.style.left,'24px');assert.equal(stage.style.width,'320px');assert.equal(root.querySelectorAll('iframe').length,1);
+  assert.equal(root.classList.contains('ct-managed-window-video'),false);assert.match(root.querySelector('.ct-managed-playback-status').textContent,/Loaded/);assert.equal(root.querySelector('.ct-managed-playback-status').textContent.includes('Loaded quietly'),false);assert.equal(stage.parentElement,root);assert.equal(stage.style.left,'24px');assert.equal(stage.style.width,'320px');assert.equal(root.querySelectorAll('iframe').length,1);
   assert.equal(new URL(frame.src).searchParams.get('autoplay'),'0');assert.equal(new URL(frame.src).searchParams.get('fs'),'0');assert.equal(frame.allow.includes('fullscreen'),false);assert.equal(f.commands.some(c=>c.func==='playVideo'),false);
   const row=root.querySelector('.ct-managed-lineup button'),icon=row.querySelector('.ct-managed-yt');assert.equal(icon.getAttribute('aria-label'),'YouTube');assert.equal(icon.title,'YouTube source');assert.equal(f.w.getComputedStyle(icon).backgroundColor,'rgb(223, 32, 44)');assert.equal(row.querySelector('img'),null);assert.ok(row.textContent.includes('<img src=x onerror=alert(1)>'));assert.equal(row.textContent.includes(' · YT'),false);
   assert.equal(f.fullscreen,0);
@@ -58,7 +58,7 @@ test('Pause can retain window view; quiet next, native end, errors and managed e
 });
 test('direct iframe Play expands once and autoplay rejection restores artwork while retaining the same usable frame',async()=>{
  const f=await fixture();try{await f.load();const frame=f.frame();f.event({event:'onStateChange',info:1});assert.equal(f.root().classList.contains('ct-managed-window-video'),true);f.event({event:'onStateChange',info:2});assert.equal(f.w.CatnapManagedShow.snapshot().phase,'paused');f.root().querySelector('.ct-managed-video-view').click();assert.equal(f.root().classList.contains('ct-managed-window-video'),false);
-  const starting=f.send({action:'play',showId:'video-show'});await flush();f.event({event:'onReady'});await flush();f.event({event:'onAutoplayBlocked'});await starting;assert.equal(f.root().classList.contains('ct-managed-window-video'),false);assert.equal(f.frame(),frame);assert.match(f.root().querySelector('.ct-desc').textContent,/Press Play/);assert.equal(f.fullscreen,0);
+  const starting=f.send({action:'play',showId:'video-show'});await flush();f.event({event:'onReady'});await flush();f.event({event:'onAutoplayBlocked'});await starting;assert.equal(f.root().classList.contains('ct-managed-window-video'),false);assert.equal(f.frame(),frame);assert.match(f.root().querySelector('.ct-managed-playback-status').textContent,/Press Play/);assert.equal(f.fullscreen,0);
  }finally{f.dom.window.close();}
 });
 
@@ -71,4 +71,8 @@ test('pending readiness cannot start after Pause or reopen a replaced/closed sou
   await f.send({action:'next',showId:'video-show'});f.w.dispatchEvent(new f.w.MessageEvent('message',{origin:'https://www.youtube-nocookie.com',source,data:JSON.stringify({event:'onStateChange',info:1})}));assert.equal(f.w.CatnapManagedShow.snapshot().current.id,'suno');assert.equal(f.w.CatnapManagedShow.snapshot().phase,'ready');assert.equal(f.frame(),null);
   await f.send({action:'load',index:0,showId:'video-show'});old=f.frame();source=old.contentWindow;const pending=f.send({action:'play',showId:'video-show'});await flush();f.w.CatnapTheatreView.open(false);await flush();await pending;f.w.dispatchEvent(new f.w.MessageEvent('message',{origin:'https://www.youtube-nocookie.com',source,data:JSON.stringify({event:'onStateChange',info:1})}));assert.equal(f.root(),null);assert.equal(f.w.CatnapManagedShow.snapshot().phase,'paused');assert.equal(f.fullscreen,0);
  }finally{f.dom.window.close();}
+});
+
+test('video next control stays disabled when only held successors remain, and releases without replacing the iframe',async()=>{
+ const f=await fixture();try{await f.load();const frame=f.frame(),current=show();current.entries[1].hostHeld=true;await f.send({action:'update',show:current});assert.equal(f.root().querySelector('.ct-managed-video-next').disabled,true);assert.equal(f.root().querySelector('.ct-up-next-title').textContent,'No unheld songs remain');assert.equal(f.frame(),frame);current.entries[1].hostHeld=false;await f.send({action:'update',show:current});assert.equal(f.root().querySelector('.ct-managed-video-next').disabled,false);assert.equal(f.root().querySelector('.ct-up-next-title').textContent,'Next Suno song');assert.equal(f.frame(),frame);assert.equal(f.commands.some(c=>c.func==='playVideo'),false);assert.equal(f.messages.some(m=>m.target==='managed-native'&&m.action==='play'),false);}finally{f.dom.window.close();}
 });

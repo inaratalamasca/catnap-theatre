@@ -13,7 +13,8 @@
 
 /*
  * CATNAP THEATRE · v0.7.0 development
- * Change: source-specific Radio display keeps playback and lyric handlers unchanged.
+ * Change: responsive square artwork uses available stage space; managed source
+ * status sits above progress and a live Catnap listener link stays in the header.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
  * managed mode uses a source-bound guard and the separate show coordinator.
@@ -164,14 +165,14 @@
 #${ROOT_ID} .ct-aiu-fallback small { display: block; font-size: 9px; font-weight: 550; letter-spacing: .23em; margin-top: 4px; }
 #${ROOT_ID} .ct-main {
   flex: 1 1 auto; min-height: 0; width: 100%;
-  display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr);
+  display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr);
   gap: clamp(22px, 3vw, 58px); padding: 0 clamp(20px, 2.5vw, 45px) 14px;
 }
 #${ROOT_ID} .ct-showcase { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-#${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; min-height: 0; min-width: 0; display:flex; justify-content:center; align-items:center; }
+#${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; width:100%; min-height: 0; min-width: 0; display:grid; place-items:center; container-type:size; }
 #${ROOT_ID} .ct-art-frame {
-  position: relative; width: auto; height: 100%; max-height: 100%; max-width: 100%;
-  aspect-ratio: 1 / 1; overflow: hidden; flex: 0 1 auto;
+  position: relative; width: 100%; height: 100%; width:min(100cqw,100cqh); height:min(100cqw,100cqh); max-height: 100%; max-width: 100%;
+  aspect-ratio: 1 / 1; overflow: hidden; flex: none;
   border-radius: clamp(12px,1.1vw,20px); background: linear-gradient(135deg,#22132d,#101b30 70%,#181020);
   box-shadow: 0 23px 60px rgba(0,0,0,.48),0 0 0 1px rgba(222,170,250,.38),0 0 40px rgba(128,54,172,.08);
 }
@@ -179,7 +180,7 @@
 #${ROOT_ID} .ct-art { width: 100%; height: 100%; object-fit: contain; display: block; }
 #${ROOT_ID} .ct-no-art .ct-art { display: none; }
 #${ROOT_ID} .ct-no-art::after { content: '♪'; position: absolute; inset: 0; display: grid; place-items: center; color: #9f8eaf; font-size: min(14vw, 160px); font-weight: 200; }
-#${ROOT_ID} .ct-meta { flex: 0 0 auto; min-height: 0; padding: 17px 0 2px; width: min(100%, calc(100dvh - 290px)); max-width: 920px; align-self: center; }
+#${ROOT_ID} .ct-meta { flex: 0 0 auto; min-height: 0; padding: 12px 0 4px; width: 100%; max-width: 100%; align-self: center; }
 #${ROOT_ID} .ct-song-title { font-size: clamp(23px, 2.35vw, 41px); font-weight: 730; letter-spacing: -.035em; line-height: 1.14; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #${ROOT_ID} .ct-artist { font-size: clamp(16px,1.45vw,23px); font-weight: 400; color: #b9b2c8; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #${ROOT_ID} .ct-desc { font-size: clamp(13px,.96vw,16px); line-height: 1.48; color: #aba7b7; margin-top: 12px; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -210,6 +211,9 @@
 #${ROOT_ID} .ct-player-buttons button svg { width: 22px; height: 22px; }
 #${ROOT_ID} .ct-player-buttons .ct-toggle { background: linear-gradient(135deg,#cf9bf5,#9d9de5); color: #100b1c; border-radius: 50%; width: 43px; height:43px; opacity: 1; box-shadow: 0 1px 14px rgba(194,141,245,.17); }
 #${ROOT_ID} .ct-toggle svg { width: 22px; height: 22px; }
+#${ROOT_ID} .ct-progress-stack {flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#${ROOT_ID} .ct-managed-playback-status {font:500 11px/1.3 system-ui;color:#b9aec8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#${ROOT_ID} .ct-managed-playback-status[hidden] {display:none}
 #${ROOT_ID} .ct-progress-layout { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
 #${ROOT_ID} .ct-clock { font-size: clamp(12px,.92vw,15px); color: #b3adc4; letter-spacing: .04em; font-variant-numeric: tabular-nums; flex: none; min-width: 43px; text-align: center; }
 #${ROOT_ID} .ct-progress {
@@ -246,9 +250,9 @@
   #${ROOT_ID} .ct-up-next-label { letter-spacing: .04em; }
   #${ROOT_ID} .ct-aiu { flex-basis: 85px; }
   #${ROOT_ID} .ct-main { display:flex; flex-direction: column; gap: 13px; }
-  #${ROOT_ID} .ct-showcase { flex: 0 0 49%; flex-direction: row; align-items:center; gap: 12px; }
-  #${ROOT_ID} .ct-art-wrap { flex: 0 0 43%; height:100%; }
-  #${ROOT_ID} .ct-meta { flex:1; min-width: 0; }
+  #${ROOT_ID} .ct-showcase { flex: 0 0 60%; flex-direction: column; align-items:stretch; gap: 0; }
+  #${ROOT_ID} .ct-art-wrap { flex: 1 1 auto; width:100%; height:auto; }
+  #${ROOT_ID} .ct-meta { flex:0 0 auto; min-width:0; padding:8px 0 0; text-align:center; }
   #${ROOT_ID} .ct-desc { display: none; }
   #${ROOT_ID} .ct-lyrics-panel { flex: 1; }
   #${ROOT_ID} .ct-player-buttons button { width: 28px; }
@@ -309,7 +313,7 @@
         <div class="ct-aiu" title="AI:Underground">
           <img class="ct-aiu-logo" src="${chrome.runtime.getURL('assets/aiu-logo.png')}" alt="AI:Underground" />
           <span class="ct-aiu-fallback" aria-hidden="true">AI:<small>UNDERGROUND</small></span>
-          <button type="button" class="ct-radio-status" data-catnap-radio-status="true" aria-label="No Radio · open Radio controls">No Radio</button>
+          <div class="ct-radio-caption"><button type="button" class="ct-radio-status" data-catnap-radio-status="true" aria-label="No Radio · open Radio controls">No Radio</button></div>
         </div>
         <div class="ct-header-actions" role="group" aria-label="Theatre control windows"></div>
       </header>
@@ -333,11 +337,12 @@
           <button type="button" class="ct-toggle" title="Play or pause (Space)" aria-label="Play">${ICONS.play}</button>
           <button type="button" class="ct-next" title="Next track (Shift+Right)" aria-label="Next track">${ICONS.next}</button>
         </div>
+        <div class="ct-progress-stack"><div class="ct-managed-playback-status" role="status" hidden></div>
         <div class="ct-progress-layout">
           <span class="ct-clock ct-elapsed">0:00</span>
           <input type="range" class="ct-progress" min="0" max="1000" step="1" value="0" aria-label="Seek song position" />
           <span class="ct-clock ct-duration">--:--</span>
-        </div>
+        </div></div>
       </footer>`;
     DOC.documentElement.appendChild(root);
     state.root = root;
@@ -1010,7 +1015,7 @@
 
     const lyrics = prepareNativeLyrics(song);
     const desc = getDescription(song);
-    if (desc !== state.caption) {
+    if (desc !== state.caption || state.ui.desc.textContent !== desc) {
       state.caption = desc;
       state.ui.desc.textContent = desc;
     }

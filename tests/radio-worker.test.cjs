@@ -104,3 +104,17 @@ test('a delayed navigation check for the old source cannot stop its replacement'
   resolveRead({id:1,url:'https://discord.com/'});await f.flush();
   assert.equal(f.offscreenCommands.filter(m=>m.action==='stop').length,stopCount);assert.equal(f.session.broadcastMetadataSession.sourceTabId,2);
 });
+
+test('only the actual LIVE default Catnap source receives a fixed safe listener URL',async()=>{
+ const listener='https://listen.catnapradio.com/';
+ for(const endpoint of [B.DEFAULT_ENDPOINT,'https://other.example/live/whip']){
+  const f=fixture({radioOnly:true});await f.click(2);await f.send({target:'broadcast-worker',action:'start',endpoint},f.panel);
+  let status=await f.send({target:'catnap-radio-ui',action:'status'},f.source(2));assert.equal(status.listenerUrl,null);
+  f.state('live');await f.send({target:'broadcast-status',state:'live'},f.offscreen);await f.flush();
+  status=await f.send({target:'catnap-radio-ui',action:'status'},f.source(2));assert.equal(status.listenerUrl,endpoint===B.DEFAULT_ENDPOINT?listener:null);
+  assert.equal((await f.send({target:'catnap-radio-ui',action:'status'},f.source(1))).listenerUrl,null);
+  await f.click(1);assert.equal((await f.send({target:'catnap-radio-ui',action:'status'},f.source(1))).listenerUrl,null,'toolbar selection must not expose another source as live');
+  f.state('reconnecting');assert.equal((await f.send({target:'catnap-radio-ui',action:'status'},f.source(2))).listenerUrl,null);
+  assert.equal(JSON.stringify(status).includes('/live/whip'),false);assert.equal(JSON.stringify(status).includes('private-test-value'),false);
+ }
+});

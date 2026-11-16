@@ -110,7 +110,11 @@ async function publicRadioStatus(tabId,state){
   const prefs=await chrome.storage.local.get('hideTheatreButton');
   if(!state)state=(await publisherStatus()).state;
   const states=['idle','starting','connecting','reconnecting','live','error'];
-  return {ok:true,state:states.includes(state)?state:'idle',source:binding?.sourceTabId===tabId,
+  const source=binding?.sourceTabId===tabId;
+  // Pages receive a fixed public listener link only, never the WHIP endpoint,
+  // relay path/query, publisher key or an invented player URL for other relays.
+  const listenerUrl=state==='live'&&source&&binding.live===true&&binding.endpoint===CatnapBroadcast.DEFAULT_ENDPOINT?'https://listen.catnapradio.com/':null;
+  return {ok:true,state:states.includes(state)?state:'idle',source,listenerUrl,
     hideTheatreButton:prefs.hideTheatreButton===true,radioOnly:globalThis.CatnapPackage?.radioOnly===true};
 }
 async function notifySource(tabId,state){
