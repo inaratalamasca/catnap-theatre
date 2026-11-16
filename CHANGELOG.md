@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.7 development — November 15, 2026
+
+- Reuse the ordinary native song-details preparation and lyrics reader in managed mode. Open/refresh only the matching loaded Suno song; delayed callbacks and lyric repair cannot fill a staged-next or YouTube slot with the previous song's words.
+- Add a clearly labeled Reload lyrics button directly to Inbox & show playback, retaining the Presentation Controls action. Reload uses the same bounded reader without starting, pausing or advancing audio.
+- Mark Theatre-owned lyric controls so the compatible advanced Host Controls companion can defer without replacing the new reader.
+- The host confirmed the complete 0.6.6 manual LP sequence. Lyrics appeared after returning to ordinary Suno and disappeared after re-enabling the managed show; this separate presentation correction still needs host confirmation.
+
 ## 0.6.6 development — November 15, 2026
 
 - Recognize Suno's explicit `active-audio-play` music element beside its `silent-audio` helper. Actual native music uses a blob URL without the song UUID; the helper made the former generic audio lookup ambiguous.

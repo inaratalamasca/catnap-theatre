@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.6.3
+// @version      0.6.7
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,8 +12,8 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.6.3 development
- * Change: optional managed-show hooks for quiet Load/Play and queue rendering.
+ * CATNAP THEATRE · v0.6.7 development
+ * Change: identity-bound native lyric preparation shared with managed shows.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
  * managed mode uses a source-bound guard and the separate show coordinator.
@@ -26,7 +26,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.6.0';
+  const SCRIPT_VERSION = '0.6.7';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;
@@ -71,8 +71,7 @@
     lyrics: '',
     didExpandLyrics: '',
     didExpandCaption: '',
-    didOpenDetails: '',
-    didRefreshDetails: '',
+    lyricPreparation: null,
     timerFast: null,
     timerSlow: null,
     lyricRetries: 0,
@@ -367,6 +366,7 @@
       syncProgress();
     } else {
       globalThis.CatnapManagedShow?.closed();
+      cancelNativeLyrics();
       state.open = false;
       if (state.root) state.root.remove();
       state.root = null;
@@ -573,6 +573,94 @@
     return images.some(img => normalized(img.alt.replace(/^Image for\s*/i, '')) === normalized(song.title));
   }
 
+  function canonicalSongId(value) {
+    try {const url=new URL(value,location.href);return ['suno.com','www.suno.com'].includes(url.hostname)?/^\/song\/([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\/?$/i.exec(url.pathname)?.[1]?.toLowerCase()||'':'';}catch{return '';}
+  }
+
+  function lyricsPanelWithoutCopy(song) {
+    // Some current panels expose plain lyrics without a Copy lyrics control.
+    // An exact song heading and native Styles control keep this scan bounded.
+    const heading=queryAll('h3').find(h=>!state.root?.contains(h)&&queryAll('a[href]',h).some(a=>canonicalSongId(a.href)===song.id));
+    if(!heading)return null;
+    let panel=heading.parentElement;
+    for(let depth=0;panel&&depth<3;depth++,panel=panel.parentElement){
+      if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
+      const styles=query('button[aria-label="Copy styles to clipboard"]',panel);
+      if(styles)return {panel,styles};
+    }
+    return null;
+  }
+
+  function panelIdentityMatches(song) {
+    const imageMatch=panelImageMatches(song);if(imageMatch===false)return false;
+    const copy=query(LABELS.lyricsCopy);
+    // Prefer a canonical identity when this panel exposes one. Equal titles
+    // alone must not defeat an explicitly different song link in a stale panel.
+    let panel=copy?.parentElement;
+    for(let depth=0;panel&&depth<6;depth++,panel=panel.parentElement){
+      if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
+      const ids=new Set(queryAll('h3 a[href]',panel).map(a=>canonicalSongId(a.href)).filter(Boolean));
+      if(ids.size)return ids.size===1&&ids.has(song.id);
+    }
+    if(lyricsPanelWithoutCopy(song))return true;
+    return imageMatch;
+  }
+
+  function cancelNativeLyrics() {
+    const preparation=state.lyricPreparation;
+    if(preparation?.timer!==null&&preparation?.timer!==undefined)clearTimeout(preparation.timer);
+    state.lyricPreparation=null;
+  }
+
+  function prepareNativeLyrics(song,{reload=false,key=song?.id,isCurrent=()=>true}={}) {
+    const current=()=>state.open&&isCurrent()&&canonicalSongId(song?.href)===song?.id&&readSong()?.id===song.id;
+    if(!current())return '';
+    if(reload||state.lyricPreparation?.songId!==song.id||state.lyricPreparation?.key!==key){
+      cancelNativeLyrics();state.lyricPreparation={songId:song.id,key,timer:null,opened:false,openRetried:false,refreshed:false,refreshing:false,unknownPanelHeld:false};
+      state.didExpandLyrics='';state.didExpandCaption='';
+    }
+    const preparation=state.lyricPreparation,valid=()=>state.lyricPreparation===preparation&&current();
+    if(preparation.refreshing)return '';
+    const identity=panelIdentityMatches(song),hasCopy=!!query(LABELS.lyricsCopy),hasPanel=hasCopy||!!lyricsPanelWithoutCopy(song)||queryAll('img[alt^="Image for "]').length>0;
+    const refresh=reload&&hasPanel||identity===false||identity===null&&hasCopy;
+    if(refresh&&!preparation.refreshed){
+      const button=query(LABELS.songDetails);
+      if(button){
+        preparation.refreshed=true;preparation.opened=true;preparation.refreshing=true;preparation.unknownPanelHeld=identity===null;
+        button.click();
+        const observedClosed=!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song);
+        preparation.timer=setTimeout(()=>{
+          preparation.timer=null;preparation.refreshing=false;if(!valid())return;
+          const closedAtRetry=!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song);
+          if(closedAtRetry||panelIdentityMatches(song)===false)query(LABELS.songDetails)?.click();
+          // With no identity markers, seeing the old panel actually close is
+          // the minimum proof that a deliberate reopen replaced its contents.
+          // React may finish that close after click() returns. A positively
+          // identified current plain panel is also safe and must remain open.
+          if(observedClosed||closedAtRetry||panelIdentityMatches(song)===true)preparation.unknownPanelHeld=false;
+        },250);
+        return '';
+      }
+    }
+    if(!preparation.opened&&!hasCopy&&!lyricsPanelWithoutCopy(song)){
+      const button=query(LABELS.songDetails);if(button){
+        preparation.opened=true;button.click();
+        // A native toggle issued before a managed handoff may still commit
+        // after our own open, leaving the panel closed. Retry once after the
+        // native UI settles; every callback retains song + generation identity.
+        preparation.timer=setTimeout(()=>{
+          preparation.timer=null;if(!valid()||preparation.openRetried)return;
+          if(!query(LABELS.lyricsCopy)&&!lyricsPanelWithoutCopy(song)){
+            preparation.openRetried=true;query(LABELS.songDetails)?.click();
+          }
+        },1000);
+      }
+    }
+    if(!valid()||panelIdentityMatches(song)===false||preparation.unknownPanelHeld)return '';
+    expandNativeText(song);
+    return getLyrics(song);
+  }
+
   function findCover(song) {
     const options = [];
     const matchTitle = normalized(song.title);
@@ -714,9 +802,16 @@
   }
 
   function getLyrics(song) {
-    if (panelImageMatches(song) === false) return '';
+    if (panelIdentityMatches(song) === false) return '';
     const copy = query(LABELS.lyricsCopy);
-    if (!copy) return '';
+    if (!copy) {
+      const found=lyricsPanelWithoutCopy(song);if(!found)return '';
+      const candidates=queryAll('div,p',found.panel).filter(el=>!el.children.length&&
+        !(found.styles.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_PRECEDING)&&
+        !el.closest('button,[role="button"],nav,[role="status"],[role="alert"]')&&
+        textOf(el).split('\n').filter(line=>line.trim()).length>=2);
+      return normalizeLyricText(candidates.sort((a,b)=>textOf(b).length-textOf(a).length)[0]?.textContent||'').slice(0,42000);
+    }
     const isControl = node => node.matches('button,[role="button"],input,select,textarea,[aria-hidden="true"]');
     function boundedText(node) {
       if (!node || node === DOC.body || node === DOC.documentElement || node === state.root || node.contains(state.root)) return null;
@@ -869,38 +964,12 @@
     }
     setArtwork(findCover(song));
 
-    // The details panel is native Suno UI, underneath the theater overlay.
-    // Some Suno builds keep the previously selected song in the details panel
-    // when the playlist auto-advances. Try re-opening that native panel once.
-    let refreshingDetails = false;
-    if (panelImageMatches(song) === false && state.didRefreshDetails !== song.id) {
-      const button = query(LABELS.songDetails);
-      if (button) {
-        refreshingDetails = true;
-        state.didRefreshDetails = song.id;
-        button.click();
-        setTimeout(() => {
-          if (!state.open || state.songId !== song.id) return;
-          if (!query(LABELS.lyricsCopy) || panelImageMatches(song) === false) {
-            query(LABELS.songDetails)?.click();
-          }
-        }, 250);
-      }
-    }
-    if (!refreshingDetails && state.didOpenDetails !== song.id && !query(LABELS.lyricsCopy)) {
-      const toggleButton = query(LABELS.songDetails);
-      if (toggleButton) {
-        toggleButton.click();
-        state.didOpenDetails = song.id;
-      }
-    }
-    expandNativeText(song);
+    const lyrics = prepareNativeLyrics(song);
     const desc = getDescription(song);
     if (desc !== state.caption) {
       state.caption = desc;
       state.ui.desc.textContent = desc;
     }
-    const lyrics = getLyrics(song);
     if (lyrics && lyrics !== state.lyrics) {
       state.lyrics = lyrics;
       writeLyrics(lyrics);
@@ -944,7 +1013,7 @@
   function managedCommand(action){Promise.resolve(globalThis.CatnapManagedShow.command(action)).catch(error=>{if(state.ui.desc)state.ui.desc.textContent=error.message;});}
   // An isolated-world adapter for the optional managed queue. It exposes no
   // credentials/page internals and leaves ordinary Theatre unchanged when off.
-  globalThis.CatnapTheatreView={open:toggle,nativeSong:readSong,nativeInfo:secondsFromNative,nativeCover:findCover,nativeLyrics:getLyrics,writeLyrics,nativeSeek:setNativeSeek};
+  globalThis.CatnapTheatreView={open:toggle,nativeSong:readSong,nativeInfo:secondsFromNative,nativeCover:findCover,nativeLyrics:getLyrics,prepareNativeLyrics,cancelNativeLyrics,writeLyrics,nativeSeek:setNativeSeek};
 
   function init() {
     installCss();

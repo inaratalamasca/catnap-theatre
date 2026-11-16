@@ -45,6 +45,8 @@ test('presentation canvas exposes one Controls entry and no visible or focusable
     assert.equal(node.hidden,true);assert.equal(node.getAttribute('inert'),'');
     assert.equal(node.getAttribute('aria-hidden'),'true');assert.equal(node.tabIndex,-1);
   }
+  assert.equal(root.getAttribute('data-catnap-lyrics-owner'),'theatre');
+  for(const selector of ['.ct-lyrics-auto','.ct-lyrics-reload'])assert.equal(root.querySelector(selector).getAttribute('data-catnap-lyrics-owner'),'theatre');
   const entry=root.querySelector('.ct-header .ct-popout-controls');
   assert.equal(root.querySelectorAll('.ct-popout-controls').length,1);
   assert.equal(entry.hidden,false);assert.equal(entry.getAttribute('aria-label'),'Theatre controls');
@@ -52,6 +54,17 @@ test('presentation canvas exposes one Controls entry and no visible or focusable
   assert.deepEqual(JSON.parse(JSON.stringify(messages)),[{target:'presentation-worker',action:'open'}]);
   for(const selector of ['.ct-toggle','.ct-prev','.ct-next','.ct-progress','.ct-close'])assert.equal(root.querySelector(selector).hidden,false);
   assert.equal(nativeClicks(),0);dom.window.close();
+});
+
+test('visible popout Reload lyrics reaches the hidden Theatre-owned handler without playback',async()=>{
+ const f=await fixture(),html=fs.readFileSync(path.join(extension,'presentation-panel.html'),'utf8'),panel=new JSDOM(html,{url:'chrome-extension://test/presentation-panel.html?control=fixture',runScripts:'outside-only'});let detailClicks=0;
+ try{
+  const details=f.w.document.createElement('button');details.setAttribute('aria-label','Playbar: Toggle song details panel');details.onclick=()=>detailClicks++;f.w.document.body.append(details);
+  const w=panel.window;w.setInterval=()=>0;w.chrome={runtime:{getURL:file=>'chrome-extension://test/'+file,sendMessage:async message=>{const {target,control,...args}=message;return f.send(args);}}};
+  for(const file of ['helpers.js','presentation-panel.js'])w.eval(fs.readFileSync(path.join(extension,file),'utf8'));await new Promise(resolve=>setImmediate(resolve));
+  const reload=w.document.getElementById('reload-lyrics');assert.ok(reload);assert.equal(reload.textContent,'Reload lyrics');assert.equal(reload.hidden,false);assert.equal(reload.disabled,false);reload.click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(detailClicks,1);assert.equal(f.root.querySelector('.ct-lyrics-reload').disabled,true);assert.equal(f.nativeClicks(),0);
+ }finally{panel.window.close();f.dom.window.close();}
 });
 
 test('presentation allowlist reuses banners and lyric controls while excluding playback',async()=>{

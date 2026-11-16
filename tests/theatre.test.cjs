@@ -71,6 +71,14 @@ test('approximate lyric following respects manual correction and pause/disable',
   dom.window.close();
 });
 
+test('Theatre replaces unowned lyric controls even when their numeric version matches',async()=>{
+ const f=await fixture();try{
+  const old=f.root.querySelector('.ct-lyrics-auto'),oldReload=f.root.querySelector('.ct-lyrics-reload');old.removeAttribute('data-catnap-lyrics-owner');oldReload.removeAttribute('data-catnap-lyrics-owner');delete f.w.catnapLyricScrollVersion;
+  f.w.eval(fs.readFileSync(path.join(extension,'lyric-scroll.js'),'utf8'));
+  assert.notEqual(f.root.querySelector('.ct-lyrics-auto'),old);assert.notEqual(f.root.querySelector('.ct-lyrics-reload'),oldReload);assert.equal(f.root.getAttribute('data-catnap-lyrics-owner'),'theatre');assert.equal(f.root.querySelector('.ct-lyrics-reload').getAttribute('data-catnap-lyrics-owner'),'theatre');
+ }finally{f.dom.window.close();}
+});
+
 
 test('visible Pause never reconnects an inactive show or starts its first entry',async()=>{
   const f=await fixture();try{

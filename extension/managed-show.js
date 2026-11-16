@@ -1,12 +1,14 @@
-/* Catnap Theatre managed-show presentation, version 0.6.5.
- * Change summary: a second toggle cancels pending playback; reload-safe binding
+/* Catnap Theatre managed-show presentation, version 0.6.7.
+ * Change summary: managed Suno lyrics prepare the matching native details
+ * panel; stale and YouTube slots cannot borrow old native lyrics. A second
+ * toggle cancels pending playback; reload-safe binding
  * status, first-entry Play, trusted native
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. Host-only notes remain in the extension window.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.5';
+  const SCRIPT_VERSION='0.6.7';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -47,6 +49,21 @@
     panel.replaceChildren();const heading=document.createElement('h2');heading.textContent='SHOW ORDER';panel.append(heading);
     snapshot.queue.forEach((entry,index)=>{const button=document.createElement('button');button.type='button';button.textContent=`${String(index+1).padStart(2,'0')}  ${entry.title}${entry.preferredSource==='youtube'?' · YT':''}${entry.disclaimer==='yes'?' ⚠':''}`;button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=entry.state==='held';button.title='Load quietly · press Play separately';button.onclick=()=>{void command('load',{index}).catch(displayError);};panel.append(button);});
   }
+  function matchingLyricsSong(snapshot,native){
+    const entry=snapshot?.current,target=songId(entry?.sunoUrl);
+    return !['idle','loading','stopping'].includes(snapshot?.phase)&&(entry?.playbackSource||entry?.preferredSource)==='suno'&&!!target&&target===entry.sunoId&&target===songId(native?.href)&&native?.id===target;
+  }
+  function readManagedLyrics(snapshot,native,{reload=false}={}){
+    if(!matchingLyricsSong(snapshot,native)){view()?.cancelNativeLyrics?.();return '';}
+    const generation=snapshot.generation,entryId=snapshot.current.id;
+    return view()?.prepareNativeLyrics?.(native,{reload,key:generation+':'+entryId,isCurrent:()=>active&&state()?.generation===generation&&state()?.current?.id===entryId&&matchingLyricsSong(state(),view()?.nativeSong())})||'';
+  }
+  function reloadLyrics(){
+    const snapshot=state(),native=view()?.nativeSong();
+    if(!root())throw Error('Open Theatre before reloading lyrics.');
+    if(!active||!matchingLyricsSong(snapshot,native))throw Error('Lyrics can reload once Suno has loaded the selected Suno song.');
+    readManagedLyrics(snapshot,native,{reload:true});const stage=root();if(stage)delete stage.dataset.managedLyrics;render();return true;
+  }
   function render(){
     const stage=root(),snapshot=state();if(!active||!stage||!snapshot)return;
     style();stage.dataset.managedShow='true';
@@ -60,7 +77,7 @@
     if(!artwork&&entry?.preferredSource==='suno'&&native?.id===entry.sunoId)artwork=view()?.nativeCover(native)?.src||'';
     if(artwork){if(art.getAttribute('src')!==artwork)art.src=artwork;frame.classList.remove('ct-no-art');}
     else{art.removeAttribute('src');frame.classList.add('ct-no-art');}
-    const lyricText=entry?.preferredSource==='suno'&&native?.id===entry.sunoId?view()?.nativeLyrics(native):'';
+    const lyricText=readManagedLyrics(snapshot,native);
     if(stage.dataset.managedLyrics!==String(entry?.id)+String(lyricText)){
       stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · video plays in the artwork area.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
     }
@@ -76,7 +93,7 @@
     if(active)await disable();
     show=next;observedSignature='';queueSignature='';revision=0;timing={elapsed:0,duration:0};
     await guard({action:'enable',generation:0});
-    view()?.open(true);active=true;
+    view()?.cancelNativeLyrics?.();active=true;view()?.open(true);
     adapter=CatnapManagedMedia.create({document,window,guard,getContainer:()=>root()?.querySelector('.ct-art-frame'),
       onEnded:token=>{void coordinator?.ended(token).catch(displayError);},onError:(token,message)=>{void coordinator?.failed(token,message).catch(displayError);},
       onPlaying:token=>coordinator?.observedPlaying(token),onPaused:token=>coordinator?.observedPaused(token),onAutoplayBlocked:(token,message)=>coordinator?.autoplayBlocked(token,message),
@@ -88,6 +105,7 @@
     if(coordinator)await coordinator.dispose();
     else await guard({action:'disable',generation:0});
     active=false;coordinator=null;adapter=null;show=null;timing={elapsed:0,duration:0};
+    view()?.cancelNativeLyrics?.();
     const stage=root();if(stage){delete stage.dataset.managedShow;delete stage.dataset.managedLyrics;stage.querySelector('.ct-managed-lineup')?.remove();stage.querySelector('.ct-managed-warning')?.remove();stage.querySelector('.ct-progress').disabled=false;}
     return {enabled:false};
   }
@@ -98,6 +116,7 @@
   async function command(action,args={}){
     if(action==='status')return {enabled:active,showId:show?.id||null,bindingId:show?.bindingId||null,playback:state(),guard:active?await guard({action:'status'}):null,stageOpen:!!root()};
     if(!active||!coordinator)throw Error('Enable the managed show in Inbox & show controls first.');
+    if(action==='reload-lyrics'){reloadLyrics();return {playback:state(),lyricsReloaded:true};}
     if(action==='toggle'&&state().phase==='starting'){const playback=await coordinator.pause();render();return {playback};}
     const wasClosed=!root();
     if(['load','next','previous','play','toggle'].includes(action))view()?.open(true);
@@ -208,7 +227,7 @@
     return true;
   }
   window.addEventListener('click',routeNativeControl,true);window.addEventListener('keydown',routeNativeControl,true);
-  globalThis.CatnapManagedShow={SCRIPT_VERSION,get active(){return active;},snapshot:state,command,render,progress,seek,metadata,closed:closedTheatre,routeNativeControl};
+  globalThis.CatnapManagedShow={SCRIPT_VERSION,get active(){return active;},snapshot:state,command,render,reloadLyrics,progress,seek,metadata,closed:closedTheatre,routeNativeControl};
   setInterval(()=>{
     const stage=root();if(!stage)return;
     if(!stage.querySelector('.ct-inbox-controls')){

@@ -68,6 +68,86 @@ test('Play loads exact first entry automatically, reopens a closed stage and doe
  const f=await fixture();try{await f.send({action:'enable',show:show()});await f.send({action:'play',showId:'fixture-show'});assert.equal(f.w.CatnapManagedShow.snapshot().current.id,'inbox:1');assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');f.root().querySelector('.ct-close').click();await flush();await f.send({action:'play',showId:'fixture-show'});assert.ok(f.root());assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');await f.send({action:'disable'});const held=show();held.id='held-first';held.entries[0]={...held.entries[0],state:'held',preferredSource:null,sunoUrl:null,youtubeUrl:null};await f.send({action:'enable',show:held});const plays=f.calls.filter(call=>call[0]==='play').length;const reply=await f.send({action:'play',showId:held.id});assert.ok(reply.error);assert.equal(f.w.CatnapManagedShow.snapshot().index,0);assert.equal(f.w.CatnapManagedShow.snapshot().phase,'error');assert.equal(f.calls.filter(call=>call[0]==='play').length,plays);await f.send({action:'disable'});const empty=show();empty.id='empty';empty.entries=[];await f.send({action:'enable',show:empty});assert.match((await f.send({action:'play',showId:empty.id})).error,/empty/i);}finally{f.dom.window.close();}
 });
 function trustedEvent(type,target,fields={}){return {type,target,isTrusted:true,button:0,prevented:false,stopped:false,preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;},...fields};}
+function nativeSong(f,id,title){const link=f.w.document.querySelector('a[aria-label^="Playbar: Title for "]');link.href='https://suno.com/song/'+id;link.textContent=title;link.setAttribute('aria-label','Playbar: Title for '+title);}
+function lyricsPanel(f,id,title,text,{copy=true}={}){
+ const panel=f.w.document.createElement('section');panel.id='fixture-native-details';const heading=f.w.document.createElement('h3'),link=f.w.document.createElement('a');link.href='https://suno.com/song/'+id;link.textContent=title;heading.append(link);panel.append(heading);
+ const image=f.w.document.createElement('img');image.alt='Image for '+title;image.src='https://cdn.example/fixture.png';panel.append(image);
+ const styles=f.w.document.createElement('button');styles.setAttribute('aria-label','Copy styles to clipboard');styles.textContent='Copy styles';panel.append(styles);
+ const block=f.w.document.createElement('div'),words=f.w.document.createElement('div');words.textContent=text;block.append(words);
+ if(copy){const button=f.w.document.createElement('button');button.setAttribute('aria-label','Copy lyrics to clipboard');button.textContent='Copy lyrics';block.append(button);}
+ panel.append(block);f.w.document.body.append(panel);return panel;
+}
+function detailsButton(f,onClick){const button=f.w.document.createElement('button');button.setAttribute('aria-label','Playbar: Toggle song details panel');button.onclick=onClick;f.w.document.body.append(button);return button;}
+test('managed cold lyrics open the exact native details once and later rereads pick up delayed lyrics without playback',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});let opens=0;detailsButton(f,()=>opens++);nativeSong(f,ids[1],'First staged song');
+  f.w.CatnapManagedShow.render();assert.equal(opens,1);for(let i=0;i<12;i++)f.w.CatnapManagedShow.render();assert.equal(opens,1);assert.equal(f.root().querySelector('.ct-lyrics-content').textContent.includes('A delayed verse'),false);
+  lyricsPanel(f,ids[1],'First staged song','[Verse]\nA delayed verse\nAnother line');f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/A delayed verse/);f.ticks.forEach(fn=>fn());assert.equal(opens,1);assert.equal(f.calls.some(call=>call[0]==='play'),false);assert.equal(f.nativeClicks(),0);
+ }finally{f.dom.window.close();}
+});
+test('cold managed enable owns the view before opening it and cannot bootstrap an ordinary native details request',async()=>{
+ const f=await fixture();try{
+  f.root().querySelector('.ct-close').click();await flush();let clicks=0;detailsButton(f,()=>clicks++);await f.send({action:'enable',show:show()});assert.ok(f.root());assert.equal(clicks,0);await f.send({action:'load',index:0,showId:'fixture-show'});assert.equal(clicks,0);nativeSong(f,ids[1],'First staged song');f.w.CatnapManagedShow.render();assert.equal(clicks,1);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('one bounded open retry recovers when an in-flight ordinary toggle and managed toggle commit as open then close',async()=>{
+ const f=await fixture();try{
+  let clicks=0;detailsButton(f,()=>{clicks++;f.w.setTimeout(()=>{const panel=f.w.document.getElementById('fixture-native-details');if(panel)panel.remove();else{const song=f.w.CatnapTheatreView.nativeSong();lyricsPanel(f,song.id,song.title,'RECOVERED WORDS\nSecond line',{copy:false});}},60);});
+  f.w.CatnapTheatreView.prepareNativeLyrics(f.w.CatnapTheatreView.nativeSong());assert.equal(clicks,1);
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');f.w.CatnapManagedShow.render();assert.equal(clicks,2);
+  for(const timer of f.timeouts.filter(t=>t.delay===60&&!t.cancelled))timer.fn();assert.equal(f.w.document.getElementById('fixture-native-details'),null);for(let i=0;i<10;i++)f.w.CatnapManagedShow.render();assert.equal(clicks,2);
+  const retries=f.timeouts.filter(t=>t.delay===1000&&!t.cancelled);assert.equal(retries.length,1);retries[0].fn();assert.equal(clicks,3);f.timeouts.filter(t=>t.delay===60&&!t.cancelled).at(-1).fn();f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/RECOVERED WORDS/);for(let i=0;i<10;i++)f.w.CatnapManagedShow.render();assert.equal(clicks,3);assert.equal(f.calls.some(call=>call[0]==='play'),false);assert.equal(f.nativeClicks(),0);
+ }finally{f.dom.window.close();}
+});
+test('initial-open retry is canceled when the managed generation or selected source changes',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');let clicks=0;detailsButton(f,()=>clicks++);f.w.CatnapManagedShow.render();const timer=f.timeouts.find(t=>t.delay===1000&&!t.cancelled);assert.ok(timer);assert.equal(clicks,1);await f.send({action:'load',index:1,showId:'fixture-show'});timer.fn();assert.equal(clicks,1);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('managed identity-bound reader also accepts plain multilingual lyrics without a Copy lyrics button',async()=>{
+ const f=await fixture();try{await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','夜の歌\nSecond plain line',{copy:false});f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/夜の歌/);assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/Second plain line/);}finally{f.dom.window.close();}
+});
+test('quiet next Suno and YouTube slots cannot be repaired with the previous native song lyrics or reload its panel',async()=>{
+ const f=await fixture();try{
+  const current=show(),third='33333333-3333-4333-8333-333333333333';current.entries.push({...current.entries[0],id:'inbox:3',title:'Third quiet song',sunoId:third,sunoUrl:'https://suno.com/song/'+third});await f.send({action:'enable',show:current});await f.send({action:'load',index:0,showId:current.id});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','OLD WORDS\nOld second line',{copy:false});let opens=0;detailsButton(f,()=>opens++);f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/OLD WORDS/);
+  for(const index of [2,1]){await f.send({action:'load',index,showId:current.id});f.ticks.forEach(fn=>fn());await flush();assert.equal(f.root().querySelector('.ct-lyrics-content').textContent.includes('OLD WORDS'),false);f.root().querySelector('.ct-lyrics-reload').click();await flush();assert.equal(opens,0);assert.match(f.root().querySelector('.ct-lyrics-reload').title,/selected Suno song/);}
+  assert.equal(f.calls.some(call=>call[0]==='play'),false);assert.equal(f.nativeClicks(),0);
+ }finally{f.dom.window.close();}
+});
+test('stale equal-title native panel is rejected by canonical song identity and its delayed refresh cannot reopen after selection changes',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'Shared title');lyricsPanel(f,ids[0],'Shared title','WRONG CANONICAL SONG\nWrong second line');assert.equal(f.w.CatnapTheatreView.nativeLyrics(f.w.CatnapTheatreView.nativeSong()),'');
+  let clicks=0;detailsButton(f,()=>{clicks++;f.w.document.getElementById('fixture-native-details')?.remove();});f.w.CatnapManagedShow.render();assert.equal(clicks,1);assert.equal(f.root().querySelector('.ct-lyrics-content').textContent.includes('WRONG CANONICAL'),false);const timer=f.timeouts.find(t=>t.delay===250&&!t.cancelled);assert.ok(timer);
+  await f.send({action:'load',index:1,showId:'fixture-show'});timer.fn();assert.equal(clicks,1);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('managed Reload lyrics closes/reopens only the matching native panel and updates the stage without restarting playback',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','OLD VERSION\nSecond line');let clicks=0;detailsButton(f,()=>{clicks++;const panel=f.w.document.getElementById('fixture-native-details');if(panel)panel.remove();else lyricsPanel(f,ids[1],'First staged song','UPDATED VERSION\nNew second line');});f.w.CatnapManagedShow.render();f.root().querySelector('.ct-lyrics-reload').click();assert.equal(clicks,1);assert.equal(f.root().querySelector('.ct-lyrics-content').textContent.includes('OLD VERSION'),false);f.timeouts.find(t=>t.delay===250&&!t.cancelled).fn();f.w.CatnapManagedShow.render();assert.equal(clicks,2);assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/UPDATED VERSION/);f.w.CatnapManagedShow.render();assert.equal(clicks,2);assert.equal(f.calls.some(call=>call[0]==='play'),false);assert.equal(f.nativeClicks(),0);
+ }finally{f.dom.window.close();}
+});
+test('delayed refresh leaves an already-open matching plain lyrics panel open instead of toggling it closed',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[0],'Previous song','Stale line\nStale second line');let clicks=0;detailsButton(f,()=>{clicks++;f.w.document.getElementById('fixture-native-details')?.remove();});f.w.CatnapManagedShow.render();assert.equal(clicks,1);const timer=f.timeouts.find(t=>t.delay===250&&!t.cancelled);assert.ok(timer);
+  lyricsPanel(f,ids[1],'First staged song','PLAIN CURRENT WORDS\nCurrent second line',{copy:false});timer.fn();f.w.CatnapManagedShow.render();assert.equal(clicks,1);assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/PLAIN CURRENT WORDS/);assert.equal(f.nativeClicks(),0);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('refresh notices an asynchronous old-panel close before retry and releases the hold on newly reopened unknown markup',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');
+  const unknown=text=>{const panel=lyricsPanel(f,ids[1],'First staged song',text);panel.querySelector('h3').remove();panel.querySelector('img').remove();return panel;};unknown('OLD UNKNOWN WORDS\nOld second line');let clicks=0;
+  detailsButton(f,()=>{clicks++;if(clicks===1)f.w.setTimeout(()=>f.w.document.getElementById('fixture-native-details')?.remove(),100);else unknown('NEW UNKNOWN WORDS\nNew second line');});f.w.CatnapManagedShow.render();assert.equal(clicks,1);assert.equal(f.root().querySelector('.ct-lyrics-content').textContent.includes('OLD UNKNOWN WORDS'),false);
+  f.timeouts.find(t=>t.delay===100&&!t.cancelled).fn();f.timeouts.find(t=>t.delay===250&&!t.cancelled).fn();f.w.CatnapManagedShow.render();assert.equal(clicks,2);assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/NEW UNKNOWN WORDS/);assert.equal(f.nativeClicks(),0);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('ordinary Reload lyrics retains its native close/reopen behavior without touching playback',async()=>{
+ const f=await fixture();try{
+  lyricsPanel(f,ids[0],'Native old song','Ordinary line\nSecond line');let clicks=0;detailsButton(f,()=>{clicks++;const panel=f.w.document.getElementById('fixture-native-details');if(panel)panel.remove();else lyricsPanel(f,ids[0],'Native old song','Ordinary refreshed line\nSecond line');});const control=f.root().querySelector('.ct-lyrics-reload');control.click();assert.equal(clicks,1);assert.equal(control.disabled,true);f.timeouts.find(t=>t.delay===350&&!t.cancelled).fn();await flush();assert.equal(clicks,2);f.timeouts.find(t=>t.delay===1500&&!t.cancelled).fn();await flush();assert.equal(control.disabled,false);assert.equal(f.nativeClicks(),0);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('host reload-lyrics command reuses the selected native panel without staging, playback or a new generation',async()=>{
+ const f=await fixture();try{await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','Current words\nSecond line');let clicks=0;detailsButton(f,()=>{clicks++;f.w.document.getElementById('fixture-native-details')?.remove();});f.w.CatnapManagedShow.render();const before=f.w.CatnapManagedShow.snapshot(),calls=f.calls.length,response=await f.send({action:'reload-lyrics',showId:'fixture-show'});assert.equal(response.lyricsReloaded,true);assert.equal(clicks,1);assert.equal(response.playback.generation,before.generation);assert.equal(response.playback.index,before.index);assert.equal(response.playback.phase,before.phase);assert.equal(f.calls.length,calls);assert.equal(f.nativeClicks(),0);await f.send({action:'load',index:1,showId:'fixture-show'});assert.match((await f.send({action:'reload-lyrics',showId:'fixture-show'})).error,/selected Suno song/);}finally{f.dom.window.close();}
+});
 test('trusted Suno Play/Next controls route to managed playback while programmatic native clicks remain internal',async()=>{
  const f=await fixture();try{const play=f.w.document.createElement('button');play.setAttribute('aria-label','Playbar: Play button');f.w.document.body.append(play);let nativeCalls=0;play.onclick=()=>nativeCalls++;await f.send({action:'enable',show:show()});const event=trustedEvent('click',play);assert.equal(f.w.CatnapManagedShow.routeNativeControl(event),true);assert.equal(event.prevented,true);assert.equal(event.stopped,true);await flush();assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');assert.equal(f.w.CatnapManagedShow.snapshot().index,0);assert.equal(nativeCalls,0);const next=f.w.document.createElement('button');next.setAttribute('aria-label','Playbar: Next Song button');f.w.document.body.append(next);f.w.CatnapManagedShow.routeNativeControl(trustedEvent('click',next));await flush();assert.equal(f.w.CatnapManagedShow.snapshot().index,1);assert.equal(f.w.CatnapManagedShow.snapshot().phase,'ready');assert.equal(f.calls.filter(call=>call[0]==='play').length,1);play.click();await flush();assert.equal(nativeCalls,1);assert.equal(f.calls.filter(call=>call[0]==='play').length,1);}finally{f.dom.window.close();}
 });

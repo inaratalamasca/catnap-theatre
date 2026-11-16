@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catnap Inbox &amp; show controls</title><link rel="stylesheet" href="presentation-panel.css"><link rel="stylesheet" href="show.css"></head>
-<body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.6</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
+<body><header><p class="eyebrow">CATNAP THEATRE · DEVELOPMENT 0.6.7</p><h1>Inbox &amp; show</h1><p>Build your running order. Load the next song quietly, then press Play when you are ready.</p></header>
 <p id="status" role="status" aria-live="polite">Loading show…</p>
 <main>
 <section><h2>Show setup</h2><div class="columns"><label>Party type<select id="mode"><option value="lp">Listening party · manual</option><option value="ap">Afterparty</option></select></label><label>Show name<input id="show-name" maxlength="100" placeholder="Tonight’s show"></label></div>
@@ -13,6 +13,7 @@
 <div class="row"><button id="bind-player" class="primary" type="button">Use this Theatre for the show</button><button id="unbind-player" type="button">Return to ordinary Suno</button></div>
 <label class="check"><input id="autoplay" type="checkbox">Autoplay the next song · AP only</label><small id="autoplay-help">Manual mode stops at the end. Load next changes artwork and warning without playing audio.</small>
 <div class="row playback"><button id="previous" type="button">Load previous</button><button id="next" type="button">Load next</button><button id="play" class="primary" type="button">Play</button><button id="pause" type="button">Pause</button></div>
+<button id="reload-lyrics" type="button">Reload lyrics</button><small>Refresh lyrics for the loaded Suno song.</small>
 <label>Clear content warning after <span class="row"><input id="warning-seconds" type="number" min="2" max="120" value="10"><span>seconds</span></span></label>
 <button id="repeat-warning" type="button">Show warning again</button><p id="playback-status" role="status">No Theatre linked.</p></section>
 <section id="current-card"><h2>Loaded / playing song</h2><h3 id="current-title">No song loaded</h3><p id="current-credit"></p><p id="current-warning" class="warning-badge"></p><label>Uploader note<pre id="current-note">No uploader note.</pre></label>

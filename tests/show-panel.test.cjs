@@ -217,3 +217,12 @@ test('the host Pause button remains effective while Play is waiting for readines
   assert.equal(f.w.document.body.getAttribute('aria-busy'),'true','Pause must not unlock other pending actions');
   f.releasePlay();await settle();assert.equal(f.w.document.body.hasAttribute('aria-busy'),false);
 });
+
+test('Inbox exposes a dedicated Reload lyrics action without playback and disables it for unlinked or video entries',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  assert.equal(f.element('reload-lyrics').textContent,'Reload lyrics');assert.equal(f.element('reload-lyrics').disabled,false);
+  await f.click('reload-lyrics');assert.equal(f.messages.filter(m=>m.action==='reload-lyrics').length,1);
+  assert.equal(f.messages.some(m=>['play','pause','bind-player','next'].includes(m.action)),false);
+  f.w.document.querySelectorAll('#queue button')[1].click();await settle();assert.equal(f.element('reload-lyrics').disabled,true);
+  const stale=await fixture({linked:false});t.after(()=>stale.dom.window.close());assert.equal(stale.element('reload-lyrics').disabled,true);
+});

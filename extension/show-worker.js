@@ -1,11 +1,11 @@
-/* Catnap managed show worker, version 0.6.6.
+/* Catnap managed show worker, version 0.6.7.
  * Change summary: optional read-only uploader intake, private show queue,
  * explicit player binding, verified MCP playlist writes and bounded AP polling.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.6.6';
+  const SCRIPT_VERSION = '0.6.7';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
@@ -20,7 +20,7 @@
     return (/^(?:everyone|here)(?:$|\W)/i.test(name)?'＠':'@')+name;
   }
   let tasks = Promise.resolve(), reading = false;
-  const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning']);
+  const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics']);
   const coordinate=(action,fn)=>globalThis.CatnapShowCoordination?.runExclusive?globalThis.CatnapShowCoordination.runExclusive(action,fn):fn();
   const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',uploaderTabId:null,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
   const get = async () => (await chrome.storage.local.get(KEY))[KEY] || initial();
@@ -203,7 +203,7 @@
       throw Error('Open show controls from Theatre or its toolbar controls.');
     }
     if(!await trustedPage(sender))throw Error('Untrusted show controls.');
-    if(globalThis.CatnapPackage?.inboxOnly&&['bind-player','unbind-player','load','next','previous','play','pause','stop','repeat-warning','announcement'].includes(message.action))throw Error('The standalone Inbox package creates playlists. Use Catnap Theatre for managed playback.');
+    if(globalThis.CatnapPackage?.inboxOnly&&['bind-player','unbind-player','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics','announcement'].includes(message.action))throw Error('The standalone Inbox package creates playlists. Use Catnap Theatre for managed playback.');
     if(message.action==='status'){const state=await get();return {state,playbackHealth:await playerHealth(state),tabs:await tabs(),suno:await CatnapSuno.status(),suggestedTabId:(await chrome.storage.session.get('catnapShowSuggestedTabId')).catnapShowSuggestedTabId,version:SCRIPT_VERSION};}
     if(message.action==='configure'){
       const state=await get(), changes=message.settings||{};
@@ -230,7 +230,7 @@
     if(message.action==='unbind-player'){
       const state=await get();await stopBinding(state);state.playerTabId=null;state.playerLease=null;state.playback=null;await save(state);return state;
     }
-    if(['load','next','previous','play','pause','stop','repeat-warning'].includes(message.action)){
+    if(['load','next','previous','play','pause','stop','repeat-warning','reload-lyrics'].includes(message.action)){
       let state=await get();
       if(['load','next','previous','play'].includes(message.action))state=await ensurePlayer(state,message.tabId);
       else if(!(await playerHealth(state)).linked)throw Error('The show connection is inactive. Load or Play to reconnect first.');

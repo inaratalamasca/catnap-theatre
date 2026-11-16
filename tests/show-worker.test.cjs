@@ -381,6 +381,18 @@ test('advanced operation coordination covers writes and playback without wrappin
   const result=await denied.control('create-playlist',{name:'Fixture playlist'});assert.equal(result.ok,false);assert.equal(denied.calls.mcp.length,0);
 });
 
+test('lyrics reload requires a healthy existing binding and preserves playback and advanced ownership',async()=>{
+  const actions=[];const f=fixture({state:{playerTabId:7,entries:[entry()]},coordination:{runExclusive:async(action,fn)=>{actions.push(action);return fn();}}});
+  assert.equal((await f.control('reload-lyrics')).ok,true);
+  assert.deepEqual(actions,['reload-lyrics']);
+  assert.equal(f.calls.messages.filter(call=>call.message.action==='reload-lyrics').length,1);
+  assert.equal(f.calls.messages.some(call=>['enable','play','pause','next'].includes(call.message.action)),false);
+  const stale=fixture({state:{entries:[entry()]}});assert.equal((await stale.control('reload-lyrics')).ok,false);
+  assert.equal(stale.calls.messages.length,0);
+  const legacy=fixture({state:{playerTabId:7},coordination:{runExclusive:async()=>{throw Error('Legacy owns this show');}}});
+  assert.equal((await legacy.control('reload-lyrics')).ok,false);assert.equal(legacy.calls.messages.length,0);
+});
+
 test('host Pause interrupts an awaited Play while retaining advanced ownership checks',async()=>{
   let finishPlay;const coordinated=[];
   const f=fixture({state:{playerTabId:7,entries:[entry()]},coordination:{runExclusive:async(action,fn)=>{coordinated.push(action);return fn();}},onPlayerCommand:message=>message.action==='play'?new Promise(resolve=>{finishPlay=resolve;}):{ok:true}});

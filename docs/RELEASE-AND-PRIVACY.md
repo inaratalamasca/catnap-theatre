@@ -1,6 +1,6 @@
-# Release and privacy · 0.6.6 preview
+# Release and privacy · 0.6.7 preview
 
-The [0.6.6 preview](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.6.6-preview) packages combined Theatre + Inbox and a separate Inbox-only creator. The older [0.5.0 presentation release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) remains available. The submitted 0.5.0 Chrome Store beta is pending review; this preview is an unpacked development download, not a Store update. There is no supported Firefox package. A host confirmed 0.6.2 authorization, playlist creation and clean HQ rebroadcast; 0.6.6 fixes subsequent reload/manual-playback failures and still needs live mixed-source rehearsal. See [managed shows](MANAGED-SHOW.md) and [acceptance](ACCEPTANCE.md).
+The [0.6.7 preview](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.6.7-preview) packages combined Theatre + Inbox and a separate Inbox-only creator. The older [0.5.0 presentation release](https://github.com/inaratalamasca/catnap-theatre/releases/tag/v0.5.0) remains available. The submitted 0.5.0 Chrome Store beta is pending review; this preview is an unpacked development download, not a Store update. There is no supported Firefox package. The host confirmed 0.6.2 authorization/playlist creation/HQ rebroadcast and the complete 0.6.6 manual LP sequence. The 0.6.7 build corrects managed lyric preparation and reload; real lyrics and mixed-source rehearsal remain separate checks. See [managed shows](MANAGED-SHOW.md) and [acceptance](ACCEPTANCE.md).
 
 ## Local presentation
 
