@@ -164,10 +164,27 @@ test('protecting a selected upcoming entry never promotes it or changes playlist
   assert.deepEqual(queue.map(entry=>entry.id),original);assert.deepEqual(Core.playlistEntries(queue,{currentEntryId:id}).map(entry=>entry.submissionId),projection);assert.equal(queue.some(Core.wasPlayed),false);assert.equal(queue.find(entry=>entry.submissionId==='A2').effectiveHeld,true);
  }
 });
-test('selection preserves the actual played prefix and only completion admits a repeat at the ready tail',()=>{
+test('visible positions stay stable while native projection retains actual played history and fair releases',()=>{
  let queue=Core.applyQueuePolicy(fairEntries(['A1','B1','C1','A2']),{repeatUploaderHold:true});queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':C1'],{now:100}),{repeatUploaderHold:true});
  assert.deepEqual(readyIds(queue),['C1','A1','B1']);queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true,protectedEntryId:inboxId+':B1'});assert.deepEqual(readyIds(queue),['C1','A1','B1']);assert.deepEqual(Core.playlistEntries(queue,{currentEntryId:inboxId+':B1'}).map(entry=>entry.submissionId),['C1','A1','B1']);
- queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':A1'],{now:200}),{repeatUploaderHold:true});assert.deepEqual(readyIds(queue),['C1','A1','B1','A2']);assert.deepEqual(queue.filter(Core.wasPlayed).map(entry=>entry.playedOrder),[1,2]);assert.equal(queue.find(entry=>entry.submissionId==='A2').repeatReleasedFor,inboxId+':A1');
+ queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':A1'],{now:200}),{repeatUploaderHold:true});assert.deepEqual(readyIds(queue),['C1','A1','B1','A2']);assert.deepEqual(queue.filter(Core.wasPlayed).map(entry=>entry.playedOrder),[2,1]);assert.equal(queue.find(entry=>entry.submissionId==='A2').repeatReleasedFor,inboxId+':A1');
+});
+test('paired YouTube and Suno completion preserve visible positions through repeated policy, refresh and restore',()=>{
+ for(const provider of ['youtube','suno']){
+  const incoming=fairEntries(['A1','B1','C1','D1']);
+  if(provider==='youtube')Object.assign(incoming[2],{preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=AbCdEfGhI12',youtubeId:'AbCdEfGhI12'});
+  let queue=Core.applyQueuePolicy(incoming);const visible=queue.map(entry=>entry.id);
+  queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':C1'],{now:100}));
+  assert.deepEqual(queue.map(entry=>entry.id),visible,provider+' completion must not move its row');
+  assert.equal(queue[2].playedOrder,1);assert.equal(queue[2].sunoId,songId);
+  assert.deepEqual(readyIds(queue),['C1','A1','B1','D1'],'playlist projection keeps actual completion history separately');
+  queue=Core.applyQueuePolicy(Core.mergeEntries(queue,incoming,{activeEntryId:inboxId+':C1'}),{protectedEntryId:inboxId+':C1'});
+  queue=Core.applyQueuePolicy(JSON.parse(JSON.stringify(queue)));
+  assert.deepEqual(queue.map(entry=>entry.id),visible);assert.equal(queue[2].playedOrder,1);assert.equal(queue[2].preferredSource,provider);
+  queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':B1',inboxId+':C1'],{now:200}));
+  assert.deepEqual(queue.map(entry=>entry.id),visible);assert.deepEqual(readyIds(queue),['C1','B1','A1','D1']);
+  assert.deepEqual(queue.filter(Core.wasPlayed).map(entry=>[entry.submissionId,entry.playedOrder]),[['B1',2],['C1',1]]);
+ }
 });
 test('fair rotation appends only the exact finished predecessor successor behind the current accepted tail',()=>{
  let queue=Core.applyQueuePolicy(fairEntries(['X1','Y1','X2','Z1','X3']),{repeatUploaderHold:true});
@@ -194,9 +211,9 @@ test('actual completion order, late repeats and manual movements survive without
  queue=Core.applyQueuePolicy(Core.mergeEntries(queue,fairEntries(['X2','W1'])),{repeatUploaderHold:true});
  assert.deepEqual(readyIds(queue),['Z1','X1','Y1','W1','X2'],'a late eligible repeat joins the tail after accepted arrivals');
  const released=queue.find(e=>e.submissionId==='X2');assert.equal(released.repeatReleasedFor,inboxId+':X1');
- queue=[...queue.filter(e=>e!==released).slice(0,2),released,...queue.filter(e=>e!==released).slice(2)];
+ const beforeY1=queue.filter(e=>e!==released).findIndex(e=>e.submissionId==='Y1');queue=queue.filter(e=>e!==released);queue.splice(beforeY1,0,released);
  queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true});assert.deepEqual(readyIds(queue),['Z1','X1','X2','Y1','W1'],'host move is not undone by repeat policy');
- assert.deepEqual(queue.filter(Core.wasPlayed).map(e=>e.playedOrder),[1,2]);
+ assert.deepEqual(queue.filter(Core.wasPlayed).map(e=>e.playedOrder),[2,1]);
 });
 test('explicit manual Hold never auto-releases and declined repeats do not block their next surviving sibling',()=>{
  let queue=fairEntries(['X1','Y1','X2','Z1','X3']);queue.find(e=>e.submissionId==='X2').hostHeld=true;

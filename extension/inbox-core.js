@@ -1,7 +1,7 @@
-/* Catnap Inbox data model, version 0.8.1.
+/* Catnap Inbox data model, version 0.8.2.
  * Change summary: independent Pending-only FIFO normalization, retained external
- * sources, selection-stable order and fair repeat rotation at the ready tail.
- * Protecting a loaded entry never changes its place among upcoming entries.
+ * sources, stable visible positions and fair repeat rotation at the ready tail.
+ * Played history is metadata; only the playlist projection orders it by finish.
  * Pure functions only: no account access, storage, playback or remote writes.
  */
 (function (root, factory) {
@@ -10,7 +10,7 @@
   else root.CatnapInboxCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const VERSION = '0.8.1';
+  const VERSION = '0.8.2';
   const MAX_ROWS = 1000;
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   const HOST_ID = /^[A-Za-z0-9_.-]{1,100}$/;
@@ -207,12 +207,12 @@
     newlyReleased.sort((a,b)=>(sequence(known.get(a.repeatPredecessorId),'playedOrder')||0)-(sequence(known.get(b.repeatPredecessorId),'playedOrder')||0)||(a.intakeOrder||0)-(b.intakeOrder||0));
     for(const entry of newlyReleased){entry.repeatReleasedFor=entry.repeatPredecessorId;entry.releaseOrder=++release;}
     const released=new Set(newlyReleased.map(entry=>entry.id));
-    const played=out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder);
-    // Protection prevents a new repeat hold, not a move. The loaded item stays
-    // in its existing ready position until completion or an explicit action.
-    const ready=out.filter(entry=>!wasPlayed(entry)&&!entry.effectiveHeld&&!released.has(entry.id));
+    // Finishing records playedAt/playedOrder without promoting the row. Keep
+    // completed and ready rows together in their existing visible positions;
+    // the native playlist projection below applies actual finish order alone.
+    const visible=out.filter(entry=>wasPlayed(entry)||(!entry.effectiveHeld&&!released.has(entry.id)));
     const held=out.filter(entry=>!wasPlayed(entry)&&entry.effectiveHeld);
-    return [...played,...ready,...newlyReleased,...held];
+    return [...visible,...newlyReleased,...held];
   }
   function applyQueuePolicy(entries,{repeatUploaderHold=false,protectedEntryId=null}={}) {
     if(!Array.isArray(entries)||entries.length>MAX_ROWS)throw Error('The show queue is invalid or too large.');

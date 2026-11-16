@@ -1,13 +1,13 @@
-/* Catnap managed show coordinator, version 0.8.1.
+/* Catnap managed show coordinator, version 0.8.2.
  * Change summary: independently staged mixed-source entries, manual LP endings,
  * opt-in AP autoplay, fair ready-tail rotation and bound completion history.
- * Loaded-entry protection preserves the existing upcoming order.
+ * Load and genuine completion preserve visible positions and separate history.
  * This module performs no network, DOM or account operation itself. Its adapter
  * MUST enforce an inaudible stage/stop boundary before native media is selected.
  */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.CatnapManagedPlayer=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const SCRIPT_VERSION='0.8.1';
+  const SCRIPT_VERSION='0.8.2';
   const clean=value=>typeof value==='string'?value.trim():'';
   const identity=entry=>clean(entry?.entryId)||clean(entry?.id);
   const wasPlayed=entry=>typeof entry?.playedAt==='number'&&Number.isFinite(entry.playedAt)&&entry.playedAt>=0;
@@ -32,10 +32,10 @@
     newlyReleased.sort((a,b)=>(sequence(known.get(a.repeatPredecessorId),'playedOrder')||0)-(sequence(known.get(b.repeatPredecessorId),'playedOrder')||0));
     for(const entry of newlyReleased){entry.repeatReleasedFor=entry.repeatPredecessorId;entry.releaseOrder=++release;}
     const released=new Set(newlyReleased.map(identity));
-    // An active source keeps its hold immunity without being pinned ahead of
-    // earlier ready entries. Selecting/playing is not a queue move or finish.
-    return [...out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder),
-      ...out.filter(entry=>!wasPlayed(entry)&&!entry.effectiveHeld&&!released.has(identity(entry))),...newlyReleased,
+    // Completion is history, not a visible move. Preserve completed rows
+    // among existing ready entries while releasing only the next repeat at
+    // the ready tail. Native playlist history is projected separately.
+    return [...out.filter(entry=>wasPlayed(entry)||(!entry.effectiveHeld&&!released.has(identity(entry)))),...newlyReleased,
       ...out.filter(entry=>!wasPlayed(entry)&&entry.effectiveHeld)];
   }
   function playback(entry){

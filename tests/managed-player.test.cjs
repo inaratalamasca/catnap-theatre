@@ -121,8 +121,30 @@ test('Load third then second and worker refresh keep visible and projected order
  worker=Inbox.applyQueuePolicy(Inbox.mergeEntries(worker,incoming,{activeEntryId:'C1'}),{repeatUploaderHold:true,protectedEntryId:'C1'});f.player.appendQueue(worker);assert.equal(f.player.snapshot().index,2);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),original);assert.deepEqual(Inbox.playlistEntries(worker,{currentEntryId:'C1'}).map(entry=>entry.id),projection);
  await f.player.play();await f.player.pause();await f.player.load(1);assert.equal(f.player.snapshot().current.id,'B1');assert.equal(f.player.snapshot().index,1);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),original);
  worker=Inbox.applyQueuePolicy(Inbox.mergeEntries(worker,incoming,{activeEntryId:'B1'}),{repeatUploaderHold:true,protectedEntryId:'B1'});f.player.appendQueue(worker);assert.equal(f.player.snapshot().current.id,'B1');assert.equal(f.player.snapshot().index,1);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),original);assert.deepEqual(Inbox.playlistEntries(worker,{currentEntryId:'B1'}).map(entry=>entry.id),projection);assert.deepEqual(f.calls.filter(call=>call[0]==='stage').map(call=>call[1]),['C1','B1']);
- await f.player.play();assert.deepEqual(f.calls.filter(call=>call[0]==='play').map(call=>call[1]),['C1','B1']);await f.player.ended(f.player.snapshot().generation);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),['B1','A1','C1','A2']);assert.deepEqual(f.player.snapshot().queue.filter(Player.wasPlayed).map(entry=>entry.id),['B1']);
- await f.player.loadNext();assert.equal(f.player.snapshot().current.id,'A1');await f.player.play();await f.player.ended(f.player.snapshot().generation);assert.deepEqual(accepted(f.player.snapshot().queue),['B1','A1','C1','A2']);assert.deepEqual(f.player.snapshot().queue.filter(Player.wasPlayed).map(entry=>entry.id),['B1','A1']);assert.equal(f.player.snapshot().queue.find(entry=>entry.id==='A2').repeatReleasedFor,'A1');
+ await f.player.play();assert.deepEqual(f.calls.filter(call=>call[0]==='play').map(call=>call[1]),['C1','B1']);await f.player.ended(f.player.snapshot().generation);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),original);assert.deepEqual(f.player.snapshot().queue.filter(Player.wasPlayed).map(entry=>entry.id),['B1']);
+ await f.player.loadNext();assert.equal(f.player.snapshot().current.id,'C1','manual Next follows the visible successor after completion');await f.player.load(0);await f.player.play();await f.player.ended(f.player.snapshot().generation);assert.deepEqual(accepted(f.player.snapshot().queue),['B1','A1','C1','A2']);assert.deepEqual(f.player.snapshot().queue.filter(Player.wasPlayed).map(entry=>entry.id),['A1','B1']);assert.equal(f.player.snapshot().queue.find(entry=>entry.id==='A2').repeatReleasedFor,'A1');
+});
+test('finishing and replaying paired YouTube or Suno third preserves its row through stale refresh and saved restore',async()=>{
+ for(const provider of ['youtube','suno']){
+  const queue=fairQueue(['A1','B1','C1','D1']);
+  if(provider==='youtube')Object.assign(queue[2],{preferredSource:'youtube',youtubeUrl:entries[1].youtubeUrl});
+  const original=queue.map(entry=>entry.id),f=fixture();await f.player.setQueue(queue,{mode:'lp',showId:'stable-finish'});
+  await f.player.load(2);await f.player.play();f.player.observedPlaying(f.player.snapshot().generation);await f.player.ended(f.player.snapshot().generation);
+  let saved=f.player.snapshot();assert.deepEqual(saved.queue.map(entry=>entry.id),original);assert.equal(saved.index,2);assert.equal(saved.phase,'ended');assert.equal(saved.current.id,'C1');assert.equal(saved.current.playedOrder,1);
+  assert.deepEqual(accepted(saved.queue),['C1','A1','B1','D1']);
+  f.player.appendQueue(queue);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),original);assert.equal(f.player.snapshot().index,2);assert.equal(f.player.snapshot().current.playedOrder,1);
+  await f.player.play();await f.player.ended(f.player.snapshot().generation);saved=f.player.snapshot();assert.deepEqual(saved.queue.map(entry=>entry.id),original);assert.equal(saved.current.playedOrder,1,'replay does not add another completion');
+  const restored=fixture();await restored.player.setQueue(JSON.parse(JSON.stringify(saved.queue)),{mode:'lp'});await restored.player.load(2);assert.deepEqual(restored.player.snapshot().queue.map(entry=>entry.id),original);assert.equal(restored.player.snapshot().current.id,'C1');assert.equal(restored.player.snapshot().phase,'ready');
+  await f.player.loadNext();assert.equal(f.player.snapshot().current.id,'D1','Next keeps the following visible song instead of jumping to the first unplayed song');
+ }
+});
+test('AP paired YouTube completion retains its position and releases only its next repeat after the accepted tail',async()=>{
+ const queue=fairQueue(['A1','B1','C1','D1','C2','C3']);Object.assign(queue[2],{preferredSource:'youtube',youtubeUrl:entries[1].youtubeUrl});
+ const f=fixture();await f.player.setQueue(queue,{mode:'ap',autoplay:true});await f.player.load(2);await f.player.play();await f.player.ended(f.player.snapshot().generation);
+ assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),['A1','B1','C1','D1','C2','C3']);assert.equal(f.player.snapshot().current.id,'D1');assert.equal(f.player.snapshot().queue[2].playedOrder,1);
+ assert.equal(Player.isHeld(f.player.snapshot().queue.find(entry=>entry.id==='C2')),false);assert.equal(Player.isHeld(f.player.snapshot().queue.find(entry=>entry.id==='C3')),true);
+ await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,'C2');await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,'C3');
+ assert.deepEqual(accepted(f.player.snapshot().queue),['C1','D1','C2','A1','B1','C3']);assert.deepEqual(f.player.snapshot().queue.map(entry=>entry.id),['A1','B1','C1','D1','C2','C3']);
 });
 test('AP fair X1/Y1/X2/Z1/X3 rotation admits repeats only at ready tail despite arrivals and stale worker snapshots',async()=>{
  let worker=fairQueue(['X1','Y1','X2','Z1','X3']);const f=fixture();await f.player.setQueue(worker,{mode:'ap',autoplay:true});await f.player.loadNext();await f.player.play();
