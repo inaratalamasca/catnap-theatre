@@ -3,21 +3,21 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
-async function fixture(radioOnly=false){
+async function fixture(radioOnly=false,options={}){
   const html=fs.readFileSync(path.join(__dirname,'../extension/broadcast.html'),'utf8');
   const dom=new JSDOM(html,{url:'https://extension.example/broadcast.html',runScripts:'outside-only'}),w=dom.window;
-  const local={hideTheatreButton:true},sent=[],writes=[],permissions=[],handlers={};let state='idle',message='',pendingPermission;
+  const local=options.local||{hideTheatreButton:true},session=options.session||{},sent=[],writes=[],removals=[],permissions=[],handlers={};let state=options.state||'idle',message='',pendingPermission;
   w.CatnapPackage={radioOnly};w.CatnapBroadcast=require('../extension/broadcast-core.js');
   w.chrome={runtime:{getManifest:()=>({version:'0.7.0'}),sendMessage:async m=>{
       sent.push(m);if(handlers[m.action])return handlers[m.action](m);
       if(m.action==='start'){state='connecting';message='Establishing audio';}if(m.action==='stop'){state='idle';message='Stopped';}
       return {state,message:message||(state==='live'?'Live':'Ready'),sourceSelected:true,sourceLabel:'AIU player',sourceTitle:'Party'};
     }},
-    permissions:{request:async value=>{permissions.push(value);if(pendingPermission){const current=pendingPermission;pendingPermission=null;return current;}return true;}},storage:{local:{get:async()=>local,set:async value=>{writes.push(value);Object.assign(local,value);}},session:{get:async()=>({}),set:async value=>writes.push(value)}}};
+    permissions:{request:async value=>{permissions.push(value);if(pendingPermission){const current=pendingPermission;pendingPermission=null;return current;}return options.grant!==false;}},storage:{local:{get:async()=>({...local}),set:async value=>{writes.push(value);Object.assign(local,value);},remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys]){removals.push(key);delete local[key];}}},session:{get:async()=>({...session}),set:async value=>{writes.push(value);Object.assign(session,value);}}}};
   w.setInterval=f=>{w.poll=f;return 1;};
   w.eval(fs.readFileSync(path.join(__dirname,'../extension/broadcast-panel.js'),'utf8'));
   await new Promise(r=>setImmediate(r));
-  return {dom,w,sent,writes,permissions,setState:(value,text='')=>{state=value;message=text;},setHandler:(action,fn)=>{handlers[action]=fn;},holdPermission:()=>{let resolve;pendingPermission=new Promise(r=>{resolve=r;});return resolve;},flush:()=>new Promise(r=>setImmediate(r))};
+  return {dom,w,local,session,sent,writes,removals,permissions,setState:(value,text='')=>{state=value;message=text;},setHandler:(action,fn)=>{handlers[action]=fn;},holdPermission:()=>{let resolve;pendingPermission=new Promise(r=>{resolve=r;});return resolve;},flush:()=>new Promise(r=>setImmediate(r))};
 }
 test('panel retains hide preference, identifies source and keeps Radio-only independent of show controls',async()=>{
   for(const radioOnly of [false,true]){
@@ -115,4 +115,87 @@ test('an unreadable publisher status cannot retain a green On Air indicator or p
   f.setHandler('status',()=>{throw Error('Publisher status unavailable');});f.w.poll();await f.flush();
   assert.equal(d.getElementById('on-air').dataset.live,'false');assert.match(d.getElementById('on-air-label').textContent,/Status unavailable/);
   assert.equal(d.getElementById('start').disabled,true);assert.equal(d.getElementById('stop').disabled,false);
+});
+
+const RELAY='https://listen.catnapradio.com/live/whip',ORIGIN='https://listen.catnapradio.com';
+const OTHER='https://another-relay.example/live/whip',KEY='fixture-private-token';
+const saved=(origin=ORIGIN,value=KEY)=>({broadcastEndpoint:RELAY,broadcastRememberToken:true,broadcastSavedToken:{origin,token:value}});
+function enter(f,value,event='change'){const input=f.w.document.getElementById('token');input.value=value;input.dispatchEvent(new f.w.Event('input'));if(event==='change')input.dispatchEvent(new f.w.Event('change'));}
+async function settle(f){await f.flush();await f.flush();}
+
+test('default-on remembering saves only explicit Start after permission and restores after a fresh browser session',async t=>{
+ const first=await fixture(true);t.after(()=>first.dom.window.close());const d=first.w.document;
+ assert.equal(d.getElementById('remember-token').checked,true);assert.equal(first.writes.length,0,'clean initialization does not save a preference or key');
+ d.getElementById('token').value=KEY;d.getElementById('start').click();await settle(first);
+ assert.equal(first.local.broadcastSavedToken.token,KEY);assert.equal(first.local.broadcastSavedToken.origin,ORIGIN);assert.equal(first.local.broadcastRememberToken,true);
+ assert.equal(first.session.broadcastTokenOrigin,ORIGIN);assert.equal(first.session.broadcastTokenEndpoint,RELAY);
+ const next=await fixture(true,{local:first.local,session:{}});t.after(()=>next.dom.window.close());
+ assert.equal(next.w.document.getElementById('token').value,KEY);assert.equal(next.w.document.getElementById('remember-token').checked,true);assert.equal(next.writes.length,0);
+ assert.equal(next.sent.every(message=>message.action==='status'),true,'restoring never starts capture');
+ assert.equal(JSON.stringify(first.sent).includes(KEY),false);assert.equal(next.w.document.body.textContent.includes(KEY),false);
+});
+
+test('explicit input change can remember locally, while denied permission cannot save or start',async t=>{
+ const edit=await fixture(true);t.after(()=>edit.dom.window.close());enter(edit,KEY);await settle(edit);
+ assert.equal(edit.local.broadcastSavedToken.token,KEY);assert.equal(edit.permissions.length,0);assert.equal(edit.sent.every(message=>message.action==='status'),true);assert.equal(edit.session.broadcastToken,undefined);
+ const denied=await fixture(true,{grant:false});t.after(()=>denied.dom.window.close());denied.w.document.getElementById('token').value=KEY;denied.w.document.getElementById('start').click();await settle(denied);
+ assert.equal(denied.local.broadcastSavedToken,undefined);assert.equal(denied.local.broadcastRememberToken,undefined);assert.equal(denied.session.broadcastToken,undefined);assert.equal(denied.sent.some(message=>message.action==='start'),false);
+});
+
+test('session-only opt-out and Forget remove durable credentials without touching an active stream',async t=>{
+ const session={broadcastToken:KEY,broadcastTokenOrigin:ORIGIN,broadcastTokenEndpoint:RELAY,broadcastMetadataSession:{endpoint:RELAY,sourceTabId:7,live:true}};
+ const f=await fixture(true,{local:saved(),session,state:'live'});t.after(()=>f.dom.window.close());const d=f.w.document,keep=d.getElementById('remember-token');
+ keep.checked=false;keep.dispatchEvent(new f.w.Event('change'));await settle(f);
+ assert.equal(f.local.broadcastSavedToken,undefined);assert.equal(f.local.broadcastRememberToken,false);assert.equal(session.broadcastToken,KEY);assert.equal(d.getElementById('on-air').dataset.live,'true');
+ enter(f,'fixture-session-only');await settle(f);assert.equal(f.local.broadcastSavedToken,undefined,'input changes do not persist when opted out');assert.equal(session.broadcastToken,KEY);
+ keep.checked=true;keep.dispatchEvent(new f.w.Event('change'));await settle(f);assert.equal(f.local.broadcastSavedToken.token,'fixture-session-only');
+ d.getElementById('forget-token').click();await settle(f);
+ assert.equal(f.local.broadcastSavedToken,undefined);assert.equal(f.local.broadcastRememberToken,undefined);assert.equal(keep.checked,false);assert.equal(d.getElementById('token').value,'');assert.equal(session.broadcastToken,KEY);assert.equal(d.getElementById('on-air').dataset.live,'true');
+ assert.equal(f.sent.every(message=>message.action==='status'),true,'preference/Forget never stops, restarts or captures');
+});
+
+test('stored origin equality is exact, allows another path on the same relay and fails closed otherwise',async t=>{
+ const same=await fixture(true,{local:{...saved(),broadcastEndpoint:ORIGIN+'/alternate/whip'}});t.after(()=>same.dom.window.close());assert.equal(same.w.document.getElementById('token').value,KEY);
+ for(const origin of ['https://listen.catnapradio.com.evil.example','http://listen.catnapradio.com',ORIGIN+':8443',ORIGIN+'/path','not an origin',undefined]){
+  const f=await fixture(true,{local:saved(origin===undefined?null:origin)});t.after(()=>f.dom.window.close());assert.equal(f.w.document.getElementById('token').value,'');
+ }
+ const other=await fixture(true,{local:{...saved(),broadcastEndpoint:OTHER}});t.after(()=>other.dom.window.close());assert.equal(other.w.document.getElementById('token').value,'');
+ const malformed=await fixture(true,{local:saved(ORIGIN,'fixture\u0001bad')});t.after(()=>malformed.dom.window.close());assert.equal(malformed.w.document.getElementById('token').value,'');
+});
+
+test('changing relay origin clears a restored key and a programmatic change cannot send it elsewhere',async t=>{
+ const f=await fixture(true,{local:saved()});t.after(()=>f.dom.window.close());const d=f.w.document,address=d.getElementById('endpoint');
+ address.value=ORIGIN+'/different/whip';address.dispatchEvent(new f.w.Event('input'));assert.equal(d.getElementById('token').value,KEY);
+ address.value=OTHER;address.dispatchEvent(new f.w.Event('input'));assert.equal(d.getElementById('token').value,'');assert.equal(f.session.broadcastToken,undefined);
+ const bypass=await fixture(true,{local:saved()});t.after(()=>bypass.dom.window.close());bypass.w.document.getElementById('endpoint').value=OTHER;bypass.w.document.getElementById('start').click();await settle(bypass);
+ assert.equal(bypass.permissions.length,0);assert.equal(bypass.sent.some(message=>message.action==='start'),false);assert.equal(bypass.w.document.getElementById('token').value,'');assert.match(bypass.w.document.getElementById('status').textContent,/relay changed/);
+});
+
+test('a bound active session uses its own relay, with no silent durable migration and no unbound-key guessing',async t=>{
+ const session={broadcastToken:KEY,broadcastMetadataSession:{endpoint:RELAY,sourceTabId:9,live:true}};
+ const active=await fixture(true,{local:{broadcastEndpoint:OTHER},session,state:'live'});t.after(()=>active.dom.window.close());
+ assert.equal(active.w.document.getElementById('endpoint').value,RELAY);assert.equal(active.w.document.getElementById('token').value,KEY);assert.equal(active.local.broadcastSavedToken,undefined);assert.equal(active.writes.length,0);
+ const unknown=await fixture(true,{local:{broadcastEndpoint:RELAY},session:{broadcastToken:KEY}});t.after(()=>unknown.dom.window.close());assert.equal(unknown.w.document.getElementById('token').value,'');assert.equal(unknown.writes.length,0);
+ const conflict=await fixture(true,{local:{broadcastEndpoint:RELAY},session:{broadcastToken:KEY,broadcastTokenOrigin:ORIGIN,broadcastTokenEndpoint:OTHER,broadcastMetadataSession:{endpoint:RELAY}}});t.after(()=>conflict.dom.window.close());assert.equal(conflict.w.document.getElementById('token').value,'');
+});
+
+test('editing settings during a pending relay grant cancels the stale Start before any credential write',async t=>{
+ const f=await fixture(true);t.after(()=>f.dom.window.close());const d=f.w.document,grant=f.holdPermission();
+ d.getElementById('token').value=KEY;d.getElementById('start').click();d.getElementById('endpoint').value=OTHER;d.getElementById('endpoint').dispatchEvent(new f.w.Event('input'));grant(true);await settle(f);
+ assert.equal(f.sent.some(message=>message.action==='start'),false);assert.equal(f.local.broadcastSavedToken,undefined);assert.equal(f.session.broadcastToken,undefined);assert.equal(d.getElementById('start').disabled,false);assert.match(d.getElementById('status').textContent,/settings changed/);
+});
+
+test('a later opt-out and Forget win over a credential save already in flight',async t=>{
+ const f=await fixture(true);t.after(()=>f.dom.window.close());let release;
+ const original=f.w.chrome.storage.local.set;f.w.chrome.storage.local.set=async value=>{if(value.broadcastSavedToken)await new Promise(resolve=>{release=resolve;});return original(value);};
+ enter(f,KEY);await f.flush();assert.equal(typeof release,'function');
+ const keep=f.w.document.getElementById('remember-token');keep.checked=false;keep.dispatchEvent(new f.w.Event('change'));f.w.document.getElementById('forget-token').click();release();await settle(f);
+ assert.equal(f.local.broadcastSavedToken,undefined);assert.equal(f.local.broadcastRememberToken,undefined);assert.equal(f.session.broadcastToken,undefined);
+ assert.equal(f.sent.every(message=>message.action==='status'),true);
+});
+
+test('credential storage failure never echoes storage payloads into status or worker commands',async t=>{
+ const f=await fixture(true);t.after(()=>f.dom.window.close());f.w.chrome.storage.local.set=async()=>{throw Error('Storage failed for '+KEY);};
+ const d=f.w.document;d.getElementById('token').value=KEY;d.getElementById('start').click();await settle(f);
+ assert.match(d.getElementById('status').textContent,/Could not store Radio credentials/);assert.equal(d.body.textContent.includes(KEY),false);assert.equal(JSON.stringify(f.sent).includes(KEY),false);assert.equal(f.sent.some(message=>message.action==='start'),false);
 });

@@ -9,7 +9,10 @@
 <p id="token-help" class="help">“Token entered” means text is present, not that the relay has validated it. A changed token is used on the next Start.</p>
 <button id="show-controls" type="button">Inbox, playlists &amp; show controls ↗</button>
 <label id="theatre-preference" class="check"><input id="hide-theatre" type="checkbox">Hide the Theatre button; show On Air while broadcasting</label>
-<p class="help">Token stays in this browser session only. Never share it with listeners.</p>
+<label class="check"><input id="remember-token" type="checkbox" checked>Keep token between updates on this browser</label>
+<button id="forget-token" type="button">Forget saved token</button>
+<p id="token-storage-status" class="help" role="status">Remembering is on for this relay origin. Changes or Start save the token locally.</p>
+<p class="help">Turn Keep token off for session-only use. Forget removes the saved copy without stopping an active broadcast. Never share the token with listeners.</p>
 <div class="buttons"><button id="start">Start music broadcast</button><span id="on-air" role="status" aria-live="polite" data-live="false"><span class="status-dot" aria-hidden="true"></span><span id="on-air-label">Not live</span></span><button id="stop">Stop</button></div>
 <p id="status" role="status">Ready.</p>
 <label>Music level <progress id="level" max="1" value="0"></progress></label>
