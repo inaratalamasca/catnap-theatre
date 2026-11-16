@@ -789,3 +789,24 @@ test('crossing held and ready groups is rejected before claiming an ineffective 
   }
   assert.deepEqual(f.state().entries.map(entry=>entry.submissionId),['ready','held']);assert.equal(f.calls.messages.length,0);assert.equal(f.calls.mcp.length,0);
 });
+
+test('selecting third then second keeps saved order and verified playlist clean through observations and inbox refresh',async()=>{
+  const third='12345678-1234-4234-8234-111111111111';
+  const entries=[entry('one',{uploaderId:'first'}),entry('two',{uploaderId:'second',sunoId:SECOND,sunoUrl:song(SECOND)}),entry('three',{uploaderId:'third',sunoId:third,sunoUrl:song(third)})];
+  const sunoIds=entries.map(entry=>entry.sunoId),originalIds=entries.map(entry=>entry.id);
+  const f=fixture({managed:true,state:{entries,playlistId:PLAYLIST,playerTabId:7,lastPlaylistSync:{context:{sunoIds},orderVerified:true}},
+    rows:[row('three',{uploader_id:'third',suno_url:song(third)}),row('two',{uploader_id:'second',suno_url:song(SECOND)}),row('one',{uploader_id:'first'})]});
+  for(const [revision,index] of [[1,2],[2,1]]){
+    assert.equal((await f.control('load',{tabId:7,entryId:entries[index].id,index:0})).ok,true);
+    const load=f.calls.messages.filter(call=>call.message.action==='load').at(-1).message;
+    assert.equal(load.entryId,entries[index].id);assert.equal(load.index,index);
+    assert.equal((await f.send({target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision,
+      playback:{phase:'ready',generation:revision,current:{id:entries[index].id},source:'suno',completedEntryIds:[]}},f.player)).ok,true);
+    assert.deepEqual(f.state().entries.map(entry=>entry.id),originalIds);
+    assert.equal(f.state().playback.current.id,entries[index].id);assert.equal(f.state().playback.index,index);
+    assert.equal(f.state().playlistDirty,false,'selection does not dirty an already verified playlist');
+    await f.control('import');
+    assert.deepEqual(f.state().entries.map(entry=>entry.id),originalIds);assert.equal(f.state().playlistDirty,false);
+  }
+  await tick();assert.equal(f.calls.mcp.length,0,'Load and observations do not request playlist writes');
+});
