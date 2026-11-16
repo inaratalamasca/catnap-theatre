@@ -67,6 +67,9 @@
   }
   function render(data){
     snapshot=data;const s=data.state,linked=data.playbackHealth?.linked===true,p=linked?(s.playback||{}):{},entry=linked?s.entries.find(e=>e.id===p.current?.id):null;
+    const sourceBlocked=e=>e.state==='held'||!(e.preferredSource==='suno'?e.sunoUrl:e.preferredSource==='youtube'?e.youtubeUrl:null);
+    const held=e=>e.effectiveHeld===true||e.hostHeld===true||sourceBlocked(e);
+    const heldCount=s.entries.filter(held).length;
     $('mode').value=s.mode;
     if(document.activeElement!==$('show-name'))$('show-name').value=s.showName;
     options($('uploader-tab'),data.tabs.filter(t=>t.kind==='uploader').map(t=>({id:t.id,name:t.title})),s.uploaderTabId,'Choose the signed-in uploader');
@@ -87,7 +90,8 @@
     $('watch').checked=s.watch?.enabled===true;$('watch').disabled=s.mode!=='ap';
     if(document.activeElement!==$('warning-seconds'))$('warning-seconds').value=s.warningSeconds;
     const read=s.lastRead,readTime=read?new Date(read.at):null;
-    label('inbox-status',read?`Inbox Submissions: ${read.pending} Pending · ${read.held} held · (${Number.isNaN(readTime.getTime())?'time unavailable':readTime.toLocaleTimeString()})`:'Inbox Submissions: Not read yet');
+    const holdsLabel=globalThis.CatnapPackage?.inboxOnly?`${read?.held||0} held`:`${heldCount} held in show`;
+    label('inbox-status',read?`Inbox Submissions: ${read.pending} Pending · ${holdsLabel} · (${Number.isNaN(readTime.getTime())?'time unavailable':readTime.toLocaleTimeString()})`:'Inbox Submissions: Not read yet'+(heldCount?' · '+holdsLabel:''));
     const inboxError=[...new Set([s.error,s.inboxAccessError].filter(Boolean))].join(' ');
     label('inbox-error',inboxError);$('inbox-error').hidden=!inboxError;
     $('playback-status').textContent=linked?`${data.playbackHealth.phase||p.phase||'Ready'}${p.error?' · '+p.error:''} · ${s.mode==='ap'&&s.autoplay?'AP autoplay':'Manual advance'}`:(data.playbackHealth?.reason||'Choose your Suno tab, then Load or Play to connect the show.');
@@ -108,11 +112,8 @@
     $('playlist-status').textContent=s.lastPlaylistSync?`Last verified: ${s.lastPlaylistSync.confirmed?.length??s.lastPlaylistSync.confirmed??0} confirmed · ${s.lastPlaylistSync.missing?.length||0} missing`:'';
     $('repeat-uploader-hold').checked=s.repeatUploaderHold===true;
     const currentId=s.playback?.current?.id;
-    const sourceBlocked=e=>e.state==='held'||!(e.preferredSource==='suno'?e.sunoUrl:e.preferredSource==='youtube'?e.youtubeUrl:null);
-    const held=e=>e.effectiveHeld===true||e.hostHeld===true||sourceBlocked(e);
     const played=e=>Number.isFinite(e.playedAt)||e.state==='played';
     const locked=e=>e.id===currentId||played(e)||e.state==='playing';
-    const heldCount=s.entries.filter(held).length;
     $('queue-count').textContent=`(${s.entries.length}${heldCount?' · '+heldCount+' held':''})`;
     const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason,e.effectiveHeld,e.effectiveHoldReason,e.hostHeld,e.repeatHoldOverride,e.repeatPredecessorId,e.playedAt]),currentId,s.playerTabId,Number($('player-tab').value)]);
     if(nextSignature!==queueSignature){

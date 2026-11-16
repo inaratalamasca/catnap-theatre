@@ -128,7 +128,7 @@ test('choosing another tab keeps the actual controlled target visible until expl
 test('inbox summary prominently reports the read snapshot and retains counters separately from an error',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
   f.state().lastRead={at:1794765600000,pending:11,held:0};f.state().error='Fixture read needs attention';await f.poll();
-  assert.match(f.element('inbox-status').textContent,/^Inbox Submissions: 11 Pending · 0 held · \(.+\)$/);
+  assert.match(f.element('inbox-status').textContent,/^Inbox Submissions: 11 Pending · 0 held in show · \(.+\)$/);
   assert.equal(f.element('inbox-status').tagName,'P');assert.equal(f.element('inbox-status').getAttribute('role'),'status');
   assert.equal(f.element('inbox-error').hidden,false);assert.equal(f.element('inbox-error').textContent,'Fixture read needs attention');
   f.state().lastRead=null;f.state().error='';await f.poll();
@@ -590,4 +590,25 @@ test('reordered row Load still addresses the displayed song by identity after a 
   const request=f.messages.filter(m=>m.action==='load').at(-1);
   assert.equal(request.entryId,'fixture-inbox:2');assert.equal('index' in request,false);
   assert.equal(f.state().playback.current.id,'fixture-inbox:2');
+});
+
+
+test('prominent held total follows effective local holds and release without changing inbox read time or readiness',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.state().lastRead={at:1794765600000,pending:11,held:0};
+  Object.assign(f.state().entries[1],{hostHeld:true,effectiveHeld:true,effectiveHoldReason:'Held by host.'});
+  addQueueEntry(f,'fixture-inbox:repeat',{effectiveHeld:true,effectiveHoldReason:'Waiting for an earlier song.',repeatPredecessorId:'fixture-inbox:1'});
+  addQueueEntry(f,'fixture-inbox:invalid',{state:'held',preferredSource:null,sunoUrl:null,youtubeUrl:null,holdReason:'Source needs attention.'});
+  f.setReadiness({inboxAccessChecked:false,pendingRead:false});await f.poll();
+  const readTime=f.element('inbox-status').textContent.match(/\(.+\)$/)[0];
+  assert.match(f.element('inbox-status').textContent,/11 Pending · 3 held in show/);
+  assert.match(f.element('queue-count').textContent,/3 held/);
+  assert.equal(f.element('inbox-connection').dataset.state,'missing');
+  assert.equal(f.element('ready-pending').dataset.state,'missing');
+  rowButton(f,'fixture-inbox:2','hold').click();await settle();await f.poll();
+  assert.match(f.element('inbox-status').textContent,/11 Pending · 2 held in show/);
+  assert.ok(f.element('inbox-status').textContent.endsWith(readTime));
+  assert.equal(f.state().lastRead.held,0,'saved provider-read counts stay separate');
+  assert.equal(f.element('inbox-connection').dataset.state,'missing','local queue mutation is no evidence of current inbox access');
+  assert.equal(f.element('ready-pending').dataset.state,'missing');
 });
