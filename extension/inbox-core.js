@@ -1,6 +1,7 @@
-/* Catnap Inbox data model, version 0.8.0.
+/* Catnap Inbox data model, version 0.8.1.
  * Change summary: independent Pending-only FIFO normalization, retained external
- * sources, actual completion order and fair repeat rotation at the ready tail.
+ * sources, selection-stable order and fair repeat rotation at the ready tail.
+ * Protecting a loaded entry never changes its place among upcoming entries.
  * Pure functions only: no account access, storage, playback or remote writes.
  */
 (function (root, factory) {
@@ -9,7 +10,7 @@
   else root.CatnapInboxCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const VERSION = '0.8.0';
+  const VERSION = '0.8.1';
   const MAX_ROWS = 1000;
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   const HOST_ID = /^[A-Za-z0-9_.-]{1,100}$/;
@@ -206,10 +207,12 @@
     newlyReleased.sort((a,b)=>(sequence(known.get(a.repeatPredecessorId),'playedOrder')||0)-(sequence(known.get(b.repeatPredecessorId),'playedOrder')||0)||(a.intakeOrder||0)-(b.intakeOrder||0));
     for(const entry of newlyReleased){entry.repeatReleasedFor=entry.repeatPredecessorId;entry.releaseOrder=++release;}
     const released=new Set(newlyReleased.map(entry=>entry.id));
-    const played=out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder),current=out.filter(entry=>!wasPlayed(entry)&&entry.id===protectedEntryId);
-    const ready=out.filter(entry=>!wasPlayed(entry)&&entry.id!==protectedEntryId&&!entry.effectiveHeld&&!released.has(entry.id));
-    const held=out.filter(entry=>!wasPlayed(entry)&&entry.id!==protectedEntryId&&entry.effectiveHeld);
-    return [...played,...current,...ready,...newlyReleased,...held];
+    const played=out.filter(wasPlayed).sort((a,b)=>a.playedOrder-b.playedOrder);
+    // Protection prevents a new repeat hold, not a move. The loaded item stays
+    // in its existing ready position until completion or an explicit action.
+    const ready=out.filter(entry=>!wasPlayed(entry)&&!entry.effectiveHeld&&!released.has(entry.id));
+    const held=out.filter(entry=>!wasPlayed(entry)&&entry.effectiveHeld);
+    return [...played,...ready,...newlyReleased,...held];
   }
   function applyQueuePolicy(entries,{repeatUploaderHold=false,protectedEntryId=null}={}) {
     if(!Array.isArray(entries)||entries.length>MAX_ROWS)throw Error('The show queue is invalid or too large.');
@@ -226,10 +229,13 @@
     return rotateReady(entries.map(entry=>({...entry,repeatPredecessorId:predecessors.get(entry.id)||null})),{protectedEntryId});
   }
   function playlistEntries(entries,{currentEntryId=null}={}){
+    // Keep the caller's current-entry option compatible without treating a
+    // selection as a move ahead of earlier eligible submissions.
     const played=entries.filter(entry=>wasPlayed(entry)&&!isHeld(entry)).slice().sort((a,b)=>(sequence(a,'playedOrder')||0)-(sequence(b,'playedOrder')||0));
-    const current=entries.filter(entry=>!wasPlayed(entry)&&entry.id===currentEntryId&&!isHeld(entry));
-    const ready=entries.filter(entry=>!wasPlayed(entry)&&entry.id!==currentEntryId&&!isHeld(entry));
-    return [...played,...current,...ready];
+    // The current ID is intentionally not promoted. Playlist projection follows
+    // the visible upcoming order even when a host quietly selects a later song.
+    const ready=entries.filter(entry=>!wasPlayed(entry)&&!isHeld(entry));
+    return [...played,...ready];
   }
   return {VERSION, MAX_ROWS, text, note, validInboxId, normalizeFlag, parseSunoURL, parseYouTubeURL, discoverInboxes, normalizeRows, mergeEntries,applyQueuePolicy,wasPlayed,isHeld,completeEntries,releaseEntry,rotateReady,playlistEntries};
 });

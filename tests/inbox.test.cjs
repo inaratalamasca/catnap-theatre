@@ -157,6 +157,18 @@ test('manual Release permits a rare three-part chain across refresh without rele
 });
 const fairEntries=names=>Core.mergeEntries([],names.map(name=>normalize([providerRow(name,{uploader_id:name[0],title:name})]).entries[0]));
 const readyIds=queue=>Core.playlistEntries(queue).map(entry=>entry.submissionId);
+test('protecting a selected upcoming entry never promotes it or changes playlist projection during refresh',()=>{
+ const incoming=fairEntries(['A1','B1','C1','A2']);let queue=Core.applyQueuePolicy(incoming,{repeatUploaderHold:true});const original=queue.map(entry=>entry.id),projection=readyIds(queue);
+ for(const selected of ['C1','B1']){
+  const id=inboxId+':'+selected;queue=Core.applyQueuePolicy(Core.mergeEntries(queue,incoming,{activeEntryId:id}),{repeatUploaderHold:true,protectedEntryId:id});
+  assert.deepEqual(queue.map(entry=>entry.id),original);assert.deepEqual(Core.playlistEntries(queue,{currentEntryId:id}).map(entry=>entry.submissionId),projection);assert.equal(queue.some(Core.wasPlayed),false);assert.equal(queue.find(entry=>entry.submissionId==='A2').effectiveHeld,true);
+ }
+});
+test('selection preserves the actual played prefix and only completion admits a repeat at the ready tail',()=>{
+ let queue=Core.applyQueuePolicy(fairEntries(['A1','B1','C1','A2']),{repeatUploaderHold:true});queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':C1'],{now:100}),{repeatUploaderHold:true});
+ assert.deepEqual(readyIds(queue),['C1','A1','B1']);queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true,protectedEntryId:inboxId+':B1'});assert.deepEqual(readyIds(queue),['C1','A1','B1']);assert.deepEqual(Core.playlistEntries(queue,{currentEntryId:inboxId+':B1'}).map(entry=>entry.submissionId),['C1','A1','B1']);
+ queue=Core.applyQueuePolicy(Core.completeEntries(queue,[inboxId+':A1'],{now:200}),{repeatUploaderHold:true});assert.deepEqual(readyIds(queue),['C1','A1','B1','A2']);assert.deepEqual(queue.filter(Core.wasPlayed).map(entry=>entry.playedOrder),[1,2]);assert.equal(queue.find(entry=>entry.submissionId==='A2').repeatReleasedFor,inboxId+':A1');
+});
 test('fair rotation appends only the exact finished predecessor successor behind the current accepted tail',()=>{
  let queue=Core.applyQueuePolicy(fairEntries(['X1','Y1','X2','Z1','X3']),{repeatUploaderHold:true});
  assert.deepEqual(readyIds(queue),['X1','Y1','Z1']);
