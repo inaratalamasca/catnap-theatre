@@ -5,14 +5,14 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const extension=path.resolve(__dirname,'../extension'),flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function panelFixture({pending=false}={}){
+async function panelFixture({pending=false,version='0.7.0'}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(extension,'presentation-panel.html'),'utf8'),{url:'chrome-extension://ours/presentation-panel.html?control=fixture',runScripts:'outside-only'}),w=dom.window;
  w.eval(fs.readFileSync(path.join(extension,'helpers.js'),'utf8'));
  const snapshot={settings:{...w.CatnapTheatre.defaults},connected:true,open:true,playbackMode:'inbox',playbackError:'',sourceTitle:'Synthetic source',visual:{},autoScroll:true,presets:[],recent:[],visualizer:{source:'none',state:'quiet'}};
  const calls=[];let tick,error=null,mutationError=null,release,mutationRelease,holdMutation=false;
  const first=pending?new Promise(resolve=>{release=()=>resolve({...snapshot});}):null;let firstPending=pending;
  w.setInterval=fn=>{tick=fn;return 1;};
- w.chrome={runtime:{getURL:p=>'chrome-extension://ours/'+p,sendMessage:async message=>{
+ w.chrome={runtime:{getManifest:()=>({version}),getURL:p=>'chrome-extension://ours/'+p,sendMessage:async message=>{
   calls.push(message);if(message.target==='catnap-show-worker')return {ok:true};
   if(message.action==='state'){if(error)throw error;if(firstPending){firstPending=false;return first;}return {...snapshot};}
   if(mutationError)throw mutationError;
@@ -22,6 +22,10 @@ async function panelFixture({pending=false}={}){
  w.eval(fs.readFileSync(path.join(extension,'presentation-panel.js'),'utf8'));await flush();
  return {dom,w,snapshot,calls,get status(){return w.document.getElementById('status');},release:()=>release?.(),set error(value){error=value;},set mutationError(value){mutationError=value;},hold(){holdMutation=true;},releaseMutation(){mutationRelease();holdMutation=false;},async refresh(){tick();await flush();},close(){dom.window.close();}};
 }
+
+test('presentation header uses the common label and actual installed runtime version',async()=>{
+ const f=await panelFixture({version:'0.7.12'});try{assert.equal(f.w.document.getElementById('build-label').textContent,'CATNAP THEATRE · DEVELOPMENT 0.7.12');}finally{f.close();}
+});
 
 test('top box stays neutral while linking, then uses verified open status and real mode',async()=>{
  const f=await panelFixture({pending:true});try{

@@ -8,6 +8,9 @@
   const {settings,defaults}=globalThis.CatnapTheatre;
   const control=new URLSearchParams(location.search).get('control');
   const $=id=>document.getElementById(id);
+  let buildVersion=SCRIPT_VERSION;
+  try{const actual=chrome.runtime.getManifest?.()?.version;if(typeof actual==='string'&&/^\d+(?:\.\d+){1,3}$/.test(actual))buildVersion=actual;}catch{/* A fixture/retired context uses the bundled version. */}
+  $('build-label').textContent='CATNAP THEATRE · DEVELOPMENT '+buildVersion;
   let current=null,busy=0,uploading=false,refreshing=false,presetKey='',recentKey='',lastOpen=null,refreshFailed=false;
   let lastStatus={text:'Linking to your Suno tab…',error:false,neutral:true};
   let operations=Promise.resolve(),mutationEpoch=0;
