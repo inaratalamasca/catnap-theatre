@@ -1,11 +1,16 @@
 # Changes
 
+## 0.6.10 host verification — November 16, 2026
+
+- Ina confirmed loading 0.6.10 in Dev1: the status indicators match the setup and lyrics work in Inbox mode.
+- Intake retries, playlist updates, AP, YouTube/Discord/HQ and advanced live acceptance remain separate checks. This records a host result; no runtime, archive, version or Lite change was made.
+
 ## 0.6.10 development — November 15, 2026
 
 - Keep Theatre Lite 0.5.0 separate and available unchanged for ordinary Suno hosts. Lite gains no Inbox controls or connector requirement.
 - Add prominent Suno/Inbox readiness indicators and labeled red/green checks for access, configuration, loaded data and verified results. Tie positive evidence to the current target; keep old counts separate from a newer failed check.
 - Grey the combined Theatre's top integration indicators as Not in use during ordinary Suno playback, without revoking authorization or preventing show preparation. The Inbox-only creator retains active status.
-- Status uses local facts and prior explicit operations, not automatic uploader/MCP network probes. Retain the grouped controls and all prior lyrics, manual-playback and intake fixes; actual host retry remains pending.
+- Status uses local facts and prior explicit operations, not automatic uploader/MCP network probes. Retain the grouped controls and all prior lyrics, manual-playback and intake fixes; the subsequent host status/lyrics result is recorded above.
 
 ## 0.6.9 development — November 15, 2026
 
