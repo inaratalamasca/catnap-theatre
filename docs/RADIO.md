@@ -31,6 +31,8 @@ installed editions are not automatically replaced by these preview folders.
 4. In the control window, check the selected source, enter the relay's WHIP
    address and your private publish token, then choose **Start music broadcast**.
    Grant access to that relay when asked. The token is not a listener link.
+   Keep token between updates is on by default for this browser profile;
+   turn it off for session-only use.
 5. Wait for **Live** and the green **On Air** dot. Opening the controls, granting
    permission or seeing a starting state does not mean the broadcast is live.
 6. Listeners open the relay's listener page. For the Catnap pilot, that is
@@ -42,6 +44,22 @@ media playing within it. It does not combine other tabs, Discord voices or your
 microphone. Keep the source tab open. Toolbar selection in another tab does
 not retarget an existing broadcast; Stop first, then select/start the new source.
 The host's existing local audio monitor and stereo Opus 256 kbps target remain.
+
+## Remembering the publish token
+
+The radio controls can keep an extension-local copy of the key for the selected
+relay origin. Normal updates/reloads of the same extension ID keep that copy,
+so it does not need to be pasted at each version change. Session-only use is
+available, and **Forget saved token** removes the durable copy. These choices
+do not stop an already active broadcast. A different relay origin cannot
+automatically reuse the saved key. The key stays in this browser profile; it
+is not a cloud-synced setting or an OS password-vault entry. Removing the
+extension, clearing its data or moving to a different profile/extension does
+not preserve it. Older session-only builds may need the key entered once after
+the first upgrade.
+
+A green Token entered label indicates presence only; relay authentication
+and the green On Air connection indicator remain separate.
 
 ## Small indicators
 

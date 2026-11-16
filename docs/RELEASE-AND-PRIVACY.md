@@ -27,7 +27,7 @@ The separate Radio-only package contains no Theatre, Inbox data, Suno OAuth or n
 
 Publishing is explicitly started from the toolbar control window for a selected Suno or AIU party-player tab. It captures that tab's audio, sends music to the relay chosen by the host, and restores a local monitor. It does not request microphone audio. Relay access requires a separate publish credential supplied by an authorized operator; no credential is distributed with the extension.
 
-The publishing worker retains the token in browser-session extension storage. The relay endpoint persists in local extension storage. Source page scripts and public listeners do not receive the token. The relay can observe the broadcaster/listener network connections as part of serving audio.
+The publishing worker retains the active token in browser-session extension storage. In the 0.7.0 preview, Keep token between updates is on by default: an extension-local saved copy is written through an explicit Start/remember action and bound to the selected relay origin. The host can opt for session-only use or Forget the saved copy; that does not stop a current session. Local storage preserves it through ordinary same-ID updates, not extension removal/data clearing or profile changes. It is not cloud sync or an operating-system password vault. The relay endpoint also persists in local extension storage. Source page scripts and public listeners do not receive the token. The relay can observe the broadcaster/listener network connections as part of serving audio.
 
 While publishing, bounded public metadata can include the current song title/artist, allowlisted artwork, available native timing, recent track context and up to 100 following rendered playlist rows. This is intentionally public broadcast information. AIU player capture currently sends no song metadata; a new AIU broadcast clears old public song details. The pilot metadata service expires stale metadata after 30 seconds; audio does not depend on metadata. Do not broadcast a private playlist if you do not want its visible song context shared. See the [broadcast guide](BROADCAST-PILOT.md).
 
@@ -35,7 +35,7 @@ The bundled extension has no Catnap-operated telemetry service or AI integration
 
 ## Permissions
 
-- `storage`: local preferences, show queue/host context, relay endpoint and session-scoped authorization/publishing state.
+- `storage`: local preferences, show queue/host context, relay endpoint, optional origin-bound remembered publish key, and session-scoped authorization/publishing state.
 - `tabs` and `scripting`: choose the intended uploader/Suno tab, perform the optional same-origin inbox read and install/verify its native playback guard.
 - `identity` and `nativeMessaging`: explicit Suno OAuth sign-in and fixed-endpoint playlist transport through the optional helper.
 - `alarms`: optional bounded AP inbox/playlist updates; stopped on restart or error.
