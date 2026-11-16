@@ -35,7 +35,8 @@
     const access=state.inboxAccess,accessContext=!!access&&access.uploaderTabId===state.uploaderTabId&&(access.kind==='read'?sameInbox(access,state):access.kind==='discover'&&state.inboxes?.[state.mode]?.some(row=>row.id===state.inboxId));
     const inboxAccessChecked=!!(permission&&uploaderTabOpen&&inboxSelected&&accessContext);
     const sync=state.lastPlaylistSync,context=sync?.context,playlistSelected=!!state.playlistId;
-    const playlistVerified=!!(playlistSelected&&sameInbox(context,state)&&context.playlistId===state.playlistId&&JSON.stringify(context.sunoIds)===JSON.stringify(playlistIds(state))&&Array.isArray(sync.missing)&&!sync.missing.length&&Array.isArray(sync.failures)&&!sync.failures.length);
+    const unresolved=state.entries.some(entry=>entry.state!=='held'&&entry.preferredSource&&entry.sunoUrl&&!entry.sunoId);
+    const playlistVerified=!!(!unresolved&&playlistSelected&&sameInbox(context,state)&&context.playlistId===state.playlistId&&JSON.stringify(context.sunoIds)===JSON.stringify(playlistIds(state))&&Array.isArray(sync.missing)&&!sync.missing.length&&Array.isArray(sync.failures)&&!sync.failures.length);
     return {sunoAuthorized:suno.connected===true,uploaderPermission:permission,uploaderTabOpen,inboxSelected,inboxAccessChecked,inboxCheckedAt:inboxAccessChecked?access.at:null,pendingRead:inboxAccessChecked&&sameInbox(state.lastRead?.context,state),playlistSelected,playlistVerified};
   }
   function serial(fn) {const result=tasks.then(fn);tasks=result.catch(()=>{});return result;}

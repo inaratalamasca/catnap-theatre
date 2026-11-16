@@ -174,6 +174,13 @@ test('new inbox songs invalidate playlist verification until the explicit sync v
   assert.equal(f.calls.mcp.length,1);assert.deepEqual(f.state().lastPlaylistSync.context.sunoIds,[SONG,SECOND]);
 });
 
+test('an unresolved new Suno link cannot retain a green playlist result while sync is held',async()=>{
+  const context={uploaderTabId:8,inboxId:'fixture-inbox',mode:'lp'};
+  const f=fixture({state:{playlistId:PLAYLIST,entries:[entry('one'),entry('unresolved',{sunoId:null,sunoUrl:'https://suno.com/s/fixture-short'})],lastPlaylistSync:{at:1,confirmed:1,missing:[],failures:[],context:{...context,playlistId:PLAYLIST,sunoIds:[SONG]}}}});
+  assert.equal((await f.control('status')).data.readiness.playlistVerified,false);
+  const sync=await f.control('sync-playlist');assert.equal(sync.ok,false);assert.match(sync.error,/short links could not be resolved/);assert.equal(f.calls.mcp.length,0);
+});
+
 test('uploader reads inject their core/adapter into only the selected authorized origin and include show mode', async () => {
   const f=fixture({state:{mode:'ap'}});
   assert.equal((await f.control('discover')).ok,true);
