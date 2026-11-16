@@ -1,6 +1,7 @@
 /* Catnap host-only Inbox & show window, version 0.7.0.
  * Change summary: local readiness, verified playback-mode display, prominent
- * inbox totals and ordered setup actions. Playback never queues extra starts.
+ * inbox totals, persistent local order/holds and ordered setup actions. Playback
+ * never queues extra starts; local edits do not reorder a Suno playlist.
  */
 (() => {
   'use strict';
@@ -9,7 +10,7 @@
   document.querySelector('header .eyebrow').textContent='CATNAP THEATRE · DEVELOPMENT '+buildVersion;
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='',playerChoice;
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
-  if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
+  if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('queue-policy').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
   const status=value=>{$('status').textContent=value;};
   // Display/copy only public artwork from the known music CDNs. A thumbnail
   // must not become an arbitrary tracking URL or leak signed query values.
@@ -105,16 +106,33 @@
     $('reload-lyrics').disabled=!entry||(p.source||entry.preferredSource)!=='suno';
     $('suno-status').textContent=sunoMessage||(data.suno.connected?'Suno authorized. Playlist changes require your explicit action.':data.suno.reconnectRequired?'Suno needs updated permissions. Click Connect Suno and approve account profile and library access.':'Suno not authorized. Connect Suno to authorize playlist changes.');
     $('playlist-status').textContent=s.lastPlaylistSync?`Last verified: ${s.lastPlaylistSync.confirmed?.length??s.lastPlaylistSync.confirmed??0} confirmed · ${s.lastPlaylistSync.missing?.length||0} missing`:'';
-    $('queue-count').textContent=`(${s.entries.length})`;
-    const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason]),entry?.id,s.playerTabId,Number($('player-tab').value)]);
+    $('repeat-uploader-hold').checked=s.repeatUploaderHold===true;
+    const currentId=s.playback?.current?.id;
+    const sourceBlocked=e=>e.state==='held'||!(e.preferredSource==='suno'?e.sunoUrl:e.preferredSource==='youtube'?e.youtubeUrl:null);
+    const held=e=>e.effectiveHeld===true||e.hostHeld===true||sourceBlocked(e);
+    const played=e=>Number.isFinite(e.playedAt)||e.state==='played';
+    const locked=e=>e.id===currentId||played(e)||e.state==='playing';
+    const heldCount=s.entries.filter(held).length;
+    $('queue-count').textContent=`(${s.entries.length}${heldCount?' · '+heldCount+' held':''})`;
+    const nextSignature=JSON.stringify([s.entries.map(e=>[e.id,e.title,e.artist,e.uploaderName,e.disclaimer,e.preferredSource,e.state,e.holdReason,e.effectiveHeld,e.effectiveHoldReason,e.hostHeld,e.repeatHoldOverride,e.repeatPredecessorId,e.playedAt]),currentId,s.playerTabId,Number($('player-tab').value)]);
     if(nextSignature!==queueSignature){
       queueSignature=nextSignature;$('queue').replaceChildren();
       s.entries.forEach((e,index)=>{
-        const li=document.createElement('li');li.setAttribute('aria-current',String(e.id===entry?.id));
+        const li=document.createElement('li');li.dataset.entryId=e.id;li.dataset.held=String(held(e));li.setAttribute('aria-current',String(e.id===entry?.id));
         const title=document.createElement('strong');title.textContent=`${index+1}. ${e.title||'Untitled submission'}`;
-        const info=document.createElement('small');info.textContent=`${(e.preferredSource||'held').toUpperCase()} · ${e.uploaderName||'Uploader unavailable'}${e.disclaimer==='yes'?' · ⚠ Disclaimer':''}${e.holdReason?' · '+e.holdReason:''}`;
-        const button=document.createElement('button');button.type='button';button.textContent='Load';button.hidden=globalThis.CatnapPackage?.inboxOnly===true;button.disabled=e.state==='held'||!Number($('player-tab').value);button.onclick=()=>action(()=>send('load',{index,tabId:Number($('player-tab').value)}), 'Loaded. Press Play when ready.');
-        li.append(title,info,button);$('queue').append(li);
+        const info=document.createElement('small');info.textContent=`${(e.preferredSource||'held').toUpperCase()} · ${e.uploaderName||'Uploader unavailable'}${e.disclaimer==='yes'?' · ⚠ Disclaimer':''}`;
+        const reason=e.effectiveHoldReason||e.holdReason||(e.hostHeld?'Held by host.':'');
+        const badge=document.createElement('span');badge.className='queue-state';badge.textContent=e.id===currentId?'Loaded / playing':played(e)?'Played':held(e)?'Held':e.repeatHoldOverride?'Host override':'';badge.hidden=!badge.textContent;
+        const detail=document.createElement('small');detail.className='queue-hold-reason';detail.textContent=reason;detail.hidden=!reason;
+        const controls=document.createElement('div');controls.className='queue-actions';controls.hidden=globalThis.CatnapPackage?.inboxOnly===true;
+        const button=(name,text,disabled,click)=>{const control=document.createElement('button');control.type='button';control.dataset.action=name;control.textContent=text;control.hidden=globalThis.CatnapPackage?.inboxOnly===true;control.disabled=disabled;control.setAttribute('aria-label',text+' · '+(e.title||'Untitled submission'));control.onclick=click;controls.append(control);return control;};
+        button('load','Load',held(e)||!Number($('player-tab').value),()=>action(()=>send('load',{entryId:e.id,tabId:Number($('player-tab').value)}),'Loaded. Press Play when ready.'));
+        const previous=s.entries[index-1],next=s.entries[index+1];
+        button('move-up','↑',locked(e)||!previous||locked(previous),()=>action(()=>send('queue-move',{entryId:e.id,beforeEntryId:previous.id}),'Local show order saved.')).setAttribute('aria-label','Move up · '+(e.title||'Untitled submission'));
+        button('move-down','↓',locked(e)||!next||locked(next),()=>action(()=>send('queue-move',{entryId:e.id,beforeEntryId:s.entries[index+2]?.id||null}),'Local show order saved.')).setAttribute('aria-label','Move down · '+(e.title||'Untitled submission'));
+        const automatic=held(e)&&!!e.repeatPredecessorId&&!e.hostHeld,holdButton=button('hold',held(e)?automatic?'Release (host override)':'Release':'Hold',locked(e)||sourceBlocked(e),()=>action(()=>send('queue-hold',{entryId:e.id,held:!held(e)}),held(e)?'Local hold released.':'Local hold saved.'));
+        holdButton.title=sourceBlocked(e)?'Fix the submission’s playback source before releasing it.':automatic?'Host override: allow this song before the uploader’s earlier submission has played.':locked(e)?'Loaded and played songs stay fixed.':held(e)?'Release this song for playback.':'Keep this song in the show without playing it yet.';
+        li.append(title,badge,info,detail,controls);$('queue').append(li);
       });
     }
   }
@@ -166,6 +184,7 @@
   $('unbind-player').onclick=()=>action(()=>send('unbind-player'),'Managed show stopped. Ordinary Suno controls restored.');
   $('autoplay').onchange=()=>{const autoplay=$('autoplay').checked;return setup(()=>configure({autoplay}),'Playback setting saved.','Saving playback setting…');};
   $('warning-seconds').onchange=()=>{const warningSeconds=Number($('warning-seconds').value);return setup(()=>configure({warningSeconds}),'Warning duration saved.','Saving warning duration…');};
+  $('repeat-uploader-hold').onchange=()=>{const repeatUploaderHold=$('repeat-uploader-hold').checked;return setup(()=>configure({repeatUploaderHold}),'Repeat-uploader hold setting saved.','Saving local hold setting…');};
   $('watch').onchange=()=>{const enabled=$('watch').checked;return setup(()=>send('watch',{enabled}),'Inbox update setting saved.','Updating AP inbox settings…');};
   $('new-show').onclick=()=>action(async()=>{await send('new-show');inboxes={lp:[],ap:[]};queueSignature='';},'New local show. Existing Suno playlists and uploader submissions are unchanged.');
   for(const id of ['previous','next','play','repeat-warning'])$(id).onclick=()=>action(()=>send(id,{tabId:Number($('player-tab').value)}),['next','previous'].includes(id)?'Loaded. Press Play when ready.':undefined);

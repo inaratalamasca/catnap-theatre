@@ -36,7 +36,9 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
       case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'},{id:'other-inbox',name:'Other LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};state.inboxes=structuredClone(data.inboxes);break;
       case 'import':data=structuredClone(state);break;
       case 'sync-playlist':data={confirmed:state.entries.length,missing:[],playerUpdateWarning:state.error||undefined};break;
-      case 'load':state.playback={current:{id:state.entries[message.index].id},phase:'ready',source:state.entries[message.index].preferredSource};data={loaded:true};break;
+      case 'load':{const entry=state.entries.find(item=>item.id===message.entryId);state.playback={current:{id:entry.id},phase:'ready',source:entry.preferredSource};data={loaded:true};break;}
+      case 'queue-move':{const from=state.entries.findIndex(item=>item.id===message.entryId),[entry]=state.entries.splice(from,1),to=message.beforeEntryId===null?state.entries.length:state.entries.findIndex(item=>item.id===message.beforeEntryId);state.entries.splice(to,0,entry);data=structuredClone(state);break;}
+      case 'queue-hold':{const entry=state.entries.find(item=>item.id===message.entryId);entry.hostHeld=message.held;entry.effectiveHeld=message.held;entry.effectiveHoldReason=message.held?'Held by host.':'';if(!message.held)entry.repeatHoldOverride=true;data=structuredClone(state);break;}
       case 'watch':state.watch.enabled=message.enabled;data=structuredClone(state);break;
       case 'playlists':data=[{id:state.playlistId,name:'Fixture saved playlist'}];break;
       case 'create-playlist':state.playlistId='00000000-0000-4000-8000-000000000010';data={id:state.playlistId,name:message.name,visibility:message.visibility};break;
@@ -191,8 +193,8 @@ test('host notes and uploader names render as text, with an explicit disclaimer 
 
 test('queue Load, Load next and Load previous never send Play',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
-  f.w.document.querySelectorAll('#queue button')[1].click();await settle();
-  assert.deepEqual(f.messages.filter(message=>message.action==='load').map(message=>message.index),[1]);
+  f.w.document.querySelectorAll('#queue button[data-action=load]')[1].click();await settle();
+  assert.deepEqual(f.messages.filter(message=>message.action==='load').map(message=>message.entryId),['fixture-inbox:2']);
   assert.equal(f.element('current-title').textContent,'Second song');
   assert.equal(f.element('current-warning').dataset.warning,'unknown');
   await f.click('next');await f.click('previous');
@@ -202,7 +204,7 @@ test('queue Load, Load next and Load previous never send Play',async t=>{
 
 test('copy now playing uses prepared active-source text and does not send chat or notes',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
-  f.w.document.querySelectorAll('#queue button')[1].click();await settle();
+  f.w.document.querySelectorAll('#queue button[data-action=load]')[1].click();await settle();
   await f.click('copy-playing');
   assert.equal(f.copies.length,1);assert.ok(f.copies[0].includes('https://www.youtube.com/watch?v=abcdefghijk'));
   assert.ok(f.copies[0].includes('Submitted by: Other uploader'));
@@ -295,17 +297,17 @@ test('stale page connection does not display saved Manual advance or enable stal
   assert.equal(f.element('copy-playing').disabled,true);
   assert.equal(f.element('current-title').textContent,'No song loaded');
   await f.click('play');assert.equal(f.messages.find(m=>m.action==='play').tabId,22);
-  f.w.document.querySelector('#queue button').click();await settle();
+  f.w.document.querySelector('#queue button[data-action=load]').click();await settle();
   assert.equal(f.messages.find(m=>m.action==='load').tabId,22);
 });
 
 
 test('choosing a source tab enables first row Load without an extra binding action',async t=>{
   const f=await fixture({linked:false,playerInitiallySelected:false});t.after(()=>f.dom.window.close());
-  assert.equal(f.w.document.querySelector('#queue button').disabled,true);
+  assert.equal(f.w.document.querySelector('#queue button[data-action=load]').disabled,true);
   await f.change('player-tab','22');
-  assert.equal(f.w.document.querySelector('#queue button').disabled,false);
-  f.w.document.querySelector('#queue button').click();await settle();
+  assert.equal(f.w.document.querySelector('#queue button[data-action=load]').disabled,false);
+  f.w.document.querySelector('#queue button[data-action=load]').click();await settle();
   assert.equal(f.messages.find(m=>m.action==='load').tabId,22);
 });
 
@@ -315,7 +317,7 @@ test('an unbound source selection survives tab-title refresh without connecting 
   f.tabs.find(tab=>tab.id===22).title='A new native song title | Suno';
   await f.change('show-name','Refresh without playback');
   assert.equal(f.element('player-tab').value,'22');
-  assert.equal(f.w.document.querySelector('#queue button').disabled,false);
+  assert.equal(f.w.document.querySelector('#queue button[data-action=load]').disabled,false);
   assert.equal(f.messages.some(m=>['bind-player','play','load'].includes(m.action)),false);
 });
 
@@ -325,7 +327,7 @@ test('a closed chosen source holds instead of silently selecting another Suno ta
   f.tabs.splice(f.tabs.findIndex(tab=>tab.id===22),1,{id:23,title:'Other Suno tab',kind:'suno'});
   await f.change('show-name','Refresh after closed source');
   assert.equal(f.element('player-tab').value,'');
-  assert.equal(f.w.document.querySelector('#queue button').disabled,true);
+  assert.equal(f.w.document.querySelector('#queue button[data-action=load]').disabled,true);
   assert.equal(f.messages.some(m=>['bind-player','play','load'].includes(m.action)),false);
 });
 
@@ -343,7 +345,7 @@ test('Inbox exposes a dedicated Reload lyrics action without playback and disabl
   assert.equal(f.element('reload-lyrics').textContent,'Reload lyrics');assert.equal(f.element('reload-lyrics').disabled,false);
   await f.click('reload-lyrics');assert.equal(f.messages.filter(m=>m.action==='reload-lyrics').length,1);
   assert.equal(f.messages.some(m=>['play','pause','bind-player','next'].includes(m.action)),false);
-  f.w.document.querySelectorAll('#queue button')[1].click();await settle();assert.equal(f.element('reload-lyrics').disabled,true);
+  f.w.document.querySelectorAll('#queue button[data-action=load]')[1].click();await settle();assert.equal(f.element('reload-lyrics').disabled,true);
   const stale=await fixture({linked:false});t.after(()=>stale.dom.window.close());assert.equal(stale.element('reload-lyrics').disabled,true);
 });
 
@@ -496,4 +498,96 @@ test('host song card displays safe artwork and click copies only its public imag
 });
 test('artwork copy uses the existing selectable fallback when clipboard access is denied',async t=>{
  const f=await fixture({clipboardDenied:true});t.after(()=>f.dom.window.close());f.state().entries[0].artworkUrl='https://cdn2.suno.ai/fixture.webp';await f.poll();await f.click('copy-artwork');assert.equal(f.element('copy-fallback').hidden,false);assert.equal(f.element('copy-fallback').value,'https://cdn2.suno.ai/fixture.webp');assert.equal(f.element('copy-fallback').closest('details').open,true);
+});
+
+
+const queueRow=(f,id)=>[...f.w.document.querySelectorAll('#queue li')].find(row=>row.dataset.entryId===id);
+const rowButton=(f,id,action)=>queueRow(f,id).querySelector(`button[data-action="${action}"]`);
+const addQueueEntry=(f,id,extra={})=>{const entry={...f.state().entries[1],id,title:'Upcoming '+id,...extra};f.state().entries.push(entry);return entry;};
+
+test('local reorder uses stable entry identities, preserves current anchor, and never writes a playlist',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  addQueueEntry(f,'fixture-inbox:3');addQueueEntry(f,'fixture-inbox:4');await f.poll();
+  assert.equal(rowButton(f,'fixture-inbox:1','move-up').disabled,true);
+  assert.equal(rowButton(f,'fixture-inbox:1','move-down').disabled,true);
+  assert.equal(rowButton(f,'fixture-inbox:2','move-up').disabled,true,'cannot cross the loaded song');
+  assert.equal(rowButton(f,'fixture-inbox:4','move-down').disabled,true);
+  assert.match(rowButton(f,'fixture-inbox:3','move-up').getAttribute('aria-label'),/Move up.*Upcoming/);
+  rowButton(f,'fixture-inbox:3','move-up').click();await settle();
+  assert.deepEqual(f.messages.filter(m=>m.action==='queue-move').map(({entryId,beforeEntryId})=>({entryId,beforeEntryId})),[{entryId:'fixture-inbox:3',beforeEntryId:'fixture-inbox:2'}]);
+  assert.deepEqual(f.state().entries.map(e=>e.id),['fixture-inbox:1','fixture-inbox:3','fixture-inbox:2','fixture-inbox:4']);
+  rowButton(f,'fixture-inbox:3','move-down').click();await settle();
+  assert.equal(f.messages.filter(m=>m.action==='queue-move').at(-1).beforeEntryId,'fixture-inbox:4');
+  rowButton(f,'fixture-inbox:3','move-down').click();await settle();
+  assert.equal(f.messages.filter(m=>m.action==='queue-move').at(-1).beforeEntryId,null);
+  assert.equal(f.messages.some(m=>['sync-playlist','create-playlist','play','load'].includes(m.action)),false);
+  assert.match(f.element('queue-help').textContent,/across inbox reads.*does not reorder the Suno playlist/);
+});
+
+test('host Hold and Release are explicit local actions and held rows cannot Load',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  const hold=rowButton(f,'fixture-inbox:2','hold');assert.equal(hold.textContent,'Hold');
+  hold.click();await settle();
+  assert.deepEqual(f.messages.filter(m=>m.action==='queue-hold').map(({entryId,held})=>({entryId,held})),[{entryId:'fixture-inbox:2',held:true}]);
+  assert.equal(rowButton(f,'fixture-inbox:2','hold').textContent,'Release');
+  assert.equal(rowButton(f,'fixture-inbox:2','load').disabled,true);
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,'Held');
+  assert.match(queueRow(f,'fixture-inbox:2').querySelector('.queue-hold-reason').textContent,/Held by host/);
+  assert.match(f.element('queue-count').textContent,/1 held/);
+  rowButton(f,'fixture-inbox:2','hold').click();await settle();
+  assert.equal(f.messages.filter(m=>m.action==='queue-hold').at(-1).held,false);
+  assert.equal(rowButton(f,'fixture-inbox:2','load').disabled,false);
+  assert.equal(f.messages.some(m=>['play','load','sync-playlist'].includes(m.action)),false);
+});
+
+test('repeat-uploader holds are opt in and a per-song Release clearly overrides an approved multipart sequence',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  assert.equal(f.element('repeat-uploader-hold').checked,false);
+  await f.change('repeat-uploader-hold',true);
+  assert.deepEqual(f.messages.filter(m=>m.action==='configure').at(-1).settings,{repeatUploaderHold:true});
+  Object.assign(f.state().entries[1],{effectiveHeld:true,effectiveHoldReason:'Waiting for the uploader’s earlier song.',repeatPredecessorId:f.state().entries[0].id});
+  await f.poll();
+  const release=rowButton(f,'fixture-inbox:2','hold');
+  assert.equal(release.textContent,'Release (host override)');assert.equal(release.disabled,false);
+  assert.match(release.title,/allow this song before.*earlier submission/);
+  assert.equal(rowButton(f,'fixture-inbox:2','load').disabled,true);
+  release.click();await settle();
+  assert.equal(f.messages.filter(m=>m.action==='queue-hold').at(-1).held,false);
+  assert.equal(f.state().entries[1].repeatHoldOverride,true);
+  assert.equal(f.state().repeatUploaderHold,true,'global fairness policy stays enabled');
+  assert.equal(queueRow(f,'fixture-inbox:2').querySelector('.queue-state').textContent,'Host override');
+  assert.equal(f.messages.some(m=>['play','sync-playlist'].includes(m.action)),false);
+});
+
+test('invalid sources cannot be released and loaded or played entries cannot be held or moved',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  const invalid=addQueueEntry(f,'fixture-inbox:bad',{state:'held',preferredSource:null,youtubeUrl:null,sunoUrl:null,holdReason:'No supported playback link.'});
+  addQueueEntry(f,'fixture-inbox:played',{playedAt:123,state:'played'});
+  await f.poll();
+  assert.equal(rowButton(f,invalid.id,'hold').textContent,'Release');
+  assert.equal(rowButton(f,invalid.id,'hold').disabled,true);assert.equal(rowButton(f,invalid.id,'load').disabled,true);
+  assert.match(rowButton(f,invalid.id,'hold').title,/Fix.*playback source/);
+  for(const id of ['fixture-inbox:1','fixture-inbox:played'])for(const action of ['hold','move-up','move-down'])assert.equal(rowButton(f,id,action).disabled,true);
+  rowButton(f,invalid.id,'hold').click();rowButton(f,'fixture-inbox:1','hold').click();await settle();
+  assert.equal(f.messages.some(m=>['queue-hold','queue-move'].includes(m.action)),false);
+});
+
+test('Inbox-only hides local order and hold controls along with playback controls',async t=>{
+  const f=await fixture({inboxOnly:true});t.after(()=>f.dom.window.close());
+  assert.equal(f.element('queue-policy').hidden,true);
+  assert.equal([...f.w.document.querySelectorAll('#queue button')].every(button=>button.hidden),true);
+  assert.equal([...f.w.document.querySelectorAll('#queue .queue-actions')].every(controls=>controls.hidden),true);
+  assert.match(f.element('queue-help').textContent,/FIFO.*Suno controls playback/);
+  assert.equal(f.messages.some(m=>['queue-hold','queue-move'].includes(m.action)),false);
+});
+
+test('reordered row Load still addresses the displayed song by identity after a newer queue update',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  addQueueEntry(f,'fixture-inbox:3');await f.poll();
+  const displayed=rowButton(f,'fixture-inbox:2','load');
+  [f.state().entries[1],f.state().entries[2]]=[f.state().entries[2],f.state().entries[1]];
+  displayed.click();await settle();
+  const request=f.messages.filter(m=>m.action==='load').at(-1);
+  assert.equal(request.entryId,'fixture-inbox:2');assert.equal('index' in request,false);
+  assert.equal(f.state().playback.current.id,'fixture-inbox:2');
 });
