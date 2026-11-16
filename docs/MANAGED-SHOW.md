@@ -1,4 +1,4 @@
-# Inbox playlists and managed shows · 0.6.10 development
+# Inbox playlists and managed shows · 0.7.0 development
 
 **0.7.0 presentation update:** YouTube expands to the Theatre's browser window on Play. The small controls let you restore Artwork view, pause or load the next song; no monitor fullscreen is requested. Quiet Load still does not start audio. Red video badges identify YouTube queue entries. Status text now says Loaded. The single Theatre gear opens Presentation controls, with Radio and Inbox entries at the top and a green, mode-labeled ready status when connected without a reported error. These additions need a real host rehearsal; the 0.6.10 Dev1 lyrics/status confirmation remains separately recorded.
 
@@ -38,7 +38,7 @@ AP inbox/playlist updates are optional, every two minutes while the browser is r
 
 The prominent card at the top of Inbox & show identifies **Inbox show controls active**, **Suno playlist controls**, or **Inbox show needs reconnecting**. It identifies the actual controlled tab separately from a merely selected destination. Selecting a tab does not change playback. The two mode buttons show which mode is active; changing mode remains an explicit action. The Inbox-only creator explains that Suno controls playback.
 
-Theatre groups Presentation, Inbox & show and Close together with matching buttons. Its list reads **INBOX SHOW ORDER** in managed mode or **SUNO PLAYLIST** in ordinary mode. **Inbox Submissions: N Pending · N held · (time)** is prominently displayed above setup, with read/handoff errors separate from the last successful totals. These counts describe the last inbox read, not Suno playlist membership.
+The Theatre gear opens Presentation controls, with Radio and Inbox buttons at the top. Its list reads **INBOX SHOW ORDER** in managed mode or **SUNO PLAYLIST** in ordinary mode. **Inbox Submissions: N Pending · N held in show · (time)** is prominently displayed above setup. Pending and time describe the last successful inbox read; the held total reflects current source, host and repeat-uploader holds in this show. Read/handoff errors and current-target readiness remain separate. These are not Suno playlist membership counts. The Inbox-only creator retains its FIFO read totals.
 
 ## Readiness and connection indicators
 
@@ -46,14 +46,24 @@ The top Suno and Inbox indicators show whether those integrations are ready for 
 
 In ordinary Suno playlist mode, the combined Theatre top integration indicators are grey and say **Not in use**. This does not revoke access or stop a host preparing the next show. Detailed readiness checks remain available. The Inbox-only creator keeps its integration status active because playlist preparation is its purpose. Status polling uses local evidence; it does not continually contact the uploader or Suno. Authorization and the last verified playlist operation are separate facts.
 
+## Local running order and holds
+
+The combined Theatre + Inbox show starts in FIFO order. Use a row’s **↑ / ↓** to move an upcoming song and **Hold / Release** to keep it for later or make it available again. The changes are saved per local show in this browser profile. Manual reads and AP resync preserve that order and those holds; newly discovered submissions append. Editing the upcoming queue does not restart or replace current audio. Loaded/playing and already completed entries are fixed anchors. An invalid or missing source must be corrected before Release can make it playable.
+
+**Hold another song from the same uploader** is optional and starts off. When enabled, a later submission waits until that uploader’s preceding submission finishes. Starting, skipping or interrupting the earlier song does not count as completion. For an approved two- or three-part sequence, use **Release (host override)** on each later part. Each override survives refresh/resync while the global rule stays enabled. Held entries remain visible with their reason; Load next and AP autoplay select the next unheld entry. If none is available, the show stays held for the host.
+
+Local order, holds and overrides are independent of Suno’s playlist order and membership. The Inbox-only creator keeps FIFO intake and has no local reorder/hold controls. Starting a new local show clears its saved queue choices without changing uploader submissions or existing Suno playlists.
+
+The uploader currently enforces LP’s one-submission-per-person rule and AP’s total show capacity. This optional playback hold is not an extra submission quota. Future per-person AP submission limits belong in the uploader, rather than being inferred or imposed by the local player.
+
 ## Manual LP and optional AP autoplay
 
 In the combined package, open the destination playlist in Suno and choose that tab under Theatre playback. Press Use this Theatre for the show, or select the intended tab and use Load/Play. Explicit Load/Play reconnects a stale or reloaded page before acting. Merely selecting LP/AP, reading the inbox or creating a playlist never stops a currently playing source. Native playback is held before a managed entry is selected.
 
 - **Load next / Load previous / a queue row's Load:** update the loaded entry, artwork and warning without starting audio.
-- **Play:** start the loaded source; on a fresh show it loads and starts the first FIFO entry. It does not skip a held first entry. **Pause:** hold it.
+- **Play:** start the loaded source; on a fresh show it loads and starts the first available, unheld entry in the local order. **Pause:** hold playback.
 - **LP:** autoplay is off and cannot be enabled. The song ends and stays ended until the host loads another entry.
-- **AP:** autoplay starts off; the host may turn it on or off. When on, the managed queue—not Suno's native next/repeat setting—chooses the following entry. A blocked entry holds for a host decision.
+- **AP:** autoplay starts off; the host may turn it on or off. When on, the managed queue—not Suno's native next/repeat setting—chooses the following entry. Held entries remain visible and are passed over until released. Playback/source failures still require a host decision.
 
 Native Suno playback uses an exact rendered song row and a source-bound audio guard. It fails visibly if the native row/audio cannot be identified safely; it does not navigate/reload the playing tab or guess a source. Suno may need to render new playlist rows before they can play. Native looping is suppressed in managed mode and restored on return to ordinary Suno. A separately managed YouTube iframe stays in the same Theatre tab; opening a different tab would not automatically enter a Discord tab share.
 
@@ -74,7 +84,7 @@ The show queue uses inbox + submission identity, independent of Suno's playlist.
 - Suno only: play that Suno song.
 - Suno + YouTube: retain both and prefer YouTube.
 - YouTube only: keep its FIFO position and play it directly in Theatre; no placeholder is needed in this mode.
-- Unsupported/unavailable source: show a held entry; do not silently skip it or substitute Suno for a requested YouTube source.
+- Unsupported/unavailable source: retain a visible held entry until its source is corrected; never substitute Suno for a requested YouTube source.
 
 YouTube uses its embedded player with autoplay off while staging. Embed restrictions, private/deleted videos and browser autoplay blocking produce a visible host decision. Provider errors do not silently advance the show. Other providers need their own adapter; arbitrary media URLs are not accepted as interchangeable players.
 
@@ -102,6 +112,8 @@ A live 0.6.3 trial staged the song successfully but could not find its native Pl
 
 ## Verification and remaining acceptance
 
+The 0.7.0 local-order controls have isolated UI tests and a synthetic Chromium rehearsal at desktop and 390px mobile widths. Mocked button clicks verify stable entry identities for Move, Hold/Release and quiet Load, explicit multipart overrides, fixed current/played rows, disabled invalid-source Release and unclipped controls with long text. These fixtures use invented submissions and no real uploader, Suno or broadcast service. Persistent resync, live AP advancement and unchanged current audio still require the real host checks below; the accepted 0.6.10 status/lyrics result is not acceptance of these new 0.7.0 features.
+
 Automated checks cover FIFO/source/flag handling, exact sender/tab/lease checks, stale events, private-note filtering, MCP OAuth/membership/readback, native helper framing, clipboard controls, manual/AP transitions, native source/loop guards and packaging. An actual browser synthetic-media fixture verifies that native ended handlers cannot auto-start a following tone and that changing its source revokes permission before another play.
 
 On November 15, the host confirmed loading 0.6.2, connecting through Suno authorization, creating a playlist and rebroadcasting that playing playlist with clean audio. This is a successful host-reported combined rehearsal of authorization, playlist creation, Suno playback and HQ publishing; it is not an instrumented latency or audio-quality measurement.
@@ -112,7 +124,7 @@ Version 0.6.8 corrects a reader difference reproduced in fresh Chromium: raw lyr
 
 Version 0.6.10 adds local, context-aware readiness indicators while keeping Lite 0.5.0 separate and unchanged. All 256 maintained checks pass. Fresh Chromium verifies active, unverified, ordinary/inactive and Inbox-only readiness layouts without overflow or page errors, plus the retained managed lyric/header rehearsal. On November 16, 2026, Ina confirmed the Dev1 0.6.10 activation, matching status indicators and working lyrics in Inbox mode. This confirms the previously failing managed-lyrics path; it does not establish the separate remaining checks below.
 
-Remaining acceptance includes exact inbox-to-playlist membership/order and ongoing additions, a flagged Load without sound, AP autoplay, YouTube insertion/return and embed/gesture behavior, token renewal, and simultaneous Discord/HQ capture. The confirmed manual sequence does not establish those separate behaviors. Windows/macOS browser installation needs platform verification in addition to the isolated helper/CI checks.
+Remaining acceptance includes per-show queue/hold restoration during real inbox reads and AP additions, completion-based repeat holds and explicit multipart releases, independent inbox-to-playlist membership/order and ongoing additions, a flagged Load without sound, AP autoplay, YouTube insertion/return and embed/gesture behavior, token renewal, and simultaneous Discord/HQ capture. The confirmed manual sequence does not establish those separate behaviors. Windows/macOS browser installation needs platform verification in addition to the isolated helper/CI checks.
 
 Version 0.6.9 adds the clearer control grouping, source labels and persistent mode/read summaries, with 245 maintained checks passing. Synthetic Chromium verifies desktop, tablet and mobile button geometry plus the existing managed lyrics rehearsal. Version 0.6.9 was not separately host-tested; the subsequent 0.6.10 status/lyrics result is recorded above.
 
@@ -124,6 +136,6 @@ Run `npm ci --ignore-scripts` and `npm run check` in this repository. Then run:
 bash scripts/build-dev.sh --output /absolute/path/to/a/new/output-folder
 ```
 
-The builder refuses overwrites and emits both unpacked folders, root-manifest ZIPs and SHA-256 files. Each contains first-party licensing, setup instructions and the optional companion source/installers. No event CSVs, private identity records, browser configuration or runtime credentials are included.
+The builder refuses overwrites and emits Theatre + Inbox, Inbox-only and Radio-only unpacked folders, root-manifest ZIPs and SHA-256 files. Each contains first-party licensing and setup instructions. The two playlist creators also include optional companion source/installers; Radio-only needs no companion. No event CSVs, private identity records, browser configuration or runtime credentials are included.
 
 The Inbox-only creator does not enforce manual playback: its LP/AP choice selects the submission inbox, and playback stays with Suno or a separately managed Theatre.

@@ -1,6 +1,20 @@
 # Host acceptance checklist
 
-Version 0.5.0 development, November 12, 2026. Run in a separate test profile before replacing a working show extension. The installed 0.4.0 build stays untouched.
+Current preview: 0.7.0 development, November 16, 2026. Run in a separate test profile before replacing a working show extension. Theatre Lite 0.5.0 remains separate and unchanged.
+
+Ina confirmed Dev1 activation, matching status indicators and working managed lyrics in **0.6.10** on November 16. That result does not mark the following new 0.7.0 behavior as live accepted.
+
+## 0.7.0 local queue checks
+
+- [x] Isolated host-control tests: stable-ID Move/Load, Hold/Release, explicit multipart override, optional default-off repeat policy, current/completed anchors and invalid-source release blocking.
+- [x] Synthetic Chromium desktop/mobile: real clicks against mocked messages, visible hold reasons, no overflow with long unbroken text, and no real account, provider or audio access.
+- [ ] Real host: move and hold upcoming entries, reopen controls, Read Pending and let AP resync; confirm choices survive and new submissions append without changing current audio.
+- [ ] Real host: leave repeat-uploader holding off for ordinary FIFO; enable it and confirm the later song releases only after its predecessor finishes.
+- [ ] Real host: interrupt/skip the predecessor, explicitly release two later parts, and confirm those multipart overrides survive refresh while the global rule stays on.
+- [ ] Real host: held rows stay visible, Load next/AP use unheld entries, an invalid source cannot be released, and loaded/completed anchors cannot move or be held.
+- [ ] Confirm Suno playlist order/membership remains independent; the Inbox-only creator still has FIFO intake and no local order/hold controls.
+
+The historical 0.5.0 checklist below was recorded on November 12 while installed 0.4.0 remained untouched. It does not describe the current installed version.
 
 ## Isolated 0.5.0 checks
 

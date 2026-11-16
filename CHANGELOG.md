@@ -10,6 +10,9 @@
 - Condensed the host song card around a small artwork thumbnail; clicking copies its safe public image URL, with keyboard/clipboard fallback and no private notes included.
 - Added a clean-install-only stream-name prompt and origin-bound local publish-token remembering with session-only/Forget controls.
 - Added Catnap-only busy preflight and explicit confirmed takeover, ready for the separately configured individual-key service. Normal Start does not take over; legacy relays retain normal publishing without the new takeover feature.
+- Added per-show local Move up/down and Hold/Release, preserved through manual/AP inbox reads with new arrivals appended. Loaded/playing and completed entries stay fixed; invalid sources cannot be released. Upcoming edits preserve current audio and do not reorder Suno playlist membership or order.
+- Added opt-in repeat-uploader holds until the earlier submission finishes, with persistent per-entry Release host overrides for approved multipart sequences. Current held-in-show totals update independently of the last Pending read; the Inbox-only creator retains FIFO intake without these controls.
+- Exercised local controls in isolated tests and synthetic desktop/mobile Chromium with invented data. New 0.7.0 live AP/resync, completion and broadcast acceptance remains pending.
 - Lite 0.5.0 and its existing downloads remain unchanged. Current 0.6.10 Dev1 activation/status/lyrics confirmation remains historical evidence, not live acceptance of these new changes.
 
 
