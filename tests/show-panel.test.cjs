@@ -484,3 +484,16 @@ test('an idle Pause finishing cannot unlock queued setup while Connect still awa
   assert.equal(f.w.document.body.hasAttribute('aria-busy'),false);
   assert.equal(f.element('playlists').disabled,false);
 });
+
+test('host song card displays safe artwork and click copies only its public image URL',async t=>{
+ const f=await fixture();t.after(()=>f.dom.window.close());
+ f.state().entries[0].artworkUrl='https://cdn1.suno.ai/fixture.jpeg?token=private#fragment';await f.poll();
+ assert.equal(f.element('current-artwork').getAttribute('src'),'https://cdn1.suno.ai/fixture.jpeg');assert.equal(f.element('current-artwork').hidden,false);assert.equal(f.element('copy-artwork').disabled,false);
+ const count=f.messages.length;await f.click('copy-artwork');assert.equal(f.copies.at(-1),'https://cdn1.suno.ai/fixture.jpeg');assert.equal(f.messages.length,count,'artwork copying does not fetch, change playback or call the helper');assert.match(f.element('status').textContent,/Artwork URL copied/);
+ f.element('current-artwork').dispatchEvent(new f.w.Event('error'));await f.poll();assert.equal(f.element('current-artwork').hidden,true);assert.equal(f.element('artwork-placeholder').hidden,false);assert.equal(f.element('copy-artwork').disabled,false,'the safe URL remains copyable when an image fails');
+ for(const url of ['https://evil.example/tracker.jpg','javascript:alert(1)','https://user:secret@cdn1.suno.ai/a.jpg','https://cdn1.suno.ai/audio.mp3']){f.state().entries[0].artworkUrl=url;await f.poll();assert.equal(f.element('copy-artwork').disabled,true);assert.equal(f.element('current-artwork').hasAttribute('src'),false);}
+ f.state().entries[0].artworkUrl='https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg';await f.poll();assert.equal(f.element('current-artwork').hidden,false);
+});
+test('artwork copy uses the existing selectable fallback when clipboard access is denied',async t=>{
+ const f=await fixture({clipboardDenied:true});t.after(()=>f.dom.window.close());f.state().entries[0].artworkUrl='https://cdn2.suno.ai/fixture.webp';await f.poll();await f.click('copy-artwork');assert.equal(f.element('copy-fallback').hidden,false);assert.equal(f.element('copy-fallback').value,'https://cdn2.suno.ai/fixture.webp');assert.equal(f.element('copy-fallback').closest('details').open,true);
+});

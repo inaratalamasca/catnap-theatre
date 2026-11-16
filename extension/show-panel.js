@@ -11,6 +11,16 @@
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
   const status=value=>{$('status').textContent=value;};
+  // Display/copy only public artwork from the known music CDNs. A thumbnail
+  // must not become an arbitrary tracking URL or leak signed query values.
+  function artworkURL(value){try{
+    if(typeof value!=='string'||value.length>4096)return '';
+    const u=new URL(value);
+    if(u.protocol!=='https:'||u.username||u.password||u.port||!['cdn1.suno.ai','cdn2.suno.ai','cdn.suno.ai','i.ytimg.com'].includes(u.hostname)||!(/\.(?:png|jpe?g|webp|gif|avif)$/i.test(u.pathname)))return '';
+    u.search='';u.hash='';return u.href;
+  }catch{return '';}}
+  let currentArtworkURL='',failedArtworkURL='';
+  $('current-artwork').onerror=()=>{failedArtworkURL=currentArtworkURL;$('current-artwork').hidden=true;$('artwork-placeholder').hidden=false;$('artwork-placeholder').textContent='Image unavailable';};
   const label=(id,value)=>{const element=$(id);if(element.textContent!==value)element.textContent=value;};
   async function send(action,extra={}){const reply=await chrome.runtime.sendMessage({target:'catnap-show-worker',action,...extra});if(!reply?.ok)throw Error(reply?.error||'Show controls unavailable.');return reply.data;}
   function options(select,items,current,empty){
@@ -83,6 +93,11 @@
     $('autoplay-help').textContent=linked?(s.mode==='ap'&&s.autoplay?'AP autoplay is on. The next inbox entry starts when the current song ends. Load next still stages a song quietly.':'Manual mode stops at the end. Load next changes artwork and warning without playing audio.'):'Playback is not connected. Load or Play reconnects the selected Theatre; ordinary Suno playback is not yet controlled.';
     $('current-title').textContent=entry?entry.title:'No song loaded';
     $('current-credit').textContent=entry?`${entry.artist||'Artist unavailable'} · Submitted by ${entry.uploaderName||'Unavailable'} · ${p.source||entry.preferredSource||'source unavailable'}`:'';
+    const artwork=globalThis.CatnapPackage?.inboxOnly?'':artworkURL(entry?.artworkUrl),image=$('current-artwork');if(artwork!==currentArtworkURL)failedArtworkURL='';currentArtworkURL=artwork;
+    if(artwork){if(image.getAttribute('src')!==artwork)image.src=artwork;image.hidden=failedArtworkURL===artwork;image.alt='Artwork for '+(entry.title||'loaded song');}
+    else{image.hidden=true;image.removeAttribute('src');image.alt='';}
+    $('copy-artwork').disabled=!artwork;$('copy-artwork').title=artwork?'Copy artwork URL':'Artwork unavailable';
+    $('artwork-placeholder').hidden=!!artwork&&failedArtworkURL!==artwork;$('artwork-placeholder').textContent=artwork?'Image unavailable':'No artwork';$('artwork-help').textContent=artwork?'Click artwork to copy its image URL':'Artwork unavailable';
     $('current-note').textContent=entry?.note||'No uploader note.';
     $('current-warning').textContent=entry?entry.disclaimer==='yes'?'⚠ Uploader requested a content disclaimer':entry.disclaimer==='no'?'Uploader disclaimer: No':'Uploader disclaimer: Unavailable':'';
     $('current-warning').dataset.warning=entry?.disclaimer||'unknown';
@@ -135,7 +150,7 @@
   const requestAccess=origins=>chrome.permissions.request({origins}).then(granted=>({granted}),error=>({error}));
   async function requireAccess(request,message){const result=await request;if(result.error)throw result.error;if(!result.granted)throw Error(message);}
   const configure=settings=>send('configure',{settings});
-  async function copy(value){try{await navigator.clipboard.writeText(value);$('copy-fallback').hidden=true;status('Copied. Paste into your chosen chat.');}catch(_){const field=$('copy-fallback');field.hidden=false;field.closest('details').open=true;field.value=value;field.focus();field.select();status('Select and copy the text below.');}}
+  async function copy(value,message='Copied. Paste into your chosen chat.'){try{await navigator.clipboard.writeText(value);$('copy-fallback').hidden=true;status(message);}catch(_){const field=$('copy-fallback');field.hidden=false;field.closest('details').open=true;field.value=value;field.focus();field.select();status('Select and copy the text below.');}}
   $('grant-inbox').onclick=()=>{
     const request=requestAccess(['https://uploader.aiu.fm/*','https://studio-api-prod.suno.com/*','https://suno.com/*','https://www.suno.com/*']);
     return setupButton('grant-inbox',()=>requireAccess(request,'Inbox access was not granted. Theatre still works normally.'),'Inbox access enabled. Choose the signed-in uploader tab, then Find my inboxes.','Enabling inbox access…');
@@ -175,6 +190,7 @@
   $('sync-playlist').onclick=()=>setupButton('sync-playlist',()=>send('sync-playlist'),result=>result?.playerUpdateWarning||'Playlist membership checked. See the verification result below.','Adding missing Suno songs and verifying the playlist…');
   $('copy-playing').onclick=()=>action(async()=>copy((await send('announcement')).text));
   $('copy-link').onclick=()=>action(async()=>copy((await send('announcement')).context.url));
+  $('copy-artwork').onclick=()=>{if(currentArtworkURL)void copy(currentArtworkURL,'Artwork URL copied.');};
   $('copy-context').onclick=()=>action(async()=>copy(JSON.stringify((await send('announcement',{includeNotes:$('include-notes').checked})).context,null,2)));
   refresh().then(()=>{if($('status').textContent==='Loading show…')status('Ready. Choose your inbox or continue the saved show.');}).catch(error=>status(error.message));
   setInterval(()=>{if(!busy&&!waiting)refresh().catch(error=>status(error.message));},1500);

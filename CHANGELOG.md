@@ -7,6 +7,7 @@
 - Source-bound On Air indicators, green AIU Theatre logo and white/grey No Radio state follow actual publisher connection status. A radio-only-use preference hides the Theatre launcher when off-air. Toolbar LIVE/error badges remain.
 - Presentation controls identify Inbox versus Suno playlist mode and show green success separately from closed/disconnected/error status.
 - Managed YouTube Play expands inside the browser's Theatre window with restore controls, without requesting monitor fullscreen; quiet Load remains held. YouTube queue entries use a small red video badge.
+- Condensed the host song card around a small artwork thumbnail; clicking copies its safe public image URL, with keyboard/clipboard fallback and no private notes included.
 - Lite 0.5.0 and its existing downloads remain unchanged. Current 0.6.10 Dev1 activation/status/lyrics confirmation remains historical evidence, not live acceptance of these new changes.
 
 

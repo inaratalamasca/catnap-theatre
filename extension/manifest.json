@@ -77,7 +77,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data:; style-src 'self'; connect-src https: http:"
+    "extension_pages": "script-src 'self'; object-src 'none'; media-src https://streaming.aiu.fm; img-src 'self' data: https://cdn1.suno.ai https://cdn2.suno.ai https://cdn.suno.ai https://i.ytimg.com; style-src 'self'; connect-src https: http:"
   },
   "minimum_chrome_version": "120",
   "optional_host_permissions": [
