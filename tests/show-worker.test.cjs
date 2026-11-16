@@ -127,6 +127,43 @@ test('uploader reads inject their core/adapter into only the selected authorized
   assert.equal((await wrongOrigin.control('discover')).ok,false);assert.equal(wrongOrigin.calls.scripts.length,0);
 });
 
+test('discovered inbox choices and their selected label persist in private local show state',async()=>{
+  const f=fixture();
+  assert.equal((await f.control('discover')).ok,true);
+  assert.deepEqual(f.state().inboxes,{lp:[{id:'fixture-inbox',name:'Fixture LP',mode:'lp'}],ap:[{id:'fixture-inbox',name:'Fixture AP',mode:'ap'}]});
+  assert.equal(f.state().inboxName,'Fixture LP');
+  const status=await f.control('status');assert.equal(status.data.state.inboxId,'fixture-inbox');
+  assert.equal(status.data.state.inboxes.lp[0].name,'Fixture LP');
+  assert.equal((await f.control('new-show')).ok,true);
+  assert.equal(f.state().inboxId,'','a new show still requires an explicit inbox choice');
+  assert.equal(f.state().inboxes.lp[0].name,'Fixture LP');
+  assert.equal(f.calls.mcp.length,0);assert.equal(f.calls.messages.some(call=>call.message.target==='catnap-show-tab'),false);
+});
+
+test('local inbox and playlist choices do not require a live Theatre or overwrite queue and playback',async()=>{
+  const prior=entry('retained'),playback={phase:'ready',current:{id:prior.id},generation:3};
+  const f=fixture({state:{playerTabId:7,entries:[prior],playback},playerResponse:{error:'Fixture stale player'}});
+  for(const settings of [{uploaderTabId:8},{inboxId:'fixture-inbox'},{playlistId:PLAYLIST}]){
+    const response=await f.control('configure',{settings});assert.equal(response.ok,true);
+  }
+  assert.equal(f.state().playlistId,PLAYLIST);assert.equal(f.state().entries[0].id,prior.id);assert.deepEqual(f.state().playback,playback);
+  assert.equal(f.calls.messages.length,0,'local-only selections never publish a player update');
+  const playerSetting=await f.control('configure',{settings:{warningSeconds:12}});
+  assert.equal(playerSetting.ok,false);assert.match(playerSetting.error,/stale player/);
+  assert.equal(f.calls.messages.at(-1).message.action,'update','player-facing settings still request their guarded update');
+});
+
+test('changing empty-show party type clears an incompatible inbox and LP still forces manual playback',async()=>{
+  const f=fixture({state:{mode:'ap',autoplay:true,inboxId:'fixture-ap',inboxName:'Prior AP'}});
+  assert.equal((await f.control('configure',{settings:{mode:'lp'}})).ok,true);
+  assert.equal(f.state().inboxId,'');assert.equal(f.state().inboxName,'');assert.equal(f.state().autoplay,false);
+  assert.equal((await f.control('import')).ok,false);assert.equal(f.calls.messages.length,0);
+  assert.equal((await f.control('configure',{settings:{inboxId:'fixture-inbox'}})).ok,true);
+  assert.equal((await f.control('configure',{settings:{inboxId:''}})).ok,true);
+  assert.equal(f.state().inboxId,'');
+  assert.equal((await f.control('configure',{settings:{inboxId:42}})).ok,false);
+});
+
 test('inbox import retains FIFO/YouTube-only entries and never writes a playlist or starts playback', async () => {
   const f=fixture({state:{playlistId:PLAYLIST,playerTabId:7},rows:[
     row('late',{submitted_at:'2026-11-15 12:00:00',suno_url:'',youtube_url:'https://youtu.be/AbCdEfGhI12'}),
@@ -142,6 +179,29 @@ test('inbox import retains FIFO/YouTube-only entries and never writes a playlist
   assert.equal(JSON.stringify(playerMessages).includes('PRIVATE-UPLOADER-NOTE'),false);
   assert.equal(JSON.stringify(playerMessages).includes('fixture-uploader'),false);
   assert.equal(playerMessages[0].message.show.entries[0].disclaimer,'yes');
+});
+
+test('a successful inbox read remains saved when its stale Theatre rejects the queue handoff',async()=>{
+  const f=fixture({state:{playlistId:PLAYLIST,playerTabId:7},rows:[row('saved')],playerResponse:{error:'Fixture player has reloaded'}});
+  const result=await f.control('import');assert.equal(result.ok,true);
+  assert.equal(result.data.entries.length,1);assert.equal(f.state().entries[0].submissionId,'saved');
+  assert.match(result.data.error,/Inbox read and running order saved.*did not receive.*reloaded/);
+  assert.equal(f.state().lastRead.pending,1);assert.equal(f.calls.mcp.length,0);
+  assert.deepEqual(f.calls.messages.filter(call=>call.message.target==='catnap-show-tab').map(call=>call.message.action),['update']);
+  assert.equal(f.calls.scripts.some(script=>script.files?.includes('managed-native-guard.js')),false,'import cannot bind or start the stale player');
+});
+
+test('verified playlist sync stays saved when only its Theatre handoff fails and never retries the write',async()=>{
+  const f=fixture({state:{playlistId:PLAYLIST,playerTabId:7,entries:[entry()]},playerResponse:{error:'Fixture stale Theatre'}});
+  const result=await f.control('sync-playlist');assert.equal(result.ok,true);
+  assert.equal(result.data.confirmed,1);assert.equal(result.data.missing.length,0);
+  assert.match(result.data.playerUpdateWarning,/playlist verified and saved.*did not receive.*stale Theatre/);
+  assert.equal(f.state().lastPlaylistSync.confirmed,1);assert.match(f.state().error,/verified and saved/);
+  assert.equal(f.calls.mcp.filter(call=>call.operation==='reconcile').length,1);
+  assert.deepEqual(f.calls.messages.filter(call=>call.message.target==='catnap-show-tab').map(call=>call.message.action),['update']);
+  const failure=fixture({state:{playlistId:PLAYLIST,entries:[entry()]},onReconcile:()=>{throw Error('Fixture MCP write failed');}});
+  const rejected=await failure.control('sync-playlist');assert.equal(rejected.ok,false);assert.match(rejected.error,/MCP write failed/);
+  assert.equal(failure.state().lastPlaylistSync,null);assert.equal(failure.calls.mcp.length,1);
 });
 
 test('refresh preserves played state and ordering while appending newly arrived submissions', async () => {

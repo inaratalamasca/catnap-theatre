@@ -15,20 +15,26 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   const first = {id:'fixture-inbox:1',title:'<img src=x onerror=alert(1)> Fixture song',artist:'Fixture artist',uploaderName:'<b>Uploader</b>',note:'<script data-injected>unsafe()</script> A private host note',disclaimer:'yes',preferredSource:'suno',sunoUrl:'https://suno.com/song/00000000-0000-4000-8000-000000000001',state:'pending'};
   const second = {id:'fixture-inbox:2',title:'Second song',artist:'Second artist',uploaderName:'Other uploader',note:'Second private note',disclaimer:'unknown',preferredSource:'youtube',youtubeUrl:'https://www.youtube.com/watch?v=abcdefghijk',state:'pending'};
   let state = {version:1,id:'fixture-show',mode,showName:'Fixture party',inboxId:'fixture-inbox',uploaderTabId:11,playerTabId:playerInitiallySelected?22:null,playlistId:'00000000-0000-4000-8000-000000000009',entries:[first,second],autoplay:false,warningSeconds:10,watch:{enabled:false},playback:{current:{id:first.id},phase:'playing',source:'suno',occurrenceId:'occurrence-1'},lastRead:{at:1,pending:2,held:0},lastPlaylistSync:{confirmed:2,missing:[]},error:''};
-  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant,finishPlay;
+  let sunoConnected=!legacyGrant,sunoReconnectRequired=legacyGrant,finishPlay,poll;
+  const delayed=new Map(),failures=new Map();
   const tabs=[{id:11,title:'Uploader',kind:'uploader'},{id:22,title:'Suno',kind:'suno'}];
   const snapshot=()=>({state:structuredClone(state),playbackHealth:{linked,phase:state.playback?.phase,reason:linked?'':'Theatre reloaded. Load or Play to reconnect.'},tabs,suno:{connected:sunoConnected,reconnectRequired:sunoReconnectRequired},version:'0.6.0'});
-  w.setInterval=()=>0;
+  w.setInterval=fn=>{poll=fn;return 0;};
   w.CatnapPackage={inboxOnly};
   w.chrome={permissions:{request:async value=>{permissions.push(value);return permissionGranted;}},runtime:{sendMessage:async message=>{
     messages.push(structuredClone(message));let data;
+    const statusSnapshot=message.action==='status'?snapshot():null;
+    const delay=delayed.get(message.action);if(delay){delayed.delete(message.action);await delay;}
+    if(failures.has(message.action)){const error=failures.get(message.action);failures.delete(message.action);return {ok:false,error};}
     switch(message.action) {
-      case 'status':data=snapshot();break;
+      case 'status':data=statusSnapshot;break;
       case 'play':if(holdPlay)await new Promise(resolve=>{finishPlay=resolve;});data={done:true};break;
       case 'connect-suno':if(connectError)return {ok:false,error:connectError};sunoConnected=true;sunoReconnectRequired=false;data={connected:true};break;
       case 'disconnect-suno':sunoConnected=false;sunoReconnectRequired=false;data={connected:false};break;
       case 'configure':Object.assign(state,message.settings);data=structuredClone(state);break;
-      case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};break;
+      case 'discover':data={inboxes:{lp:[{id:'fixture-inbox',name:'Fixture LP'},{id:'other-inbox',name:'Other LP'}],ap:[{id:'fixture-inbox',name:'Fixture AP'}]}};state.inboxes=structuredClone(data.inboxes);break;
+      case 'import':data=structuredClone(state);break;
+      case 'sync-playlist':data={confirmed:state.entries.length,missing:[],playerUpdateWarning:state.error||undefined};break;
       case 'load':state.playback={current:{id:state.entries[message.index].id},phase:'ready',source:state.entries[message.index].preferredSource};data={loaded:true};break;
       case 'watch':state.watch.enabled=message.enabled;data=structuredClone(state);break;
       case 'playlists':data=[{id:state.playlistId,name:'Fixture saved playlist'}];break;
@@ -43,7 +49,11 @@ async function fixture({mode='lp',inboxOnly=false,clipboardDenied=false,permissi
   }}};
   Object.defineProperty(w.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{if(clipboardDenied)throw Error('Clipboard permission denied');copies.push(value);}}});
   w.eval(fs.readFileSync(path.join(extension,'show-panel.js'),'utf8'));await settle();
-  return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
+  return {dom,w,messages,copies,permissions,tabs,releasePlay:()=>finishPlay?.(),setConnected:value=>{sunoConnected=value;},state:()=>state,element:id=>w.document.getElementById(id),
+    rejectNext:(action,error)=>failures.set(action,error),
+    holdNext(action){let release;delayed.set(action,new Promise(resolve=>{release=resolve;}));return release;},
+    async poll(){poll();await settle();},
+    async click(id){w.document.getElementById(id).click();await settle();},async change(id,value){const control=w.document.getElementById(id);if(control.type==='checkbox')control.checked=value;else control.value=value;control.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();}};
 }
 
 test('LP starts with autoplay off and disabled; AP permits a separate explicit toggle',async t=>{
@@ -225,4 +235,126 @@ test('Inbox exposes a dedicated Reload lyrics action without playback and disabl
   assert.equal(f.messages.some(m=>['play','pause','bind-player','next'].includes(m.action)),false);
   f.w.document.querySelectorAll('#queue button')[1].click();await settle();assert.equal(f.element('reload-lyrics').disabled,true);
   const stale=await fixture({linked:false});t.after(()=>stale.dom.window.close());assert.equal(stale.element('reload-lyrics').disabled,true);
+});
+
+test('saved inbox selection remains visible before discovery and a saved catalogue restores choices',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  assert.equal(f.element('inbox').value,'fixture-inbox');
+  assert.match(f.element('inbox').selectedOptions[0].textContent,/Selected inbox/);
+  f.state().inboxes={lp:[{id:'fixture-inbox',name:'Saved fixture LP'},{id:'other-inbox',name:'Saved other LP'}],ap:[]};
+  await f.poll();
+  assert.equal(f.element('inbox').selectedOptions[0].textContent,'Saved fixture LP');
+  assert.deepEqual([...f.element('inbox').options].map(option=>option.value),['','fixture-inbox','other-inbox']);
+  assert.equal(f.messages.some(message=>['discover','import','play','bind-player'].includes(message.action)),false);
+});
+
+test('one immediate Read waits for its selected inbox and later input values cannot replace captured choices',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  await f.click('discover');
+  const release=f.holdNext('configure');
+  await f.change('inbox','other-inbox');
+  await f.click('import');
+  assert.equal(f.messages.filter(message=>message.action==='import').length,0);
+  assert.equal(f.element('import').disabled,true,'queued read remains visibly pending');
+  f.element('inbox').value='fixture-inbox';
+  release();await settle();await settle();
+  const steps=f.messages.filter(message=>message.action==='import'||message.action==='configure'&&message.settings.inboxId);
+  assert.deepEqual(steps.map(message=>message.action),['configure','import']);
+  assert.equal(steps[0].settings.inboxId,'other-inbox');
+  assert.equal(f.state().inboxId,'other-inbox');assert.equal(f.element('inbox').value,'other-inbox');
+  assert.equal(f.element('import').disabled,false);assert.match(f.element('status').textContent,/Inbox read/);
+});
+
+test('Connect keeps its permission request inside the click and one Load my playlists waits behind authorization',async t=>{
+  const f=await fixture({legacyGrant:true});t.after(()=>f.dom.window.close());
+  const release=f.holdNext('configure');await f.change('show-name','Queued setup');
+  await f.click('connect-suno');await f.click('playlists');
+  assert.equal(f.permissions.length,1,'host permission is requested immediately, not after the pending worker action');
+  assert.equal(f.messages.some(message=>message.action==='connect-suno'),false);
+  assert.equal(f.element('connect-suno').disabled,true);assert.equal(f.element('playlists').disabled,true);
+  release();await settle();await settle();
+  assert.deepEqual(f.messages.filter(message=>['connect-suno','playlists'].includes(message.action)).map(message=>message.action),['connect-suno','playlists']);
+  assert.equal(f.element('connect-suno').disabled,false);assert.equal(f.element('playlists').disabled,false);
+  assert.equal(f.element('playlist').selectedOptions[0].textContent,'Fixture saved playlist');
+});
+
+test('repeated pending Create and Sync clicks cause one write each and retain the captured name',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  const release=f.holdNext('configure');await f.change('show-name','Pending setup');
+  f.element('new-playlist-name').value='Captured playlist';await f.click('create-playlist');await f.click('create-playlist');
+  f.element('new-playlist-name').value='Later edit';await f.click('sync-playlist');await f.click('sync-playlist');
+  assert.equal(f.messages.some(message=>['create-playlist','sync-playlist'].includes(message.action)),false);
+  release();await settle();await settle();
+  assert.equal(f.messages.filter(message=>message.action==='create-playlist').length,1);
+  assert.equal(f.messages.find(message=>message.action==='create-playlist').name,'Captured playlist');
+  assert.equal(f.messages.filter(message=>message.action==='sync-playlist').length,1);
+  assert.equal(f.element('playlist').value,f.state().playlistId);
+  assert.equal(f.element('create-playlist').disabled,false);assert.equal(f.element('sync-playlist').disabled,false);
+});
+
+test('a late poll cannot replace the saved show with its older snapshot',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  const release=f.holdNext('status');await f.poll();
+  await f.change('show-name','New saved show');
+  assert.equal(f.element('show-name').value,'New saved show');
+  release();await settle();assert.equal(f.element('show-name').value,'New saved show');
+});
+
+test('saved inbox read with a stale player reports its partial handoff clearly without starting playback',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.state().error='Inbox read and running order saved. Theatre did not receive the update: Fixture connection is stale.';
+  await f.click('import');
+  assert.match(f.element('status').textContent,/running order saved.*did not receive/);
+  assert.match(f.element('inbox-status').textContent,/running order saved.*did not receive/);
+  assert.equal(f.w.document.querySelectorAll('#queue li').length,2);
+  assert.equal(f.messages.filter(message=>message.action==='import').length,1);
+  assert.equal(f.messages.some(message=>['bind-player','play','load'].includes(message.action)),false);
+});
+
+test('verified playlist with a stale Theatre shows the saved result instead of asking for another write',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());
+  f.state().error='Suno playlist verified and saved. Theatre did not receive the update: Fixture stale player.';
+  await f.click('sync-playlist');
+  assert.match(f.element('status').textContent,/playlist verified and saved.*did not receive/);
+  assert.match(f.element('playlist-status').textContent,/2 confirmed · 0 missing/);
+  assert.equal(f.messages.filter(message=>message.action==='sync-playlist').length,1);
+});
+
+test('busy playback never queues an extra Play and Pause stays available',async t=>{
+  const f=await fixture({holdPlay:true});t.after(()=>f.dom.window.close());
+  await f.click('play');await f.click('play');
+  assert.equal(f.messages.filter(message=>message.action==='play').length,1);
+  assert.match(f.element('status').textContent,/Please wait/);
+  await f.click('pause');assert.equal(f.messages.filter(message=>message.action==='pause').length,1);
+  f.releasePlay();await settle();assert.equal(f.messages.filter(message=>message.action==='play').length,1);
+});
+
+test('failed inbox or playlist selection cancels its queued followup instead of using the previous target',async t=>{
+  for(const [field,followup] of [['inbox','import'],['playlist','sync-playlist']]){
+    const f=await fixture();t.after(()=>f.dom.window.close());
+    await f.click('discover');
+    const next=field==='inbox'?'other-inbox':'00000000-0000-4000-8000-000000000011';
+    if(field==='playlist')f.element(field).append(new f.w.Option('Other destination',next));
+    const prior=f.state()[field==='inbox'?'inboxId':'playlistId'];
+    f.rejectNext('configure','Fixture selection could not be saved');
+    const release=f.holdNext('configure');await f.change(field,next);await f.click(followup);
+    release();await settle();await settle();
+    assert.equal(f.messages.some(message=>message.action===followup),false);
+    assert.equal(f.state()[field==='inbox'?'inboxId':'playlistId'],prior);
+    assert.match(f.element('status').textContent,/Previous step failed.*selection could not be saved.*click the next step again/);
+    assert.equal(f.element(field).value,prior);
+    assert.equal(f.element(followup).disabled,false);
+    await f.click(followup);assert.equal(f.messages.filter(message=>message.action===followup).length,1,'a later explicit click is not permanently blocked');
+  }
+});
+
+test('pending Sync is a single explicit operation and source-tab changes preserve unsaved setup choices',async t=>{
+  const f=await fixture();t.after(()=>f.dom.window.close());await f.click('discover');
+  const release=f.holdNext('configure');await f.change('inbox','other-inbox');
+  await f.change('player-tab','22');assert.equal(f.element('inbox').value,'other-inbox');
+  await f.click('sync-playlist');await f.click('sync-playlist');
+  assert.equal(f.element('sync-playlist').disabled,true);
+  release();await settle();await settle();
+  assert.equal(f.messages.filter(message=>message.action==='sync-playlist').length,1);
+  assert.equal(f.state().inboxId,'other-inbox');
 });

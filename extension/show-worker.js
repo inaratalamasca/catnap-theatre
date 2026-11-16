@@ -1,6 +1,7 @@
 /* Catnap managed show worker, version 0.6.7.
  * Change summary: optional read-only uploader intake, private show queue,
- * explicit player binding, verified MCP playlist writes and bounded AP polling.
+ * saved inbox discovery, explicit player binding, verified MCP playlist writes
+ * and bounded AP polling. Setup selections do not depend on a live Theatre.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
@@ -22,7 +23,7 @@
   let tasks = Promise.resolve(), reading = false;
   const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics']);
   const coordinate=(action,fn)=>globalThis.CatnapShowCoordination?.runExclusive?globalThis.CatnapShowCoordination.runExclusive(action,fn):fn();
-  const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',uploaderTabId:null,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
+  const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',inboxes:{lp:[],ap:[]},uploaderTabId:null,playerTabId:null,playlistId:'',entries:[],autoplay:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
   const get = async () => (await chrome.storage.local.get(KEY))[KEY] || initial();
   const save = async state => {await chrome.storage.local.set({[KEY]:state}); return state;};
   function serial(fn) {const result=tasks.then(fn);tasks=result.catch(()=>{});return result;}
@@ -54,6 +55,17 @@
     const response=await chrome.tabs.sendMessage(tab.id,{target:'catnap-inbox',action,inboxId:state.inboxId,mode:state.mode},{frameId:0});
     if(!response?.ok)throw Error(response?.error||'The uploader did not return a valid response.');
     return response.data;
+  }
+  async function discoverInboxes() {
+    const start=await get(),data=await read(start,'discover'),state=await get();
+    if(state.id!==start.id||state.uploaderTabId!==start.uploaderTabId)throw Error('The show or uploader tab changed while finding inboxes.');
+    // Persist only the reader's minimal local catalogue, never its account
+    // payload. Every actual inbox read still refreshes server authorization.
+    state.inboxes=Object.fromEntries(['lp','ap'].map(mode=>[mode,(data.inboxes?.[mode]||[])
+      .filter(row=>CatnapInboxCore.validInboxId(row?.id)).map(row=>({id:row.id,name:text(row.name,200),mode}))]));
+    const selected=state.inboxes[state.mode].find(row=>row.id===state.inboxId);
+    if(selected)state.inboxName=selected.name;
+    await save(state);return {inboxes:state.inboxes};
   }
   async function enrich(entry) {
     const copy={...entry};
@@ -98,7 +110,12 @@
       if(state.id!==start.id||state.inboxId!==start.inboxId)throw Error('The show changed during the inbox read.');
       state.entries=CatnapInboxCore.mergeEntries(state.entries,entries);
       state.inboxName=data.inbox.name;state.lastRead={at:Date.now(),pending:normalized.total,held:normalized.held.length};state.error='';
-      await save(state);await publishState(state);return state;
+      await save(state);
+      try{await publishState(state);}catch(error){
+        state.error='Inbox read and running order saved. Theatre did not receive the update: '+text(error.message,240);
+        await save(state);
+      }
+      return state;
     }finally{reading=false;}
   }
   async function syncPlaylist() {
@@ -111,7 +128,12 @@
     const latest=await get();if(latest.id!==state.id)throw Error('The show changed during playlist sync.');
     const metadata=new Map((result.clips||[]).map(clip=>[clip.id,clip]));
     latest.entries=latest.entries.map(entry=>{const clip=metadata.get(entry.sunoId);return clip?{...entry,durationSeconds:clip.durationSeconds,artworkUrl:entry.preferredSource==='youtube'?entry.artworkUrl:clip.artworkUrl||entry.artworkUrl}:entry;});
-    latest.lastPlaylistSync={at:Date.now(),...result};await save(latest);await publishState(latest);return result;
+    latest.lastPlaylistSync={at:Date.now(),...result};latest.error='';await save(latest);
+    try{await publishState(latest);}catch(error){
+      latest.error='Suno playlist verified and saved. Theatre did not receive the update: '+text(error.message,240);
+      await save(latest);return {...result,playerUpdateWarning:latest.error};
+    }
+    return result;
   }
   async function playerHealth(state) {
     if(!Number.isInteger(state.playerTabId))return {linked:false,reason:'Choose a Suno tab, then Load or Play to connect the show.'};
@@ -207,16 +229,20 @@
     if(message.action==='status'){const state=await get();return {state,playbackHealth:await playerHealth(state),tabs:await tabs(),suno:await CatnapSuno.status(),suggestedTabId:(await chrome.storage.session.get('catnapShowSuggestedTabId')).catnapShowSuggestedTabId,version:SCRIPT_VERSION};}
     if(message.action==='configure'){
       const state=await get(), changes=message.settings||{};
-      if(changes.mode!==undefined){if(!['lp','ap'].includes(changes.mode))throw Error('Choose LP or AP.');if(state.entries.length&&changes.mode!==state.mode)throw Error('Start a new show before changing party type.');state.mode=changes.mode;if(state.mode==='lp')state.autoplay=false;}
+      if(changes.mode!==undefined){if(!['lp','ap'].includes(changes.mode))throw Error('Choose LP or AP.');if(state.entries.length&&changes.mode!==state.mode)throw Error('Start a new show before changing party type.');if(changes.mode!==state.mode){state.inboxId='';state.inboxName='';}state.mode=changes.mode;if(state.mode==='lp')state.autoplay=false;}
       if(changes.showName!==undefined)state.showName=text(changes.showName,100);
       if(changes.uploaderTabId!==undefined)state.uploaderTabId=Number(changes.uploaderTabId)||null;
-      if(changes.inboxId!==undefined){if(state.entries.length&&changes.inboxId!==state.inboxId)throw Error('Start a new show before switching inboxes.');if(!/^[\w.-]{1,80}$/.test(changes.inboxId)||changes.inboxId.includes('..'))throw Error('Invalid inbox.');state.inboxId=changes.inboxId;}
+      if(changes.inboxId!==undefined){if(state.entries.length&&changes.inboxId!==state.inboxId)throw Error('Start a new show before switching inboxes.');if(changes.inboxId!==''&&!CatnapInboxCore.validInboxId(changes.inboxId))throw Error('Invalid inbox.');state.inboxId=changes.inboxId;state.inboxName=state.inboxes?.[state.mode]?.find(row=>row.id===state.inboxId)?.name||'';}
       if(changes.playlistId!==undefined){if(changes.playlistId&&!/^[a-f0-9-]{36}$/i.test(changes.playlistId))throw Error('Invalid playlist.');state.playlistId=changes.playlistId;}
       if(changes.autoplay!==undefined){if(state.mode==='lp'&&changes.autoplay)throw Error('LP uses manual playback.');state.autoplay=changes.autoplay===true;}
       if(changes.warningSeconds!==undefined){const seconds=Number(changes.warningSeconds);if(!Number.isFinite(seconds)||seconds<2||seconds>120)throw Error('Warning duration must be 2–120 seconds.');state.warningSeconds=seconds;}
-      await save(state);await publishState(state);return state;
+      await save(state);
+      // These fields enter the bound player's show. Inbox/uploader/playlist
+      // selections are local setup and must work while Theatre is disconnected.
+      if(['mode','showName','autoplay','warningSeconds'].some(key=>Object.hasOwn(changes,key)))await publishState(state);
+      return state;
     }
-    if(message.action==='discover')return read(await get(),'discover');
+    if(message.action==='discover')return discoverInboxes();
     if(message.action==='import')return importInbox();
     if(message.action==='connect-suno')return CatnapSuno.connect();
     if(message.action==='disconnect-suno')return CatnapSuno.disconnect();
@@ -244,7 +270,7 @@
     }
     if(message.action==='new-show'){
       const old=await get();await stopBinding(old);await chrome.alarms.clear(ALARM);
-      return save({...initial(),uploaderTabId:old.uploaderTabId});
+      return save({...initial(),uploaderTabId:old.uploaderTabId,inboxes:old.inboxes||{lp:[],ap:[]}});
     }
     if(message.action==='announcement'){
       const state=await get();if(!(await playerHealth(state)).linked)throw Error('Reconnect Theatre before copying current-song information.');const current=state.entries.find(e=>e.id===state.playback?.current?.id);
