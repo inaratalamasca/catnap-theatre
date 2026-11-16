@@ -33,6 +33,42 @@ test('publish is audio-only, authenticated and marks live only once connected; s
 test('authentication failure stops capture and local monitor without falsely reporting live',async()=>{
  const f=fixture({fetch:async()=>({status:401})});assert.equal(await f.publisher.start({endpoint,token:'bad'}),false);assert.equal(f.publisher.state,'error');assert.equal(f.track.stopped,1);assert.equal(f.monitorClosed(),1);assert.ok(f.statuses.at(-1).message.includes('token'));assert.equal(f.statuses.some(s=>s.state==='live'),false);
 });
+test('Catnap preflight distinguishes a busy stream and bad keys without echoing provider content',async()=>{
+ for (const [status,message] of [[409,'Another host is broadcasting. Wait for them to stop, then try again.'],[401,'Relay rejected the publish token.'],[403,'Relay rejected the publish token.'],[503,'Relay availability check failed. Try again shortly.']]) {
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return {status,text(){throw Error('Provider text must never be read');}};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'invented-secret'}),false);
+  assert.equal(f.statuses.at(-1).message,message);assert.equal(f.publisher.state,'error');
+  assert.equal(calls.length,1);assert.equal(calls[0].url,'https://listen.catnapradio.com/hosts/api/publish-check');
+  assert.equal(calls[0].headers.Authorization,'Bearer invented-secret');assert.equal(calls[0].body,'{}');
+  assert.equal(calls[0].credentials,'omit');assert.equal(calls[0].redirect,'error');
+  assert.equal(f.track.stopped,1);assert.equal(f.monitorClosed(),1);assert.equal(f.statuses.some(s=>s.state==='live'),false);
+  assert.equal(JSON.stringify(f.statuses).includes('invented-secret'),false);
+ }
+});
+test('Catnap available and legacy preflight responses proceed once; other relays do not use Catnap preflight',async()=>{
+ for (const status of [200,404,405]) {
+  const calls=[];const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});return url.includes('/hosts/api/')?{status}:{status:201,headers:new Headers({Location:'/live/session/test'}),text:async()=>SDP};}});
+  assert.equal(await f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'invented-secret'}),true);
+  assert.equal(calls.length,2);assert.equal(calls[1].url,B.DEFAULT_ENDPOINT);assert.equal(calls[1].method,'POST');
+  await f.publisher.stop();
+ }
+ const f=fixture();assert.equal(await f.publisher.start({endpoint}),true);
+ assert.deepEqual(f.calls.map(call=>call.url),[endpoint]);await f.publisher.stop();
+});
+test('Stop during Catnap preflight prevents a late grant from publishing or replacing newer status',async()=>{
+ let resolveCheck;const calls=[];
+ const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});if(url.includes('/hosts/api/'))return new Promise(resolve=>{resolveCheck=resolve;});return {status:201,headers:new Headers({Location:'/live/session/new'}),text:async()=>SDP};}});
+ const old=f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'old-key'});
+ while(!resolveCheck)await new Promise(resolve=>setImmediate(resolve));
+ await f.publisher.stop();assert.equal(await old,false);
+ assert.equal(await f.publisher.start({endpoint,token:'new-key'}),true);
+ const replacement=f.publisher.resources;
+ resolveCheck({status:200});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.publisher.state,'live');assert.equal(f.publisher.resources,replacement);
+ assert.equal(calls.filter(call=>call.url===B.DEFAULT_ENDPOINT).length,0);
+ assert.equal(calls.filter(call=>call.url===endpoint&&call.method==='POST').length,1);
+ await f.publisher.stop();
+});
 test('stop during capture also stops a late-resolving captured stream',async()=>{
  let resolve;const f=fixture({capture:()=>new Promise(r=>{resolve=r;})});const starting=f.publisher.start({endpoint});await f.publisher.stop();resolve(f.stream);await starting;await new Promise(r=>setImmediate(r));assert.equal(f.track.stopped,1);assert.equal(f.publisher.state,'idle');assert.equal(f.calls.length,0);
 });
