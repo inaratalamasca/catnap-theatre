@@ -72,6 +72,46 @@ test('append preserves current generation and separate submission identity for r
 test('inbox edits update notes/queued entries without changing the locked current source or warning timer',async()=>{
  const f=fixture();await f.player.setQueue(entries);await f.player.load(0);const timerCount=f.timers.size;f.player.appendQueue([{...entries[0],note:'Updated note',disclaimer:'no',preferredSource:'youtube',playbackSource:'youtube',youtubeUrl:entries[1].youtubeUrl},{...entries[1],title:'Updated upcoming title'}]);const state=f.player.snapshot();assert.equal(state.current.note,'Updated note');assert.equal(state.current.disclaimer,'no');assert.equal(state.current.preferredSource,'suno');assert.equal(state.current.playbackSource,undefined);assert.equal(state.queue[1].title,'Updated upcoming title');assert.equal(f.timers.size,timerCount);assert.equal(state.warning.entryId,'inbox:1');f.player.repeatWarning();assert.equal(f.player.snapshot().warning,null);f.player.setWarningSeconds(500);assert.equal(f.player.snapshot().warningSeconds,120);
 });
+test('full local reorder reconciles by submission identity without touching current playback or generation',async()=>{
+ const third={...entries[0],id:'inbox:3',title:'Third'},fourth={...entries[0],id:'inbox:4'};
+ const f=fixture();await f.player.setQueue([...entries,third]);await f.player.load(0);await f.player.play();
+ const prior=f.player.snapshot(),callCount=f.calls.length;
+ f.player.appendQueue([entries[0],third,entries[1],fourth]);const state=f.player.snapshot();
+ assert.deepEqual(state.queue.map(e=>e.id),['inbox:1','inbox:3','inbox:2','inbox:4']);
+ assert.equal(state.current.id,prior.current.id);assert.equal(state.generation,prior.generation);assert.equal(state.phase,'playing');assert.equal(state.occurrenceId,prior.occurrenceId);assert.equal(f.calls.length,callCount);
+ assert.equal(state.nextIndex,1);await f.player.loadNext();assert.equal(f.player.snapshot().current.id,'inbox:3');
+});
+test('held entries are skipped for initial/Next/AP while direct held Load never interrupts current audio',async()=>{
+ const hostHeld={...entries[0],id:'held-host',hostHeld:true},invalid={...entries[0],id:'held-source',state:'held',holdReason:'Missing source'};
+ const f=fixture();await f.player.setQueue([hostHeld,entries[0],invalid,entries[1]],{mode:'ap',autoplay:true});
+ assert.equal(f.player.firstPlayableIndex(),1);assert.equal(f.player.snapshot().nextIndex,1);await f.player.loadNext();await f.player.play();
+ const before=f.player.snapshot(),calls=f.calls.length;await assert.rejects(f.player.load(0),/Held by host/);
+ assert.equal(f.calls.length,calls);assert.equal(f.player.snapshot().generation,before.generation);assert.equal(f.player.snapshot().phase,'playing');
+ await f.player.ended(before.generation);assert.equal(f.player.snapshot().current.id,entries[1].id);assert.equal(f.player.snapshot().phase,'playing');
+});
+test('AP completion releases repeat predecessor holds locally before autoplay and survives a stale worker queue',async()=>{
+ const second={...entries[1],repeatPredecessorId:entries[0].id,effectiveHeld:true},third={...entries[0],id:'inbox:3',repeatPredecessorId:entries[1].id,effectiveHeld:true};
+ const original=[entries[0],second,third],f=fixture();await f.player.setQueue(original,{mode:'ap',autoplay:true});
+ assert.equal(Player.isHeld(f.player.snapshot().queue[1]),true);await f.player.load(0);await f.player.play();await f.player.ended(f.player.snapshot().generation);
+ assert.equal(f.player.snapshot().current.id,second.id);assert.equal(f.player.snapshot().phase,'playing');assert.equal(Player.wasPlayed(f.player.snapshot().queue[0]),true);
+ f.player.appendQueue(original);assert.equal(Player.wasPlayed(f.player.snapshot().queue[0]),true);assert.equal(Player.isHeld(f.player.snapshot().queue[1]),false);assert.equal(Player.isHeld(f.player.snapshot().queue[2]),true);
+ await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,third.id);assert.equal(f.player.snapshot().phase,'playing');
+});
+test('released second and third parts can play back-to-back while other repeat entries remain held',async()=>{
+ const p1={...entries[0],id:'parts:1',hostHeld:true},p2={...entries[0],id:'parts:2',repeatPredecessorId:p1.id,repeatHoldOverride:true},p3={...entries[1],id:'parts:3',repeatPredecessorId:p2.id,repeatHoldOverride:true};
+ const other1={...entries[0],id:'other:1',hostHeld:true},other2={...entries[0],id:'other:2',repeatPredecessorId:other1.id};
+ const f=fixture();await f.player.setQueue([p1,p2,p3,other1,other2],{mode:'ap',autoplay:true});await f.player.loadNext();await f.player.play();
+ assert.equal(f.player.snapshot().current.id,p2.id);await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().current.id,p3.id);
+ await f.player.ended(f.player.snapshot().generation);assert.equal(f.player.snapshot().phase,'ended');assert.equal(f.player.snapshot().current.id,p3.id);assert.equal(Player.isHeld(f.player.snapshot().queue[4]),true);
+});
+test('a queue reconciliation during quiet Load cannot replace the requested stable entry with its old index neighbour',async()=>{
+ let pending=false,release;const f=fixture({stopAll:async()=>{if(pending)await new Promise(resolve=>{release=resolve;});}});
+ const third={...entries[0],id:'inbox:3'};await f.player.setQueue([...entries,third]);pending=true;
+ const loading=f.player.load(1);assert.equal(typeof release,'function');
+ f.player.appendQueue([entries[0],third,entries[1]]);pending=false;release();await loading;
+ assert.equal(f.player.snapshot().current.id,entries[1].id);assert.equal(f.player.snapshot().index,2);
+ assert.equal(f.calls.filter(x=>x[0]==='stage').at(-1)[1],entries[1].id);assert.equal(f.calls.some(x=>x[0]==='play'),false);
+});
 test('pausing while Play is pending cannot be undone by its late completion',async()=>{
  let complete;const f=fixture({play:()=>new Promise(resolve=>{complete=resolve;})});await f.player.setQueue(entries);await f.player.load(0);const starting=f.player.play();while(!complete)await new Promise(resolve=>setImmediate(resolve));await f.player.pause();complete();await starting;assert.equal(f.player.snapshot().phase,'paused');
 });

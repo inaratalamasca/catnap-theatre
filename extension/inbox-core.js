@@ -1,6 +1,6 @@
-/* Catnap Inbox data model, version 0.6.0.
+/* Catnap Inbox data model, version 0.7.0.
  * Change summary: independent Pending-only FIFO normalization, retained external
- * sources and private uploader context for the optional managed show queue.
+ * sources, persistent local order/holds and private optional repeat-uploader policy.
  * Pure functions only: no account access, storage, playback or remote writes.
  */
 (function (root, factory) {
@@ -9,7 +9,7 @@
   else root.CatnapInboxCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const VERSION = '0.6.0';
+  const VERSION = '0.7.0';
   const MAX_ROWS = 1000;
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
   const HOST_ID = /^[A-Za-z0-9_.-]{1,100}$/;
@@ -137,28 +137,55 @@
     return {entries, held: entries.filter(entry => entry.state === 'held'), total: entries.length,
       orderBasis: timestampsComplete ? 'submitted-at-oldest-first' : 'inbox-bottom-up'};
   }
-  function mergeEntries(existing, incoming) {
+  function mergeEntries(existing, incoming,{activeEntryId=null}={}) {
     if (!Array.isArray(existing) || !Array.isArray(incoming)) throw Error('Queue entries must be arrays.');
     const updates = new Map(incoming.map(entry => [entry.id, entry]));
     const seen = new Set(), merged = [];
+    let nextOrder=existing.reduce((max,entry)=>Number.isInteger(entry?.intakeOrder)&&entry.intakeOrder>=0?Math.max(max,entry.intakeOrder+1):max,0);
+    const local=(entry,prior)=>{
+      const source=prior||{};
+      return {...entry,hostHeld:source.hostHeld===true,repeatHoldOverride:source.repeatHoldOverride===true,
+        playedAt:typeof source.playedAt==='number'&&Number.isFinite(source.playedAt)&&source.playedAt>=0?source.playedAt:null,
+        intakeOrder:Number.isInteger(source.intakeOrder)&&source.intakeOrder>=0?source.intakeOrder:nextOrder++};
+    };
     for (const entry of existing) {
       if (!entry || typeof entry.id !== 'string' || seen.has(entry.id)) continue;
       seen.add(entry.id);
       const fresh = updates.get(entry.id);
-      if (!fresh) { merged.push({...entry}); continue; }
+      if (!fresh) { merged.push(local(entry,entry)); continue; }
       const next = {...entry, ...fresh};
       // Re-reading an inbox is not permission to restart/reopen a played item.
       if (entry.state !== 'queued' && entry.state !== 'held') next.state = entry.state;
-      if (ACTIVE_STATES.has(entry.state)) {
+      if (ACTIVE_STATES.has(entry.state)||entry.id===activeEntryId) {
         for (const field of ['sunoUrl', 'sunoId', 'sunoShortCode', 'youtubeUrl', 'youtubeId', 'preferredSource']) next[field] = entry[field];
+        if(entry.id===activeEntryId){next.state=entry.state;next.holdReason=entry.holdReason;}
       }
-      merged.push(next);
+      merged.push(local(next,entry));
     }
     for (const entry of incoming) {
       if (!entry || typeof entry.id !== 'string' || seen.has(entry.id)) continue;
-      seen.add(entry.id); merged.push({...entry});
+      seen.add(entry.id); merged.push(local(entry,null));
     }
     return merged;
   }
-  return {VERSION, MAX_ROWS, text, note, validInboxId, normalizeFlag, parseSunoURL, parseYouTubeURL, discoverInboxes, normalizeRows, mergeEntries};
+  const wasPlayed=entry=>typeof entry?.playedAt==='number'&&Number.isFinite(entry.playedAt)&&entry.playedAt>=0;
+  function applyQueuePolicy(entries,{repeatUploaderHold=false,protectedEntryId=null}={}) {
+    if(!Array.isArray(entries)||entries.length>MAX_ROWS)throw Error('The show queue is invalid or too large.');
+    // Compare the provider's immutable uploader ID when available, otherwise
+    // its explicit submission name. This private key never goes to Theatre.
+    const uploaderKey=entry=>text(entry.uploaderId,100)?'id:'+text(entry.uploaderId,100):text(entry.uploaderName)?'name:'+text(entry.uploaderName).toLowerCase():'';
+    const previous=new Map(),predecessors=new Map();
+    const chronological=entries.map((entry,index)=>({entry,index})).sort((a,b)=>(Number.isInteger(a.entry.intakeOrder)?a.entry.intakeOrder:a.index)-(Number.isInteger(b.entry.intakeOrder)?b.entry.intakeOrder:b.index)||a.index-b.index);
+    for(const {entry} of chronological){
+      const key=uploaderKey(entry),prior=key?previous.get(key):null;
+      predecessors.set(entry.id,repeatUploaderHold&&entry.id!==protectedEntryId&&prior&&!wasPlayed(prior)&&!wasPlayed(entry)&&entry.repeatHoldOverride!==true?prior.id:null);
+      if(key)previous.set(key,entry);
+    }
+    return entries.map(entry=>{
+      const repeatPredecessorId=predecessors.get(entry.id)||null;
+      const effectiveHoldReason=entry.state==='held'?(entry.holdReason||'This submission has no usable source.'):entry.hostHeld===true?'Held by host.':repeatPredecessorId?'Waiting for this uploader’s previous submission to finish.':'';
+      return {...entry,repeatPredecessorId,effectiveHeld:!!effectiveHoldReason,effectiveHoldReason};
+    });
+  }
+  return {VERSION, MAX_ROWS, text, note, validInboxId, normalizeFlag, parseSunoURL, parseYouTubeURL, discoverInboxes, normalizeRows, mergeEntries,applyQueuePolicy,wasPlayed};
 });

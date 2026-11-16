@@ -113,6 +113,48 @@ test('refresh appends new arrivals without resetting playback state, current sou
   assert.equal(Core.mergeEntries(merged, []).length, 3);
   assert.equal(before[0].note, 'An ordinary host note.');
 });
+test('host order, holds, explicit repeat releases and played history survive refresh while arrivals append',()=>{
+ const intake=normalize([providerRow('three'),providerRow('two'),providerRow('one')]).entries;
+ const before=Core.mergeEntries([],intake);
+ before[0].playedAt=1234;before[1].hostHeld=true;before[2].repeatHoldOverride=true;
+ const ordered=[before[0],before[2],before[1]];
+ const refreshed=normalize([providerRow('new'),providerRow('three'),providerRow('two'),providerRow('one')]).entries;
+ const result=Core.applyQueuePolicy(Core.mergeEntries(ordered,refreshed),{repeatUploaderHold:true});
+ assert.deepEqual(result.map(e=>e.submissionId),['one','three','two','new']);
+ assert.equal(result[0].playedAt,1234);assert.equal(result[1].repeatHoldOverride,true);assert.equal(result[1].effectiveHeld,false);
+ assert.equal(result[2].hostHeld,true);assert.equal(result[2].effectiveHeld,true);
+ assert.deepEqual(result.map(e=>e.intakeOrder),[0,2,1,3]);
+ assert.equal(result[3].repeatPredecessorId,inboxId+':three','predecessor follows original intake, not host display order');
+});
+test('repeat-uploader policy uses explicit IDs, ignores blank identities and releases one predecessor at a time',()=>{
+ const all=Core.mergeEntries([],normalize([
+  providerRow('three',{uploader_id:'stable-id',uploader_name:'Changed name'}),
+  providerRow('two',{uploader_id:'stable-id'}),providerRow('one',{uploader_id:'stable-id'})
+ ]).entries);
+ let queue=Core.applyQueuePolicy(all,{repeatUploaderHold:true});
+ assert.deepEqual(queue.map(e=>e.effectiveHeld),[false,true,true]);
+ queue[0].playedAt=1;queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true});
+ assert.deepEqual(queue.map(e=>e.effectiveHeld),[false,false,true]);
+ queue[1].playedAt=2;assert.equal(Core.applyQueuePolicy(queue,{repeatUploaderHold:true})[2].effectiveHeld,false);
+ const anonymous=Core.mergeEntries([],normalize([providerRow('a',{uploader_name:''}),providerRow('b',{uploader_name:''})]).entries);
+ assert.equal(Core.applyQueuePolicy(anonymous,{repeatUploaderHold:true}).some(e=>e.effectiveHeld),false);
+ const sourceHeld={...all[1],state:'held',holdReason:'Unsupported source',repeatHoldOverride:true};
+ assert.equal(Core.applyQueuePolicy([sourceHeld],{repeatUploaderHold:true})[0].effectiveHoldReason,'Unsupported source');
+});
+test('manual Release permits a rare three-part chain across refresh without releasing another uploader repeat',()=>{
+ let queue=Core.mergeEntries([],normalize([
+  providerRow('other2',{uploader_id:'other'}),providerRow('other1',{uploader_id:'other'}),
+  providerRow('part3',{uploader_id:'parts'}),providerRow('part2',{uploader_id:'parts'}),providerRow('part1',{uploader_id:'parts'})
+ ]).entries);
+ queue=Core.applyQueuePolicy(queue,{repeatUploaderHold:true});
+ for(const entry of queue)if(['part2','part3'].includes(entry.submissionId))entry.repeatHoldOverride=true;
+ queue=Core.applyQueuePolicy(Core.mergeEntries(queue,normalize([
+  providerRow('other2',{uploader_id:'other'}),providerRow('other1',{uploader_id:'other'}),
+  providerRow('part3',{uploader_id:'parts'}),providerRow('part2',{uploader_id:'parts'}),providerRow('part1',{uploader_id:'parts'})
+ ]).entries),{repeatUploaderHold:true});
+ assert.deepEqual(queue.slice(0,3).map(e=>e.effectiveHeld),[false,false,false]);
+ assert.equal(queue.find(e=>e.submissionId==='other2').effectiveHeld,true);
+});
 
 test('discovery uses provider show/personal IDs without synthesizing a second managed LP', () => {
   const result = Core.discoverInboxes({hosts: [

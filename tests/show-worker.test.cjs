@@ -88,7 +88,7 @@ function fixture(options = {}) {
       return {confirmed:ids.length,addedConfirmed:ids.length,missing:[],failures:[]};
     }
   };
-  const sandbox = {CatnapShowCoordination:options.coordination,chrome,CatnapSuno,CatnapInboxCore:Core,crypto,URL,AbortSignal,TextEncoder,Date,
+  const sandbox = {CatnapPackage:{inboxOnly:options.inboxOnly===true},CatnapShowCoordination:options.coordination,chrome,CatnapSuno,CatnapInboxCore:Core,crypto,URL,AbortSignal,TextEncoder,Date,
     fetch:async(target,spec)=>{calls.fetch.push({target,spec});return {ok:true,url:target,headers:{get:()=> 'text/html'},text:async()=>'<html><head></head></html>'};}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/show-worker.js'),'utf8'),sandbox);
   const host = {id:'fixture-extension',url:url('show.html')};
@@ -569,4 +569,91 @@ test('explicit return to ordinary playback clears a missing tab and safely disab
   const reloaded=fixture({state:{playerTabId:7},rejectDisable:true});
   assert.equal((await reloaded.control('unbind-player')).ok,true);assert.equal(reloaded.state().playerTabId,null);
   assert.equal(reloaded.calls.native.some(x=>x.action==='disable'),true);
+});
+
+test('local move and Hold survive inbox refresh, append new arrivals and never write or restart playback',async()=>{
+  const entries=[entry('one'),entry('two',{sunoId:SECOND,sunoUrl:song(SECOND)}),entry('three')];
+  const f=fixture({state:{entries,playerTabId:7,playback:{phase:'playing',current:{id:entries[0].id},generation:4,revision:1}},rows:[row('new'),row('three'),row('two',{suno_url:song(SECOND)}),row('one')]});
+  assert.equal((await f.control('queue-move',{entryId:entries[2].id,beforeEntryId:entries[1].id})).ok,true);
+  assert.equal((await f.control('queue-hold',{entryId:entries[1].id,held:true})).ok,true);
+  await f.control('import');
+  assert.deepEqual(f.state().entries.map(e=>e.submissionId),['one','three','two','new']);
+  assert.equal(f.state().entries.find(e=>e.id===entries[1].id).hostHeld,true);
+  assert.equal(f.state().playback.current.id,entries[0].id);assert.equal(f.state().playback.generation,4);
+  assert.equal(f.calls.mcp.length,0);assert.equal(f.calls.native.length,0);
+  assert.equal(f.calls.messages.filter(x=>x.message.target==='catnap-show-tab').every(x=>['status','update'].includes(x.message.action)),true);
+});
+
+test('queue edits protect the actual loaded identity even before its latest observation is saved',async()=>{
+  const entries=[entry('one'),entry('two'),entry('three')];
+  const f=fixture({state:{entries,playerTabId:7,playback:{phase:'ended',current:{id:entries[0].id},generation:1}},
+    healthResponse:{enabled:true,showId:'fixture-show',bindingId:'fixture-lease',guard:{ready:true,enabled:true,integrity:true},playback:{phase:'playing',current:{id:entries[1].id}},stageOpen:true}});
+  assert.equal((await f.control('queue-hold',{entryId:entries[1].id,held:true})).ok,false);
+  assert.equal((await f.control('queue-move',{entryId:entries[2].id,beforeEntryId:entries[1].id})).ok,false);
+  assert.equal((await f.control('queue-move',{entryId:entries[0].id,beforeEntryId:null})).ok,false);
+  assert.equal(f.state().entries.some(e=>e.hostHeld),false);assert.equal(f.calls.mcp.length,0);
+});
+
+test('repeat policy and explicit releases preserve rare multi-part chains across sync without changing Suno FIFO membership',async()=>{
+  const THIRD='12345678-1234-4234-8234-111111111111';
+  const rows=[row('other2',{uploader_id:'other'}),row('other1',{uploader_id:'other'}),row('part3',{suno_url:song(THIRD)}),row('part2',{suno_url:song(SECOND)}),row('part1')];
+  const f=fixture({state:{playlistId:PLAYLIST},rows});await f.control('import');
+  await f.control('configure',{settings:{repeatUploaderHold:true}});
+  for(const id of ['part2','part3'])assert.equal((await f.control('queue-hold',{entryId:'fixture-inbox:'+id,held:false})).ok,true);
+  await f.control('import');await f.control('sync-playlist');
+  const parts=f.state().entries.slice(0,3);assert.deepEqual(parts.map(e=>e.effectiveHeld),[false,false,false]);
+  assert.equal(f.state().entries.find(e=>e.submissionId==='other2').effectiveHeld,true);
+  assert.equal((await f.control('status')).data.readiness.playlistVerified,true);
+  const writes=f.calls.mcp.length;
+  await f.control('queue-move',{entryId:parts[2].id,beforeEntryId:parts[0].id});
+  assert.equal((await f.control('status')).data.readiness.playlistVerified,true,'local ordering cannot invalidate verified provider membership');
+  assert.equal(f.calls.mcp.length,writes);
+  await f.control('sync-playlist');assert.deepEqual(f.calls.mcp.at(-1).ids,[SONG,SECOND,THIRD]);
+});
+
+test('source-invalid Release and Inbox-only local-order controls are rejected without remote mutations',async()=>{
+  const bad=entry('bad',{state:'held',holdReason:'No usable source',preferredSource:null,sunoUrl:null,sunoId:null});
+  const f=fixture({state:{entries:[bad]}});
+  assert.equal((await f.control('queue-hold',{entryId:bad.id,held:false})).ok,false);assert.equal(f.state().entries[0].state,'held');
+  const creator=fixture({inboxOnly:true,state:{entries:[entry('one'),entry('two')]}});
+  for(const [action,extra] of [['queue-move',{entryId:'fixture-inbox:two',beforeEntryId:'fixture-inbox:one'}],['queue-hold',{entryId:'fixture-inbox:one',held:true}],['configure',{settings:{repeatUploaderHold:true}}]])assert.equal((await creator.control(action,extra)).ok,false);
+  assert.equal(creator.calls.messages.length,0);assert.equal(creator.calls.mcp.length,0);
+  const foreign=await f.control('queue-hold',{entryId:bad.id,held:true},{...f.host,id:'other'});assert.equal(foreign.ok,false);
+});
+
+test('stable-entry Load resolves latest order and held stale selections cannot bind or interrupt a player',async()=>{
+  const entries=[entry('one'),entry('two'),entry('three')],f=fixture({state:{entries}});
+  await f.control('queue-move',{entryId:entries[2].id,beforeEntryId:entries[0].id});
+  assert.equal((await f.control('load',{tabId:7,entryId:entries[1].id,index:0})).ok,true);
+  const load=f.calls.messages.find(x=>x.message.action==='load');assert.equal(load.message.index,2,'stable ID wins over stale UI index');
+  const held=fixture({state:{entries:[entry('one',{hostHeld:true})]}});
+  assert.equal((await held.control('load',{tabId:7,entryId:'fixture-inbox:one'})).ok,false);
+  assert.equal(held.calls.scripts.length,0);assert.equal(held.calls.messages.length,0);
+});
+
+test('trusted completion history persists after a newer AP observation and is never reset by refreshed inbox rows',async()=>{
+  const entries=[entry('one'),entry('two'),entry('three')];
+  const f=fixture({state:{entries,repeatUploaderHold:true,playerTabId:7},rows:[row('three'),row('two'),row('one')]});
+  const later={target:'catnap-show-observed',showId:'fixture-show',bindingId:'fixture-lease',revision:7,
+    playback:{phase:'playing',generation:3,current:{id:entries[2].id},source:'suno',completedEntryIds:[entries[0].id,entries[1].id,'unknown']}};
+  assert.equal((await f.send(later,f.player)).ok,true);
+  assert.equal((await f.send({...later,revision:6,playback:{phase:'ended',generation:2,current:{id:entries[1].id},source:'suno'}},f.player)).ok,false);
+  await f.control('import');
+  assert.equal(f.state().entries.slice(0,2).every(e=>Number.isFinite(e.playedAt)),true);
+  assert.equal(f.state().entries.some(e=>e.effectiveHeld),false);
+  assert.equal(f.state().playback.current.id,entries[2].id);
+  assert.equal((await f.control('queue-move',{entryId:entries[0].id,beforeEntryId:null})).ok,false);
+  const update=f.calls.messages.filter(x=>x.message.action==='update').at(-1).message;
+  assert.equal(JSON.stringify(update).includes('PRIVATE-UPLOADER-NOTE'),false);assert.equal(JSON.stringify(update).includes('fixture-uploader'),false);
+  assert.equal(Object.hasOwn(update.show.entries[0],'intakeOrder'),false);assert.equal(Object.hasOwn(update.show.entries[0],'uploaderId'),false);
+});
+test('local queue edits keep advanced ownership protection and retain saved changes if only Theatre handoff fails',async()=>{
+  const entries=[entry('one'),entry('two')],actions=[];
+  const f=fixture({state:{entries,playerTabId:7},coordination:{runExclusive:async(action,fn)=>{actions.push(action);return fn();}},onPlayerCommand:message=>message.action==='update'?{error:'Synthetic player context lost'}:{ok:true}});
+  const result=await f.control('queue-hold',{entryId:entries[1].id,held:true});
+  assert.equal(result.ok,true);assert.equal(f.state().entries[1].hostHeld,true);assert.match(f.state().error,/Local running order saved/);
+  assert.deepEqual(actions,['queue-hold']);assert.equal(f.calls.mcp.length,0);
+  const denied=fixture({state:{entries},coordination:{runExclusive:async()=>{throw Error('Another writer owns this show');}}});
+  assert.equal((await denied.control('queue-move',{entryId:entries[1].id,beforeEntryId:entries[0].id})).ok,false);
+  assert.deepEqual(denied.state().entries.map(e=>e.id),entries.map(e=>e.id));assert.equal(denied.calls.messages.length,0);
 });
