@@ -45,6 +45,13 @@ microphone. Keep the source tab open. Toolbar selection in another tab does
 not retarget an existing broadcast; Stop first, then select/start the new source.
 The host's existing local audio monitor and stereo Opus 256 kbps target remain.
 
+Only one host publishes the shared Catnap stream at a time. Other hosts can
+sign in and prepare playlists while it is live. The relay keeps its existing
+publisher instead of replacing it. The preview recognizes a busy response from
+the planned Catnap access service; the current legacy relay can still return a
+generic connection error on an overlapping Start. Stop the AP broadcast before
+the next LP host starts. This is not automatic scheduling or a takeover button.
+
 ## Remembering the publish token
 
 The radio controls can keep an extension-local copy of the key for the selected
