@@ -107,6 +107,21 @@ test('initial-open retry is canceled when the managed generation or selected sou
 test('managed identity-bound reader also accepts plain multilingual lyrics without a Copy lyrics button',async()=>{
  const f=await fixture();try{await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','夜の歌\nSecond plain line',{copy:false});f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/夜の歌/);assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/Second plain line/);}finally{f.dom.window.close();}
 });
+test('canonical current plain lyrics take precedence over unrelated global Image-for artwork',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');const unrelated=f.w.document.createElement('img');unrelated.alt='Image for Unrelated previous row';unrelated.src='https://cdn.example/unrelated.png';f.w.document.body.prepend(unrelated);const panel=lyricsPanel(f,ids[1],'First staged song','EXACT CURRENT WORDS\nSecond current line',{copy:false});panel.querySelector('img').remove();let clicks=0;detailsButton(f,()=>clicks++);f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/EXACT CURRENT WORDS/);assert.equal(clicks,0);assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
+test('an unrelated stale Copy control cannot override the exact current local panel, including short Copy lyrics',async()=>{
+ for(const copy of [false,true]){const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');const stale=lyricsPanel(f,ids[0],'Old other song','WRONG OLD LYRICS\nWrong second line');stale.id='fixture-stale-copy-panel';const current=copy?'Short current line.':'CURRENT PLAIN WORDS\nSecond current line';lyricsPanel(f,ids[1],'First staged song',current,{copy});f.w.CatnapManagedShow.render();assert.equal(f.w.CatnapTheatreView.nativeLyrics(f.w.CatnapTheatreView.nativeSong()),current);const visible=f.root().querySelector('.ct-lyrics-content').textContent;assert.equal(visible.includes('WRONG OLD LYRICS'),false);assert.ok(visible.includes(copy?'Short current line.':'CURRENT PLAIN WORDS'));assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}}
+});
+test('plain native lyrics retain raw newline text when rendered innerText has collapsed to one line',async()=>{
+ const f=await fixture();try{
+  await f.send({action:'enable',show:show()});await f.send({action:'load',index:0,showId:'fixture-show'});nativeSong(f,ids[1],'First staged song');const text='RAW FIRST LINE\nRaw second line',panel=lyricsPanel(f,ids[1],'First staged song',text,{copy:false}),words=panel.lastElementChild.firstElementChild;Object.defineProperty(words,'innerText',{value:'RAW FIRST LINE Raw second line'});f.w.CatnapManagedShow.render();assert.equal(f.w.CatnapTheatreView.nativeLyrics(f.w.CatnapTheatreView.nativeSong()),text);const lines=f.root().querySelectorAll('.ct-lyrics-content .ct-lyric-line');assert.equal(lines.length,2);assert.equal(lines[0].textContent,'RAW FIRST LINE');assert.equal(lines[1].textContent,'Raw second line');assert.equal(f.calls.some(call=>call[0]==='play'),false);
+ }finally{f.dom.window.close();}
+});
 test('quiet next Suno and YouTube slots cannot be repaired with the previous native song lyrics or reload its panel',async()=>{
  const f=await fixture();try{
   const current=show(),third='33333333-3333-4333-8333-333333333333';current.entries.push({...current.entries[0],id:'inbox:3',title:'Third quiet song',sunoId:third,sunoUrl:'https://suno.com/song/'+third});await f.send({action:'enable',show:current});await f.send({action:'load',index:0,showId:current.id});nativeSong(f,ids[1],'First staged song');lyricsPanel(f,ids[1],'First staged song','OLD WORDS\nOld second line',{copy:false});let opens=0;detailsButton(f,()=>opens++);f.w.CatnapManagedShow.render();assert.match(f.root().querySelector('.ct-lyrics-content').textContent,/OLD WORDS/);

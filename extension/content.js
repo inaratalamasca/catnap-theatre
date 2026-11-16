@@ -580,18 +580,23 @@
   function lyricsPanelWithoutCopy(song) {
     // Some current panels expose plain lyrics without a Copy lyrics control.
     // An exact song heading and native Styles control keep this scan bounded.
-    const heading=queryAll('h3').find(h=>!state.root?.contains(h)&&queryAll('a[href]',h).some(a=>canonicalSongId(a.href)===song.id));
-    if(!heading)return null;
-    let panel=heading.parentElement;
-    for(let depth=0;panel&&depth<3;depth++,panel=panel.parentElement){
-      if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
-      const styles=query('button[aria-label="Copy styles to clipboard"]',panel);
-      if(styles)return {panel,styles};
+    const headings=queryAll('h3').filter(h=>!state.root?.contains(h)&&queryAll('a[href]',h).some(a=>canonicalSongId(a.href)===song.id));
+    for(const heading of headings){
+      let panel=heading.parentElement;
+      for(let depth=0;panel&&depth<3;depth++,panel=panel.parentElement){
+        if(panel===DOC.body||panel===DOC.documentElement||panel.contains(state.root))break;
+        const styles=query('button[aria-label="Copy styles to clipboard"]',panel);
+        const ids=new Set(queryAll('h3 a[href]',panel).map(a=>canonicalSongId(a.href)).filter(Boolean));
+        if(styles&&ids.size===1&&ids.has(song.id))return {panel,styles};
+      }
     }
     return null;
   }
 
   function panelIdentityMatches(song) {
+    // An exact song link within the bounded native Styles panel is stronger
+    // evidence than unrelated artwork or Copy controls elsewhere on the page.
+    if(lyricsPanelWithoutCopy(song))return true;
     const imageMatch=panelImageMatches(song);if(imageMatch===false)return false;
     const copy=query(LABELS.lyricsCopy);
     // Prefer a canonical identity when this panel exposes one. Equal titles
@@ -602,7 +607,6 @@
       const ids=new Set(queryAll('h3 a[href]',panel).map(a=>canonicalSongId(a.href)).filter(Boolean));
       if(ids.size)return ids.size===1&&ids.has(song.id);
     }
-    if(lyricsPanelWithoutCopy(song))return true;
     return imageMatch;
   }
 
@@ -803,14 +807,17 @@
 
   function getLyrics(song) {
     if (panelIdentityMatches(song) === false) return '';
-    const copy = query(LABELS.lyricsCopy);
+    const found=lyricsPanelWithoutCopy(song);
+    const copy = found?query(LABELS.lyricsCopy,found.panel):query(LABELS.lyricsCopy);
     if (!copy) {
-      const found=lyricsPanelWithoutCopy(song);if(!found)return '';
+      if(!found)return '';
       const candidates=queryAll('div,p',found.panel).filter(el=>!el.children.length&&
         !(found.styles.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_PRECEDING)&&
         !el.closest('button,[role="button"],nav,[role="status"],[role="alert"]')&&
-        textOf(el).split('\n').filter(line=>line.trim()).length>=2);
-      return normalizeLyricText(candidates.sort((a,b)=>textOf(b).length-textOf(a).length)[0]?.textContent||'').slice(0,42000);
+        (el.textContent||'').trim().split('\n').filter(line=>line.trim()).length>=2);
+      // Native CSS may collapse rendered innerText to one line. The ordinary
+      // fallback reads raw textContent; retain those actual lyric line breaks.
+      return (candidates.sort((a,b)=>(b.textContent||'').length-(a.textContent||'').length)[0]?.textContent||'').trim().slice(0,42000);
     }
     const isControl = node => node.matches('button,[role="button"],input,select,textarea,[aria-hidden="true"]');
     function boundedText(node) {
