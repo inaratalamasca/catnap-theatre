@@ -1,14 +1,15 @@
-/* Catnap managed show worker, version 0.7.0.
+/* Catnap managed show worker, version 0.8.0.
  * Change summary: optional read-only uploader intake, private show queue,
  * saved inbox discovery, explicit player binding, verified MCP playlist writes
  * and bounded AP polling. Setup selections do not depend on a live Theatre.
- * Local order, holds and played history survive refresh without remote reorder.
+ * Fair holds and actual played history project into explicitly managed Suno
+ * playlists; completion reconciliation does not block the player controls.
  * Readiness reports local permission/context facts, never a service probe.
  * Tokens stay in the Suno module; uploader notes never enter public metadata.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.7.0';
+  const SCRIPT_VERSION = '0.8.0';
   const KEY = 'catnap-managed-show-v1', WINDOW_KEY = 'catnapShowWindow';
   const PAGE = chrome.runtime.getURL('show.html'), ALARM = 'catnap-inbox-watch';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//, UPLOADER = 'https://uploader.aiu.fm';
@@ -22,32 +23,32 @@
     // A name fallback must not turn a manual song announcement into a mass ping.
     return (/^(?:everyone|here)(?:$|\W)/i.test(name)?'＠':'@')+name;
   }
-  let tasks = Promise.resolve(), reading = false;
-  const coordinatedActions=new Set(['configure','import','create-playlist','sync-playlist','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics','queue-move','queue-hold']);
+  let tasks = Promise.resolve(), reading = false, syncActive=false, autoSyncActive=false, autoSyncRequested=false, syncIdle=Promise.resolve(), finishSyncIdle=()=>{};
+  const coordinatedActions=new Set(['configure','import','create-playlist','claim-playlist','sync-playlist','decline-entry','check-decline-entry','bind-player','unbind-player','watch','new-show','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics','queue-move','queue-hold']);
   const coordinate=(action,fn)=>globalThis.CatnapShowCoordination?.runExclusive?globalThis.CatnapShowCoordination.runExclusive(action,fn):fn();
-  const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',inboxes:{lp:[],ap:[]},inboxAccess:null,inboxAccessError:'',uploaderTabId:null,playerTabId:null,playlistId:'',entries:[],autoplay:false,repeatUploaderHold:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
+  const initial = () => ({version:1,id:crypto.randomUUID(),mode:'lp',showName:'',inboxId:'',inboxName:'',inboxes:{lp:[],ap:[]},inboxAccess:null,inboxAccessError:'',uploaderTabId:null,playerTabId:null,playlistId:'',playlistOwnership:null,playlistDirty:false,playlistSyncPending:false,entries:[],autoplay:false,repeatUploaderHold:false,warningSeconds:10,watch:{enabled:false,until:0},playback:null,lastRead:null,lastPlaylistSync:null,error:''});
   const applyPolicy=state=>{state.repeatUploaderHold=globalThis.CatnapPackage?.inboxOnly?false:state.repeatUploaderHold===true;state.entries=CatnapInboxCore.applyQueuePolicy(state.entries,{repeatUploaderHold:state.repeatUploaderHold,protectedEntryId:state.playback?.current?.id});return state;};
   const get = async () => {const state=(await chrome.storage.local.get(KEY))[KEY]||initial();state.entries=CatnapInboxCore.mergeEntries(state.entries||[],[]);return applyPolicy(state);};
-  const save = async state => {await chrome.storage.local.set({[KEY]:state}); return state;};
+  const save = async state => {state.playlistDirty=!!state.playlistId&&(!state.lastPlaylistSync||JSON.stringify(state.lastPlaylistSync.context?.sunoIds)!==JSON.stringify(playlistIds(state))||(!globalThis.CatnapPackage?.inboxOnly&&state.lastPlaylistSync.orderVerified!==true));await chrome.storage.local.set({[KEY]:state}); return state;};
   const inboxContext=state=>({uploaderTabId:state.uploaderTabId,inboxId:state.inboxId,mode:state.mode});
   const sameInbox=(context,state)=>!!context&&context.uploaderTabId===state.uploaderTabId&&context.inboxId===state.inboxId&&context.mode===state.mode;
-  // Suno membership remains intake FIFO. Local host ordering/holds control only
-  // the managed show and never request playlist removal or provider reordering.
-  const playlistEntries=state=>state.entries.filter(e=>e.state!=='held'&&e.preferredSource).slice().sort((a,b)=>a.intakeOrder-b.intakeOrder);
+  const playlistEntries=state=>globalThis.CatnapPackage?.inboxOnly?state.entries.filter(e=>e.state!=='held'&&e.state!=='declined'&&e.preferredSource).slice().sort((a,b)=>a.intakeOrder-b.intakeOrder):CatnapInboxCore.playlistEntries(state.entries,{currentEntryId:state.playback?.current?.id});
   const playlistIds=state=>[...new Set(playlistEntries(state).map(e=>e.sunoId).filter(Boolean))];
+  const ownsPlaylist=state=>state.playlistOwnership?.showId===state.id&&state.playlistOwnership?.playlistId===state.playlistId;
+  const sameDestination=(start,now)=>now.id===start.id&&now.playlistId===start.playlistId&&sameInbox(start,now);
   function readiness(state,openTabs,suno,permission){
     const uploaderTabOpen=openTabs.some(tab=>tab.kind==='uploader'&&tab.id===state.uploaderTabId),inboxSelected=CatnapInboxCore.validInboxId(state.inboxId);
     const access=state.inboxAccess,accessContext=!!access&&access.uploaderTabId===state.uploaderTabId&&(access.kind==='read'?sameInbox(access,state):access.kind==='discover'&&state.inboxes?.[state.mode]?.some(row=>row.id===state.inboxId));
     const inboxAccessChecked=!!(permission&&uploaderTabOpen&&inboxSelected&&accessContext);
     const sync=state.lastPlaylistSync,context=sync?.context,playlistSelected=!!state.playlistId;
-    const unresolved=state.entries.some(entry=>entry.state!=='held'&&entry.preferredSource&&entry.sunoUrl&&!entry.sunoId);
-    const playlistVerified=!!(!unresolved&&playlistSelected&&sameInbox(context,state)&&context.playlistId===state.playlistId&&JSON.stringify(context.sunoIds)===JSON.stringify(playlistIds(state))&&Array.isArray(sync.missing)&&!sync.missing.length&&Array.isArray(sync.failures)&&!sync.failures.length);
+    const unresolved=playlistEntries(state).some(entry=>entry.sunoUrl&&!entry.sunoId);
+    const playlistVerified=!!(!unresolved&&playlistSelected&&sameInbox(context,state)&&context.playlistId===state.playlistId&&JSON.stringify(context.sunoIds)===JSON.stringify(playlistIds(state))&&Array.isArray(sync.missing)&&!sync.missing.length&&Array.isArray(sync.failures)&&!sync.failures.length&&(globalThis.CatnapPackage?.inboxOnly||sync.orderVerified===true));
     return {sunoAuthorized:suno.connected===true,uploaderPermission:permission,uploaderTabOpen,inboxSelected,inboxAccessChecked,inboxCheckedAt:inboxAccessChecked?access.at:null,pendingRead:inboxAccessChecked&&sameInbox(state.lastRead?.context,state),playlistSelected,playlistVerified};
   }
   function serial(fn) {const result=tasks.then(fn);tasks=result.catch(()=>{});return result;}
   function publicEntry(entry) {
-    const {id,submissionId,title,artist,disclaimer,sunoUrl,sunoId,youtubeUrl,youtubeId,preferredSource,state,holdReason,artworkUrl,lyrics,durationSeconds,hostHeld,repeatHoldOverride,playedAt,repeatPredecessorId,effectiveHeld,effectiveHoldReason}=entry;
-    return {id,submissionId,title,artist,disclaimer,sunoUrl,sunoId,youtubeUrl,youtubeId,preferredSource,state,holdReason,artworkUrl,lyrics,durationSeconds,hostHeld,repeatHoldOverride,playedAt,repeatPredecessorId,effectiveHeld,effectiveHoldReason};
+    const {id,submissionId,title,artist,disclaimer,sunoUrl,sunoId,youtubeUrl,youtubeId,preferredSource,state,holdReason,artworkUrl,lyrics,durationSeconds,hostHeld,repeatHoldOverride,playedAt,playedOrder,repeatReleasedFor,releaseOrder,repeatPredecessorId,effectiveHeld,effectiveHoldReason}=entry;
+    return {id,submissionId,title,artist,disclaimer,sunoUrl,sunoId,youtubeUrl,youtubeId,preferredSource,state,holdReason,artworkUrl,lyrics,durationSeconds,hostHeld,repeatHoldOverride,playedAt,playedOrder,repeatReleasedFor,releaseOrder,repeatPredecessorId,effectiveHeld,effectiveHoldReason};
   }
   function showForPlayer(state) {return {id:state.id,bindingId:state.playerLease,mode:state.mode,name:state.showName,entries:state.entries.map(publicEntry),autoplay:state.autoplay,warningSeconds:state.warningSeconds};}
   async function publishState(state) {
@@ -68,11 +69,11 @@
     await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},files:['inbox-core.js','inbox-reader.js']});
     return tab;
   }
-  async function read(state, action) {
+  async function read(state, action, extra={}) {
     try{
       const tab=await uploader(state);
-      const response=await chrome.tabs.sendMessage(tab.id,{target:'catnap-inbox',action,inboxId:state.inboxId,mode:state.mode},{frameId:0});
-      if(!response?.ok)throw Error(response?.error||'The uploader did not return a valid response.');
+      const response=await chrome.tabs.sendMessage(tab.id,{target:'catnap-inbox',action,inboxId:state.inboxId,mode:state.mode,...extra},{frameId:0});
+      if(!response?.ok){const error=Error(response?.error||'The uploader did not return a valid response.');error.uncertain=response?.uncertain===true;throw error;}
       return response.data;
     }catch(error){
       const current=await get();
@@ -152,24 +153,80 @@
       throw error;
     }finally{reading=false;}
   }
-  async function syncPlaylist() {
-    const state=await get();if(!state.playlistId)throw Error('Choose or create a destination Suno playlist.');
-    const usable=playlistEntries(state);
-    const unresolved=usable.filter(e=>e.sunoUrl&&!e.sunoId);
-    if(unresolved.length)throw Error('Some Suno short links could not be resolved. Refresh the inbox or correct those links before syncing.');
-    const ids=[...new Set(usable.map(e=>e.sunoId).filter(Boolean))];
-    const result=await CatnapSuno.reconcilePlaylist(state.playlistId,ids,{isCurrent:async()=>{const now=await get();return now.id===state.id&&now.playlistId===state.playlistId;}});
-    const latest=await get();if(latest.id!==state.id)throw Error('The show changed during playlist sync.');
-    const metadata=new Map((result.clips||[]).map(clip=>[clip.id,clip]));
-    latest.entries=latest.entries.map(entry=>{const clip=metadata.get(entry.sunoId);return clip?{...entry,durationSeconds:clip.durationSeconds,artworkUrl:entry.preferredSource==='youtube'?entry.artworkUrl:clip.artworkUrl||entry.artworkUrl}:entry;});
-    latest.lastPlaylistSync={at:Date.now(),...result,context:{...inboxContext(state),playlistId:state.playlistId,sunoIds:ids}};latest.error='';await save(latest);
-    try{await publishState(latest);}catch(error){
-      const current=await get();
-      if(current.id!==state.id||current.inboxId!==state.inboxId||current.playlistId!==state.playlistId)throw Error('The show or destination changed after the playlist result was saved.');
-      current.error='Suno playlist verified and saved. Theatre did not receive the update: '+text(error.message,240);
-      await save(current);return {...result,playerUpdateWarning:current.error};
+  async function claimPlaylist() {
+    const state=await get();if(!state.playlistId)throw Error('Choose a destination Suno playlist first.');
+    const rows=await CatnapSuno.readPlaylist(state.playlistId),known=new Set(state.entries.map(entry=>entry.sunoId).filter(Boolean));
+    if(rows.some(row=>!known.has(row.id)))throw Error('This playlist contains songs outside this show. Create a new playlist or remove those unrelated songs yourself before managing its order.');
+    const current=await get();if(!sameDestination(state,current))throw Error('The show or destination changed while checking playlist ownership.');
+    current.playlistOwnership={showId:state.id,playlistId:state.playlistId,managedIds:[...known],verifiedOrder:rows.map(row=>row.id)};
+    current.lastPlaylistSync=null;current.error='';await save(current);return current;
+  }
+  async function syncPlaylist({background=false}={}) {
+    if(syncActive)throw Error('A playlist sync is already running.');
+    syncActive=true;syncIdle=new Promise(resolve=>{finishSyncIdle=resolve;});
+    // Automatic completion jobs perform network work outside the control queue.
+    // Only their short local commits are serialized with host/player changes.
+    const mutate=fn=>background?serial(fn):fn();
+    let state;
+    try{
+      state=await mutate(async()=>{
+        const current=await get();if(!current.playlistId)throw Error('Choose or create a destination Suno playlist.');
+        if(!globalThis.CatnapPackage?.inboxOnly&&!ownsPlaylist(current))throw Error('Create a new playlist or choose “Manage this playlist’s order” before syncing the managed show.');
+        if(playlistEntries(current).some(entry=>entry.sunoUrl&&!entry.sunoId))throw Error('Some Suno short links could not be resolved. Refresh the inbox or correct those links before syncing.');
+        if(ownsPlaylist(current))current.playlistOwnership.managedIds=[...new Set([...(current.playlistOwnership.managedIds||[]),...current.entries.map(entry=>entry.sunoId).filter(Boolean)])];
+        current.playlistSyncPending=true;if(!globalThis.CatnapPackage?.inboxOnly&&current.lastPlaylistSync)current.lastPlaylistSync.orderVerified=false;await save(current);return current;
+      });
+      const ids=playlistIds(state),projection=JSON.stringify(ids),context={...inboxContext(state),playlistId:state.playlistId,sunoIds:ids};
+      const isCurrent=async()=>{const now=await get();return sameDestination(state,now)&&JSON.stringify(playlistIds(now))===projection&&(globalThis.CatnapPackage?.inboxOnly||ownsPlaylist(now));};
+      const protect=async()=>{
+        const now=await get(),protectedIds=new Set();
+        if(!sameDestination(state,now))throw Error('The show or destination playlist changed.');
+        if(Number.isInteger(now.playerTabId)){
+          const health=await playerHealth(now);if(!health.linked)throw Error('Reconnect Theatre before changing its managed Suno playlist.');
+          if(!['idle','ended'].includes(health.phase)){if(health.currentId){const current=now.entries.find(entry=>entry.id===health.currentId);if(current?.sunoId)protectedIds.add(current.sunoId);}const cached=now.entries.find(entry=>entry.id===now.playback?.current?.id);if(cached?.sunoId&&!['idle','ended'].includes(now.playback?.phase))protectedIds.add(cached.sunoId);}
+        }
+        if(!Number.isInteger(now.playerTabId)){const cached=now.entries.find(entry=>entry.id===now.playback?.current?.id);if(cached?.sunoId&&!['idle','ended'].includes(now.playback?.phase))protectedIds.add(cached.sunoId);}
+        return protectedIds;
+      };
+      const protectedIds=globalThis.CatnapPackage?.inboxOnly?[]:[...await protect()];
+      const result=globalThis.CatnapPackage?.inboxOnly?
+        await CatnapSuno.reconcilePlaylist(state.playlistId,ids,{isCurrent}):
+        await CatnapSuno.reconcileOrderedPlaylist(state.playlistId,ids,{ownedIds:state.playlistOwnership.managedIds,protectedIds,isCurrent,
+          beforeMutation:async({kind,ids:batch})=>{if(kind!=='remove')return true;const live=await protect();return !batch.some(id=>live.has(id));},
+          onCheckpoint:async checkpoint=>mutate(async()=>{const latest=await get();if(!sameDestination(state,latest)||!ownsPlaylist(latest))throw Error('The show or destination changed after a playlist write.');latest.playlistOwnership.verifiedOrder=checkpoint.actualOrder;await save(latest);})});
+      const duplicateSubmissions=playlistEntries(state).filter(entry=>entry.sunoId).length-ids.length;
+      await mutate(async()=>{
+        const latest=await get();if(!sameDestination(state,latest))throw Error('The show or destination changed during playlist sync.');
+        const metadata=new Map((result.clips||[]).map(clip=>[clip.id,clip]));
+        latest.entries=latest.entries.map(entry=>{const clip=metadata.get(entry.sunoId);return clip?{...entry,durationSeconds:clip.durationSeconds,artworkUrl:entry.preferredSource==='youtube'?entry.artworkUrl:clip.artworkUrl||entry.artworkUrl}:entry;});
+        if(ownsPlaylist(latest)&&Array.isArray(result.actualOrder))latest.playlistOwnership.verifiedOrder=result.actualOrder;
+        latest.lastPlaylistSync={at:Date.now(),...result,duplicateSubmissions,context};latest.playlistSyncPending=false;
+        latest.error=result.orderVerified===false?(result.reason||'The managed playlist still needs an order check.'):
+          duplicateSubmissions?'Repeated submissions of the same Suno song stay separate in Theatre; Suno stores that song once.':'';
+        await save(latest);return latest;
+      });
+      try{await mutate(async()=>{const latest=await get();if(sameDestination(state,latest))await publishState(latest);});}catch(error){
+        const warning=await mutate(async()=>{const latest=await get();if(!sameDestination(state,latest))return '';latest.error='Suno playlist result saved. Theatre did not receive the update: '+text(error.message,240);await save(latest);return latest.error;});
+        return {...result,duplicateSubmissions,playerUpdateWarning:warning};
+      }
+      return {...result,duplicateSubmissions};
+    }finally{
+      try{if(state)await mutate(async()=>{const latest=await get();if(sameDestination(state,latest)){latest.playlistSyncPending=false;await save(latest);}});}finally{syncActive=false;finishSyncIdle();}
     }
-    return result;
+  }
+  function requestCompletionSync(){
+    autoSyncRequested=true;if(autoSyncActive)return;autoSyncActive=true;
+    // Do not put this network operation on `tasks`: songs may finish and the
+    // host may pause, advance or edit the queue while its MCP readback waits.
+    void Promise.resolve().then(async()=>{
+      while(autoSyncRequested){
+        autoSyncRequested=false;
+        if(syncActive)await syncIdle;
+        const state=await get();if(globalThis.CatnapPackage?.inboxOnly||!state.playlistId||!ownsPlaylist(state)||!state.playlistDirty)continue;
+        try{await coordinate('sync-playlist',()=>syncPlaylist({background:true}));}
+        catch(error){await serial(async()=>{const latest=await get();if(sameDestination(state,latest)){latest.error='Managed playlist update pending: '+text(error.message,240);latest.playlistSyncPending=false;await save(latest);}});}
+      }
+    }).finally(()=>{autoSyncActive=false;if(autoSyncRequested)requestCompletionSync();});
   }
   async function playerHealth(state) {
     if(!Number.isInteger(state.playerTabId))return {linked:false,reason:'Choose a Suno tab, then Load or Play to connect the show.'};
@@ -266,16 +323,56 @@
       const before=message.beforeEntryId===null?state.entries.length:state.entries.findIndex(row=>row.id===message.beforeEntryId);
       if(before<0)throw Error('The destination entry is no longer in this show.');
       if(before<=boundary)throw Error('Move entries only within the upcoming running order.');
+      if(message.beforeEntryId!==null&&CatnapInboxCore.isHeld(state.entries[before])!==CatnapInboxCore.isHeld(entry))throw Error('Release a held entry before moving it among ready songs. Move entries within their current ready or held group.');
       if(before===from)return state;
       state.entries.splice(from,1);
       const target=message.beforeEntryId===null?state.entries.length:state.entries.findIndex(row=>row.id===message.beforeEntryId);
       state.entries.splice(target,0,entry);
     }else{
       if(typeof message.held!=='boolean')throw Error('Choose Hold or Release.');
+      if(!message.held&&entry.declineUncertain)throw Error('Check the uncertain decline in the uploader before releasing this entry.');
       if(!message.held&&entry.state==='held')throw Error('This source is unavailable. Correct it in the uploader before releasing the entry.');
-      entry.hostHeld=message.held;entry.repeatHoldOverride=!message.held;
+      if(message.held){entry.hostHeld=true;entry.repeatHoldOverride=false;}else state.entries=CatnapInboxCore.releaseEntry(state.entries,entryId);
     }
     return saveLocalQueue(state);
+  }
+  async function declineEntry(message){
+    let state=await get();const entry=state.entries.find(row=>row.id===message.entryId);
+    if(!entry||entry.state==='declined')throw Error('Choose an existing Pending show entry.');
+    if(entry.declineUncertain)throw Error('Check the uncertain decline before sending another decline request.');
+    if(CatnapInboxCore.wasPlayed(entry))throw Error('A played submission cannot be declined from this show.');
+    const protection=await queueProtection(state);
+    if(protection.protectedIds.has(entry.id))throw Error('The loaded or playing submission cannot be declined.');
+    // A temporary local hold prevents AP autoplay reaching this submission
+    // during the uploader request. Never pause or replace the current song.
+    entry.hostHeld=true;applyPolicy(state);await save(state);await publishState(state);
+    const live=await queueProtection(state);if(live.protectedIds.has(entry.id))throw Error('The submission became current. Nothing was sent to the uploader.');
+    let result;
+    try{result=await read(state,'decline',{submissionId:entry.submissionId});}
+    catch(error){
+      const latest=await get(),target=latest.entries.find(row=>row.id===entry.id);
+      if(sameInbox(state,latest)&&latest.id===state.id&&target){target.hostHeld=true;target.declineUncertain=error.uncertain===true;latest.error=text(error.message,300);await save(latest);}
+      throw error;
+    }
+    if(result?.declined!==true||result.inboxId!==state.inboxId||result.submissionId!==entry.submissionId){const error=Error('Decline could not be verified. Check the uploader before trying again.');error.uncertain=true;const latest=await get(),target=latest.entries.find(row=>row.id===entry.id);if(target){target.hostHeld=true;target.declineUncertain=true;latest.error=error.message;await save(latest);}throw error;}
+    const latest=await get();if(!sameDestination(state,latest))throw Error('The show changed after the uploader confirmed decline. Check that uploader entry before continuing.');
+    const target=latest.entries.find(row=>row.id===entry.id);if(!target)throw Error('The uploader confirmed decline, but this entry is no longer in the show.');
+    target.state='declined';target.holdReason='Declined in uploader.';target.declineUncertain=false;target.hostHeld=true;applyPolicy(latest);latest.error='';await save(latest);await publishState(latest);
+    requestCompletionSync();return latest;
+  }
+  async function checkDeclineEntry(message){
+    const state=await get(),entry=state.entries.find(row=>row.id===message.entryId);
+    if(!entry||entry.declineUncertain!==true)throw Error('Choose an entry with an uncertain decline to check.');
+    if(CatnapInboxCore.wasPlayed(entry)||(await queueProtection(state)).protectedIds.has(entry.id))throw Error('Only an unplayed upcoming submission can be checked here.');
+    const result=await read(state,'check-decline',{submissionId:entry.submissionId});
+    const latest=await get();if(!sameDestination(state,latest))throw Error('The show changed while checking decline.');
+    const target=latest.entries.find(row=>row.id===entry.id);if(!target)throw Error('The checked entry is no longer in the show.');
+    target.hostHeld=true;
+    if(result?.inboxId!==state.inboxId||result.submissionId!==entry.submissionId||!['declined','pending','unknown'].includes(result.status))throw Error('The uploader did not confirm this exact submission. It remains held.');
+    if(result.status==='declined'){target.state='declined';target.holdReason='Declined in uploader.';target.declineUncertain=false;latest.error='';}
+    else if(result.status==='pending'){target.declineUncertain=false;latest.error='The uploader confirms this submission is Pending. It remains held; release it or review a new decline request.';}
+    else{target.declineUncertain=true;latest.error='The uploader could not confirm Pending or Declined status. Keep this entry held and check the uploader.';}
+    applyPolicy(latest);await save(latest);await publishState(latest);if(result.status==='declined')requestCompletionSync();return latest;
   }
   async function open(sourceTabId) {
     if(Number.isInteger(sourceTabId)){
@@ -303,7 +400,7 @@
       throw Error('Open show controls from Theatre or its toolbar controls.');
     }
     if(!await trustedPage(sender))throw Error('Untrusted show controls.');
-    if(globalThis.CatnapPackage?.inboxOnly&&['bind-player','unbind-player','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics','announcement','queue-move','queue-hold'].includes(message.action))throw Error('The standalone Inbox package creates playlists. Use Catnap Theatre for managed playback.');
+    if(globalThis.CatnapPackage?.inboxOnly&&['bind-player','unbind-player','load','next','previous','play','pause','stop','repeat-warning','reload-lyrics','announcement','queue-move','queue-hold','claim-playlist','decline-entry','check-decline-entry'].includes(message.action))throw Error('The standalone Inbox package creates playlists. Use Catnap Theatre for managed playback.');
     if(message.action==='status'){
       const state=await get(),[health,openTabs,suno,permission]=await Promise.all([playerHealth(state),tabs(),CatnapSuno.status(),chrome.permissions.contains({origins:[UPLOADER+'/*']})]);
       return {state,playbackHealth:health,tabs:openTabs,suno,readiness:readiness(state,openTabs,suno,permission),suggestedTabId:(await chrome.storage.session.get('catnapShowSuggestedTabId')).catnapShowSuggestedTabId,version:SCRIPT_VERSION};
@@ -320,7 +417,7 @@
       if(changes.warningSeconds!==undefined){const seconds=Number(changes.warningSeconds);if(!Number.isFinite(seconds)||seconds<2||seconds>120)throw Error('Warning duration must be 2–120 seconds.');state.warningSeconds=seconds;}
       if(!sameInbox(before,state)){state.lastRead=null;state.lastPlaylistSync=null;state.inboxAccessError='';}
       if(before.uploaderTabId!==state.uploaderTabId)state.inboxAccess=null;
-      if(priorPlaylist!==state.playlistId)state.lastPlaylistSync=null;
+      if(priorPlaylist!==state.playlistId){state.lastPlaylistSync=null;state.playlistOwnership=null;state.playlistSyncPending=false;}
       await save(state);
       // These fields enter the bound player's show. Inbox/uploader/playlist
       // selections are local setup and must work while Theatre is disconnected.
@@ -334,9 +431,12 @@
     if(message.action==='playlists')return CatnapSuno.listPlaylists();
     if(message.action==='create-playlist'){
       const playlist=await CatnapSuno.createPlaylist(text(message.name,100),message.visibility==='public'?'public':'private');
-      const state=await get();if(state.playlistId!==playlist.id)state.lastPlaylistSync=null;state.playlistId=playlist.id;await save(state);return playlist;
+      const state=await get();if(state.playlistId!==playlist.id)state.lastPlaylistSync=null;state.playlistId=playlist.id;if(!globalThis.CatnapPackage?.inboxOnly)state.playlistOwnership={showId:state.id,playlistId:playlist.id,managedIds:state.entries.map(entry=>entry.sunoId).filter(Boolean),verifiedOrder:[]};await save(state);return playlist;
     }
+    if(message.action==='claim-playlist')return claimPlaylist();
     if(message.action==='sync-playlist')return syncPlaylist();
+    if(message.action==='decline-entry')return declineEntry(message);
+    if(message.action==='check-decline-entry')return checkDeclineEntry(message);
     if(['queue-move','queue-hold'].includes(message.action))return editQueue(message);
     if(message.action==='bind-player')return (await bindPlayer(await get(),message.tabId)).response;
     if(message.action==='unbind-player'){
@@ -349,12 +449,12 @@
       else if(!(await playerHealth(state)).linked)throw Error('The show connection is inactive. Load or Play to reconnect first.');
       let index=Number(message.index);
       if(message.action==='load'&&message.entryId!==undefined){index=state.entries.findIndex(entry=>entry.id===message.entryId);if(index<0)throw Error('The selected entry is no longer in this show.');}
-      return playerCommand(state,message.action,{index});
+      return playerCommand(state,message.action,{index,...(message.action==='load'&&typeof message.entryId==='string'?{entryId:message.entryId}:{})});
     }
     if(message.action==='watch'){
       const state=await get();if(state.mode!=='ap'&&message.enabled)throw Error('Automatic inbox updates are for AP mode. Use Refresh inbox for LP.');
       state.watch={enabled:message.enabled===true,until:message.enabled?Date.now()+12*3600000:0};await save(state);
-      if(state.watch.enabled){await chrome.alarms.create(ALARM,{periodInMinutes:2});await importInbox();if(state.playlistId)await syncPlaylist();}else await chrome.alarms.clear(ALARM);
+      if(state.watch.enabled){await chrome.alarms.create(ALARM,{periodInMinutes:2});await importInbox();if(state.playlistId){if(syncActive)requestCompletionSync();else await syncPlaylist();}}else await chrome.alarms.clear(ALARM);
       return get();
     }
     if(message.action==='new-show'){
@@ -405,10 +505,14 @@
         const p=message.playback||{},current=state.entries.find(e=>e.id===p.current?.id);
         const source=p.source||p.current?.playbackSource||p.current?.preferredSource;
         const validSource=current&&((source==='suno'&&current.sunoUrl)||(source==='youtube'&&current.youtubeUrl))?source:null;
-        const completed=new Set(Array.isArray(p.completedEntryIds)&&p.completedEntryIds.length<=1000?p.completedEntryIds.filter(id=>typeof id==='string'):[]);
-        if(p.phase==='ended'&&current&&validSource)completed.add(current.id);
-        for(const entry of state.entries)if(completed.has(entry.id)&&!CatnapInboxCore.wasPlayed(entry))entry.playedAt=Date.now();
-        state.playback={phase:text(p.phase,30),index:current?state.entries.indexOf(current):-1,generation:p.generation,revision:message.revision,occurrenceId:text(p.occurrenceId,100),autoplay:p.autoplay===true,error:text(p.error,300),source:validSource,current:current?{id:current.id}:null};applyPolicy(state);await save(state);return {ok:true};
+        const completed=Array.isArray(p.completedEntryIds)&&p.completedEntryIds.length<=1000?p.completedEntryIds.filter(id=>typeof id==='string'):[];
+        if(p.phase==='ended'&&current&&validSource&&!completed.includes(current.id))completed.push(current.id);
+        const before=JSON.stringify(state.entries.map(entry=>[entry.id,entry.playedOrder,entry.repeatReleasedFor,entry.effectiveHeld]));
+        state.entries=CatnapInboxCore.completeEntries(state.entries,completed,{now:Date.now()});
+        state.playback={phase:text(p.phase,30),index:current?state.entries.findIndex(entry=>entry.id===current.id):-1,generation:p.generation,revision:message.revision,occurrenceId:text(p.occurrenceId,100),autoplay:p.autoplay===true,error:text(p.error,300),source:validSource,current:current?{id:current.id}:null};applyPolicy(state);await save(state);
+        const changed=before!==JSON.stringify(state.entries.map(entry=>[entry.id,entry.playedOrder,entry.repeatReleasedFor,entry.effectiveHeld]));
+        if(changed){try{await publishState(state);}catch(error){state.error='Played history saved. Theatre update pending: '+text(error.message,220);await save(state);}requestCompletionSync();}
+        return {ok:true};
       }).then(reply,error=>reply({error:error.message}));return true;
     }
     if(message?.target!=='catnap-show-worker')return;
@@ -416,15 +520,15 @@
     const controlled=async()=>await trustedPage(sender)&&coordinatedActions.has(message.action)?coordinate(message.action,run):run();
     // Pause must reach the bound player while a cold Play is still awaiting
     // readiness. It retains trust/ownership checks, but never waits behind Play.
-    (message.action==='status'?run():message.action==='pause'?controlled():serial(controlled)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.'}));return true;
+    (message.action==='status'?run():message.action==='pause'?controlled():serial(controlled)).then(data=>reply({ok:true,data}),error=>reply({ok:false,error:error.message||'Show control failed.',...(error.uncertain===true?{uncertain:true}:{})}));return true;
   });
   chrome.alarms.onAlarm.addListener(alarm=>{
     if(alarm.name!==ALARM)return;
     void serial(()=>coordinate('watch-tick',async()=>{
       const state=await get();if(!state.watch.enabled||state.mode!=='ap'||Date.now()>=state.watch.until){state.watch={enabled:false,until:0};await save(state);await chrome.alarms.clear(ALARM);return;}
-      try{await importInbox();if(state.playlistId)await syncPlaylist();}catch(error){const latest=await get();latest.error=text(error.message,300);latest.watch={enabled:false,until:0};await save(latest);await chrome.alarms.clear(ALARM);}
+      try{await importInbox();if(state.playlistId){if(syncActive)requestCompletionSync();else await syncPlaylist();}}catch(error){const latest=await get();latest.error=text(error.message,300);latest.watch={enabled:false,until:0};await save(latest);await chrome.alarms.clear(ALARM);}
     })).catch(async error=>{const state=await get();state.watch={enabled:false,until:0};state.error=text(error.message,300);await save(state);await chrome.alarms.clear(ALARM);});
   });
-  chrome.runtime.onStartup.addListener(()=>{void serial(async()=>{await chrome.alarms.clear(ALARM);const state=await get();state.watch={enabled:false,until:0};state.playerTabId=null;state.playback=null;state.inboxAccess=null;state.inboxAccessError='';await save(state);});});
+  chrome.runtime.onStartup.addListener(()=>{void serial(async()=>{await chrome.alarms.clear(ALARM);const state=await get();state.watch={enabled:false,until:0};state.playlistSyncPending=false;state.playerTabId=null;state.playback=null;state.inboxAccess=null;state.inboxAccessError='';await save(state);});});
   globalThis.CatnapShowWorker={version:SCRIPT_VERSION,open};
 })();

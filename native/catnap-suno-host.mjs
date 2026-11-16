@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Catnap native Suno transport, SCRIPT_VERSION 0.6.0.
  * Restricted stdio client: no listening server, disk credentials or dynamic URL.
- * Change summary: four explicit playlist MCP tools and optional owner-only
+ * Change summary: five explicit playlist MCP tools and optional owner-only
  * sanitized incident categories. Wire version stays compatible with 0.6.0.
  */
 import {fileURLToPath} from 'node:url';
@@ -12,7 +12,9 @@ export const SCRIPT_VERSION = '0.6.0';
 const ENDPOINT = 'https://api.suno.com/mcp';
 const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const MAX_FRAME = 1024 * 1024, MAX_BODY = 700000;
-const TOOLS = new Set(['playlists-list','playlists-list-clips','playlists-create','playlists-add-clips']);
+// 0.8 preview adds an explicitly scoped removal primitive. The wire protocol
+// remains 0.6.0 so existing read/append-only clients remain compatible.
+const TOOLS = new Set(['playlists-list','playlists-list-clips','playlists-create','playlists-add-clips','playlists-remove-clips']);
 const DIAGNOSTIC_FILE=join(dirname(fileURLToPath(import.meta.url)),'catnap-suno-diagnostics.jsonl');
 const ERROR_CODES=new Set(['insufficient_scope','invalid_scope','invalid_token','expired_token','token_expired','user_principal_required','beta_access_required','mcp_access_denied','permission_denied','access_denied','not_authorized','unauthorized','forbidden','library_access_required','account_not_eligible','server_error','internal_error','rate_limited','rate_limit_exceeded','not_found','invalid_arguments','invalid_params','unsupported_tool','tool_not_found','tool_execution_error','tool_error','authentication_required','authentication_error','validation_error','invalid_request']);
 const PUBLIC_SCOPES=new Set(['api:v0','credits:spend','download','library:read','library:search','library:write','offline_access','profile:read','profile:write','create:read','create:search','create:generate','create:upload','create:playback','catalog:read','catalog:sync','catalog:link','studio:write','telemetry:write']);
@@ -91,8 +93,8 @@ function validArguments(name, args) {
   if (Object.keys(args).some(key=>!allowed.includes(key))) return false;
   if ('limit' in args && (!Number.isInteger(args.limit) || args.limit < 1 || args.limit > 100)) return false;
   if ('cursor' in args && (typeof args.cursor !== 'string' || args.cursor.length > 2000)) return false;
-  if (['playlists-list-clips','playlists-add-clips'].includes(name) && !UUID.test(String(args.id))) return false;
-  if (name === 'playlists-add-clips' && (!Array.isArray(args.clip_ids) || args.clip_ids.length < 1 || args.clip_ids.length > 25 || args.clip_ids.some(id=>typeof id !== 'string' || !UUID.test(id)))) return false;
+  if (['playlists-list-clips','playlists-add-clips','playlists-remove-clips'].includes(name) && !UUID.test(String(args.id))) return false;
+  if (['playlists-add-clips','playlists-remove-clips'].includes(name) && (!Array.isArray(args.clip_ids) || args.clip_ids.length < 1 || args.clip_ids.length > 25 || args.clip_ids.some(id=>typeof id !== 'string' || !UUID.test(id)))) return false;
   if (name === 'playlists-create' && (typeof args.name !== 'string' || !args.name.trim() || args.name.length > 100 || /[\r\n]/.test(args.name) || !['private','public'].includes(args.visibility))) return false;
   return true;
 }

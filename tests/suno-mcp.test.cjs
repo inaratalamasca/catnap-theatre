@@ -337,3 +337,134 @@ test('native diagnostics are opt-in, owner-only, no-follow and bounded',async()=
     fs.writeFileSync(filename,'x'.repeat(65536));assert.equal(recordDiagnostic(summary,{enabled:true,filename}),false);
   } finally {fs.rmSync(temporary,{recursive:true,force:true});}
 });
+
+// Exact managed order uses only documented removal + append primitives.
+function orderedFixture(initial,{intercept,transport}={}){
+  let order=initial.slice();const calls=[],chrome=fixture();
+  const native=rpcTransport(async(name,args,index)=>{
+    calls.push({name,args:structuredClone(args)});
+    if(intercept){const value=await intercept({name,args,index,get order(){return order;},set order(next){order=next;}});if(value!==undefined)return value;}
+    if(name==='playlists-list-clips')return {clips:order.map(id=>({id})),next_cursor:null};
+    if(name==='playlists-remove-clips'){order=order.filter(id=>!args.clip_ids.includes(id));return {removed:args.clip_ids};}
+    if(name==='playlists-add-clips'){order.push(...args.clip_ids);return {added:args.clip_ids,failed:[]};}
+    throw Error('Unexpected fixture operation');
+  });
+  const client=library.createClient({chrome,transport:transport?message=>transport(message,native):native,now:()=>1000});
+  return {client,calls,get order(){return order;},set order(next){order=next;}};
+}
+
+test('managed order retains the matching prefix and rebuilds only the changed suffix with readbacks',async()=>{
+  const [a,b,c,d]=[1,2,3,4].map(makeId),f=orderedFixture([a,b,c]);
+  const checkpoints=[];
+  const result=await f.client.reconcileOrderedPlaylist(makeId(99),[a,c,b,d],{ownedIds:[a,b,c,d],onCheckpoint:value=>{checkpoints.push(value.actualOrder);}});
+  assert.deepEqual(f.order,[a,c,b,d]);assert.equal(result.orderVerified,true);assert.deepEqual(result.actualOrder,[a,c,b,d]);
+  assert.deepEqual(f.calls.filter(call=>call.name!=='playlists-list-clips'),[
+    {name:'playlists-remove-clips',args:{id:makeId(99),clip_ids:[b,c]}},
+    {name:'playlists-add-clips',args:{id:makeId(99),clip_ids:[c,b,d]}}
+  ]);
+  assert.deepEqual(checkpoints,[[a],[a,c,b,d]]);assert.deepEqual(result.missing,[]);
+});
+
+test('managed hold removes an owned upcoming track and foreign tracks fail closed before writes',async()=>{
+  const [a,b,c]=[1,2,3].map(makeId),f=orderedFixture([a,b,c]);
+  assert.equal((await f.client.reconcileOrderedPlaylist(makeId(99),[a,c],{ownedIds:[a,b,c]})).orderVerified,true);
+  assert.deepEqual(f.order,[a,c]);
+  const foreign=orderedFixture([a,b,c]);
+  await assert.rejects(foreign.client.reconcileOrderedPlaylist(makeId(99),[a],{ownedIds:[a,b]}),/outside the managed show/);
+  assert.equal(foreign.calls.some(call=>call.name!=='playlists-list-clips'),false);
+  const noOwnership=orderedFixture([a]);
+  await assert.rejects(noOwnership.client.reconcileOrderedPlaylist(makeId(99),[a]),/Take management/);
+  assert.equal(noOwnership.calls.length,0);
+});
+
+test('a protected loaded song defers a destructive suffix rebuild without touching playback or playlist',async()=>{
+  const [a,b,c]=[1,2,3].map(makeId),f=orderedFixture([a,b,c]);
+  const result=await f.client.reconcileOrderedPlaylist(makeId(99),[a,c,b],{ownedIds:[a,b,c],protectedIds:[c]});
+  assert.equal(result.deferred,true);assert.equal(result.orderVerified,false);assert.match(result.reason,/loaded or playing/);
+  assert.deepEqual(f.order,[a,b,c]);assert.equal(f.calls.some(call=>call.name!=='playlists-list-clips'),false);
+});
+
+test('fresh current-track and show guards prevent every remote mutation after a context change',async()=>{
+  const [a,b]=[1,2].map(makeId),f=orderedFixture([a,b]);let checks=0;
+  await assert.rejects(f.client.reconcileOrderedPlaylist(makeId(99),[b,a],{ownedIds:[a,b],isCurrent:async()=>false}),/changed/);
+  assert.equal(f.calls.some(call=>call.name!=='playlists-list-clips'),false);
+  const live=orderedFixture([a,b]);
+  await assert.rejects(live.client.reconcileOrderedPlaylist(makeId(99),[b,a],{ownedIds:[a,b],beforeMutation:async()=>{checks++;return false;}}),/current song is protected/);
+  assert.equal(checks,1);assert.equal(live.calls.some(call=>call.name!=='playlists-list-clips'),false);
+});
+
+test('uncertain removal and append are confirmed by readback and a later retry never duplicates',async()=>{
+  const [a,b,c]=[1,2,3].map(makeId);
+  const g=orderedFixture([a,b],{intercept:state=>{
+    if(state.name==='playlists-remove-clips'){state.order=state.order.filter(id=>!state.args.clip_ids.includes(id));return {transportFailure:true};}
+    if(state.name==='playlists-add-clips'){state.order=state.order.concat(state.args.clip_ids);return {transportFailure:true};}
+  }});
+  const opts={ownedIds:[a,b,c]};
+  const first=await g.client.reconcileOrderedPlaylist(makeId(99),[a,c,b],opts);assert.equal(first.orderVerified,true);assert.deepEqual(first.failures,[]);
+  const writes=g.calls.filter(call=>call.name!=='playlists-list-clips').length;
+  assert.equal((await g.client.reconcileOrderedPlaylist(makeId(99),[a,c,b],opts)).orderVerified,true);
+  assert.equal(g.calls.filter(call=>call.name!=='playlists-list-clips').length,writes);assert.deepEqual(g.order,[a,c,b]);
+});
+
+test('a provider mismatch stops the remaining rebuild and exposes a retryable verified partial order',async()=>{
+  const [a,b,c]=[1,2,3].map(makeId),f=orderedFixture([a,b],{intercept:state=>{
+    if(state.name==='playlists-remove-clips')return {removed:[],failed:[b]};
+  }});
+  const result=await f.client.reconcileOrderedPlaylist(makeId(99),[a,c,b],{ownedIds:[a,b,c]});
+  assert.equal(result.orderVerified,false);assert.deepEqual(result.actualOrder,[a,b]);assert.equal(result.failures.length,1);
+  assert.equal(f.calls.some(call=>call.name==='playlists-add-clips'),false);
+});
+
+test('duplicate native IDs cannot silently remove a protected retained prefix',async()=>{
+  const [a,b]=[1,2].map(makeId),f=orderedFixture([a,b,a]);
+  const result=await f.client.reconcileOrderedPlaylist(makeId(99),[a,b],{ownedIds:[a,b],protectedIds:[a]});
+  assert.equal(result.deferred,true);assert.deepEqual(f.order,[a,b,a]);assert.equal(f.calls.some(call=>call.name==='playlists-remove-clips'),false);
+  const g=orderedFixture([a,b,a]);assert.equal((await g.client.reconcileOrderedPlaylist(makeId(99),[a,b],{ownedIds:[a,b]})).orderVerified,true);assert.deepEqual(g.order,[a,b]);
+});
+
+test('an older helper keeps append-only capability and reports a specific upgrade before removal',async()=>{
+  const [a,b]=[1,2].map(makeId),f=orderedFixture([a,b],{transport:(message,native)=>message.request?.params?.name==='playlists-remove-clips'?{ok:false,error:'unsupported_request'}:native(message)});
+  await assert.rejects(f.client.reconcileOrderedPlaylist(makeId(99),[b,a],{ownedIds:[a,b]}),/Update the Catnap Suno companion/);
+  assert.deepEqual(f.order,[a,b]);assert.equal(f.calls.some(call=>call.name==='playlists-add-clips'),false);
+  assert.equal((await f.client.reconcilePlaylist(makeId(99),[a,b,makeId(3)])).confirmed,3);
+});
+
+test('ordered and append-only writers share one mutation lock',async()=>{
+  let resolveRead;const waiting=new Promise(resolve=>{resolveRead=resolve;}),a=makeId(1);
+  const f=orderedFixture([a],{intercept:async state=>{if(state.name==='playlists-list-clips')await waiting;}});
+  const first=f.client.reconcileOrderedPlaylist(makeId(99),[a],{ownedIds:[a]});
+  await assert.rejects(f.client.reconcilePlaylist(makeId(99),[a]),/already running/);resolveRead();assert.equal((await first).orderVerified,true);
+});
+
+test('native removal accepts only the bounded exact playlist and song argument shape',async()=>{
+  const {handleMessage}=await nativeModule();let calls=0;
+  const message={operation:'rpc',token:'demo-access-only',request:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'playlists-remove-clips',arguments:{id:makeId(99),clip_ids:[makeId(1)]}}}};
+  const network=async(url,init)=>{calls++;const rpc=JSON.parse(init.body);assert.equal(rpc.params.name,'playlists-remove-clips');assert.deepEqual(rpc.params.arguments,message.request.params.arguments);return Response.json({jsonrpc:'2.0',id:1,result:{structuredContent:{removed:[]}}});};
+  assert.equal((await handleMessage(message,network)).ok,true);assert.equal(calls,1);
+  for(const args of [{id:makeId(99),clip_ids:[]},{id:makeId(99),clip_ids:[makeId(1)],all:true},{id:makeId(99),clip_ids:['wrong']},{id:makeId(99),clip_ids:Array(26).fill(makeId(1))}]){
+    assert.equal((await handleMessage({...message,request:{...message.request,params:{...message.request.params,arguments:args}}},network)).ok,false);
+  }
+  assert.equal(calls,1);
+});
+
+test('a concurrent manual playlist edit discovered immediately before a write stops the managed rebuild',async()=>{
+  const [a,b,c]=[1,2,3].map(makeId);let reads=0;
+  const f=orderedFixture([a,b],{intercept:state=>{
+    if(state.name==='playlists-list-clips'&&++reads===2)state.order=[a,c,b];
+  }});
+  await assert.rejects(f.client.reconcileOrderedPlaylist(makeId(99),[b,a],{ownedIds:[a,b,c]}),/changed before a write/);
+  assert.equal(f.calls.some(call=>call.name!=='playlists-list-clips'),false);assert.deepEqual(f.order,[a,c,b]);
+});
+
+test('managed rebuilds bound every mutation batch and retain exact readback order across multiple batches',async()=>{
+  const original=Array.from({length:53},(_,index)=>makeId(index+1)),desired=original.slice().reverse(),f=orderedFixture(original);
+  const result=await f.client.reconcileOrderedPlaylist(makeId(99),desired,{ownedIds:original});assert.equal(result.orderVerified,true);assert.deepEqual(f.order,desired);
+  const mutations=f.calls.filter(call=>call.name!=='playlists-list-clips');assert.equal(mutations.length,6);
+  assert.equal(mutations.every(call=>call.args.clip_ids.length<=25),true);
+  assert.deepEqual(mutations.map(call=>call.name),Array(3).fill('playlists-remove-clips').concat(Array(3).fill('playlists-add-clips')));
+});
+
+test('ownership read rejects unidentified provider rows rather than silently ignoring possible unrelated songs',async()=>{
+  const chrome=fixture(),client=library.createClient({chrome,now:()=>1000,transport:rpcTransport(async()=>({clips:[{title:'Unidentified private row'}]}))});
+  await assert.rejects(client.readPlaylist(makeId(99)),/cannot be safely identified/);
+});

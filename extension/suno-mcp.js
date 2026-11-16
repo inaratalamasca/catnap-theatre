@@ -20,7 +20,7 @@
   const SCOPE = REQUESTED_SCOPES.join(' ');
   const AUTH_KEY = 'catnapSunoAuthorization', CLIENT_KEY = 'catnapSunoRegistration';
   const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-  const TOOL_NAMES = ['playlists-list', 'playlists-list-clips', 'playlists-create', 'playlists-add-clips'];
+  const TOOL_NAMES = ['playlists-list', 'playlists-list-clips', 'playlists-create', 'playlists-add-clips','playlists-remove-clips'];
   function clipMetadata(value) {
     const id = String(value?.id || value?.clip_id || '').toLowerCase();
     if (!UUID.test(id)) return null;
@@ -212,6 +212,7 @@
       async function rpc(method, params, notification = false) {
         const request = {jsonrpc:'2.0',method,params}; if (!notification) request.id = ++serial;
         const response = await transport({operation:'rpc',token,sessionId,request});
+        if(method==='tools/call'&&params.name==='playlists-remove-clips'&&response?.error==='unsupported_request')throw Error('Update the Catnap Suno companion before managing playlist order or removing held songs.');
         if (typeof response?.sessionId === 'string') sessionId = response.sessionId;
         return decodeRpc(response, request.id);
       }
@@ -239,7 +240,9 @@
     async function listPlaylists() { return pages(await connection(),'playlists-list'); }
     async function readPlaylist(playlistId) {
       if (!UUID.test(String(playlistId))) throw Error('Choose a valid Suno playlist.');
-      return (await pages(await connection(),'playlists-list-clips',{id:playlistId})).map(clipMetadata).filter(Boolean);
+      const rows=await pages(await connection(),'playlists-list-clips',{id:playlistId});
+      if(rows.some(row=>!UUID.test(String(row?.id||row?.clip_id||''))))throw Error('Suno returned a playlist row that cannot be safely identified.');
+      return rows.map(clipMetadata).filter(Boolean);
     }
     async function createPlaylist(name, visibility = 'private') {
       if (typeof name !== 'string' || !name.trim() || name.length > 100 || /[\r\n]/.test(name)) throw Error('Enter a playlist name of 1–100 characters.');
@@ -276,7 +279,63 @@
           missing:desired.filter(id=>!after.has(id)),failures:failures.filter(item=>!after.has(item.id)),clips:afterRows.map(clipMetadata).filter(Boolean)};
       } finally { writeActive = false; }
     }
-    return {connect,disconnect,status,listPlaylists,readPlaylist,createPlaylist,reconcilePlaylist};
+    async function reconcileOrderedPlaylist(playlistId,songIds,{ownedIds,protectedIds=[],isCurrent=async()=>true,beforeMutation=async()=>true,onCheckpoint=async()=>{}}={}) {
+      if(writeActive)throw Error('A playlist sync is already running.');
+      if(!UUID.test(String(playlistId)))throw Error('Choose a valid Suno playlist.');
+      if(!Array.isArray(ownedIds))throw Error('Take management of this playlist before changing its order.');
+      const desired=ids(songIds),owned=new Set(ids(ownedIds)),protectedSet=new Set(ids(protectedIds));
+      if(desired.some(id=>!owned.has(id)))throw Error('The requested order contains a song outside this managed show.');
+      const same=(left,right)=>left.length===right.length&&left.every((id,index)=>id===right[index]);
+      let before=[],rows=[],order=[],failure='',deferred=false,changed=false;writeActive=true;
+      try{
+        const link=await connection();
+        async function readOrder(){
+          rows=await pages(link,'playlists-list-clips',{id:playlistId});
+          const observed=rows.map(row=>String(row?.id||row?.clip_id||'').toLowerCase());
+          if(observed.some(id=>!UUID.test(id)))throw Error('Suno returned a playlist row that cannot be safely identified.');
+          if(observed.some(id=>!owned.has(id)))throw Error('This playlist contains songs outside the managed show. Nothing else will be removed; review the destination playlist.');
+          order=observed;return observed;
+        }
+        async function guard(kind,batch){
+          const expected=order.slice();await readOrder();
+          if(!same(order,expected))throw Error('The playlist changed before a write. Nothing further was changed; review its current order.');
+          if(!await isCurrent())throw Error('The show, playback or destination changed. Playlist reconciliation stopped.');
+          if(!await beforeMutation({kind,ids:batch.slice()}))throw Error('The current song is protected. Playlist reconciliation will need another check.');
+        }
+        const finish=()=>{
+          const present=new Set(order),original=new Set(before),verified=same(order,desired);
+          return {requested:desired.length,alreadyPresent:desired.filter(id=>original.has(id)).length,added:desired.filter(id=>present.has(id)&&!original.has(id)).length,
+            removed:[...original].filter(id=>!present.has(id)).length,confirmed:desired.filter(id=>present.has(id)).length,missing:desired.filter(id=>!present.has(id)),
+            failures:failure?[{reason:failure}]:[],clips:rows.map(clipMetadata).filter(Boolean),actualOrder:order.slice(),orderVerified:verified,
+            deferred,reason:failure||'',reordered:changed,verificationScope:'accessible-suno-items'};
+        };
+        before=(await readOrder()).slice();
+        if(same(order,desired))return finish();
+        let keep=0;while(keep<order.length&&keep<desired.length&&order[keep]===desired[keep])keep++;
+        // Remove operates on every occurrence of an ID. A retained prefix may
+        // not contain an ID removed from the suffix, even in a legacy duplicate.
+        while(keep>0){const suffix=new Set(order.slice(keep));const collision=order.slice(0,keep).findIndex(id=>suffix.has(id));if(collision<0)break;keep=collision;}
+        const remove=[...new Set(order.slice(keep))];
+        if(remove.some(id=>protectedSet.has(id))){deferred=true;failure='Order update deferred: it would remove the loaded or playing song. Retry after that song finishes.';return finish();}
+        for(let offset=0;offset<remove.length;offset+=25){
+          const batch=remove.slice(offset,offset+25),set=new Set(batch),expected=order.filter(id=>!set.has(id));
+          await guard('remove',batch);let uncertain=false;
+          try{await link.call('playlists-remove-clips',{id:playlistId,clip_ids:batch});}
+          catch(error){if(/Update the Catnap Suno companion|authorization|denied|rate limit|Reconnect/i.test(error.message))throw error;uncertain=true;}
+          await readOrder();await onCheckpoint({actualOrder:order.slice()});changed=true;
+          if(!same(order,expected)){failure=uncertain?'Removal was uncertain and readback did not confirm the expected order.':'Suno playlist changed during removal. Review it before retrying.';return finish();}
+        }
+        for(let offset=keep;offset<desired.length;offset+=25){
+          const batch=desired.slice(offset,offset+25),expected=order.concat(batch);await guard('add',batch);let uncertain=false;
+          try{await link.call('playlists-add-clips',{id:playlistId,clip_ids:batch});}
+          catch(error){if(/authorization|denied|rate limit|Reconnect/i.test(error.message))throw error;uncertain=true;}
+          await readOrder();await onCheckpoint({actualOrder:order.slice()});changed=true;
+          if(!same(order,expected)){failure=uncertain?'Addition was uncertain and readback did not confirm the expected order.':'Suno did not save the expected appended order. Review it before retrying.';return finish();}
+        }
+        return finish();
+      }finally{writeActive=false;}
+    }
+    return {connect,disconnect,status,listPlaylists,readPlaylist,createPlaylist,reconcilePlaylist,reconcileOrderedPlaylist};
   }
   return {VERSION,HOST,TOOL_NAMES,SCOPE_VERSION,REQUESTED_SCOPES,createClient,decodeRpc,toolData,providerToolError,ids,clipMetadata};
 });
