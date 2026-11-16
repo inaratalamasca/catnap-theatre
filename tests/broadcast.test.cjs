@@ -56,9 +56,10 @@ test('Catnap available and legacy preflight responses proceed once; other relays
  assert.deepEqual(f.calls.map(call=>call.url),[endpoint]);await f.publisher.stop();
 });
 test('Stop during Catnap preflight prevents a late grant from publishing or replacing newer status',async()=>{
+ for(const takeover of [false,true]){
  let resolveCheck;const calls=[];
  const f=fixture({fetch:async(url,options)=>{calls.push({url,...options});if(url.includes('/hosts/api/'))return new Promise(resolve=>{resolveCheck=resolve;});return {status:201,headers:new Headers({Location:'/live/session/new'}),text:async()=>SDP};}});
- const old=f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'old-key'});
+ const old=f.publisher.start({endpoint:B.DEFAULT_ENDPOINT,token:'old-key',takeover});
  while(!resolveCheck)await new Promise(resolve=>setImmediate(resolve));
  await f.publisher.stop();assert.equal(await old,false);
  assert.equal(await f.publisher.start({endpoint,token:'new-key'}),true);
@@ -68,6 +69,7 @@ test('Stop during Catnap preflight prevents a late grant from publishing or repl
  assert.equal(calls.filter(call=>call.url===B.DEFAULT_ENDPOINT).length,0);
  assert.equal(calls.filter(call=>call.url===endpoint&&call.method==='POST').length,1);
  await f.publisher.stop();
+ }
 });
 test('only an explicit Catnap takeover sends the takeover flag; legacy/custom relays cannot execute it',async()=>{
  for(const takeover of [undefined,false,'true',true]){
@@ -125,4 +127,16 @@ test('Chromium tab capture keeps legacy mandatory constraints separate from trac
  const sandbox={CatnapBroadcast:{Publisher:class{constructor(options){env=options;}}},navigator:{mediaDevices:{getUserMedia:async value=>{requested=value;if(Object.keys(value.audio).some(k=>k!=='mandatory'))throw Error('Malformed legacy capture constraints');return stream;}}},chrome:{runtime:{id:'test',getURL:p=>'chrome-extension://test/'+p,onMessage:{addListener(){}}}},setInterval,clearInterval,Float32Array,Math};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-offscreen.js'),'utf8'),sandbox);
  assert.equal(await env.capture('opaque-stream-id'),stream);assert.equal(requested.video,false);assert.equal(requested.audio.mandatory.chromeMediaSource,'tab');assert.equal(requested.audio.mandatory.chromeMediaSourceId,'opaque-stream-id');assert.equal(applied.echoCancellation,false);assert.equal(applied.noiseSuppression,false);assert.equal(applied.autoGainControl,false);assert.equal(applied.channelCount.ideal,2);
+});
+test('offscreen accepts takeover only as strict boolean from its own worker, never a source page',async()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');let handler;const starts=[];
+ const chrome={runtime:{id:'ours',getURL:p=>'chrome-extension://ours/'+p,getManifest:()=>({background:{service_worker:'broadcast-worker.js'}}),onMessage:{addListener:f=>{handler=f;}},sendMessage:async()=>{}}};
+ const sandbox={chrome,CatnapBroadcast:{Publisher:class{async start(options){starts.push(options);}async stop(){}}},setInterval,clearInterval,Float32Array,Math};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-offscreen.js'),'utf8'),sandbox);
+ const message={target:'broadcast-offscreen',action:'start',takeover:true,endpoint:B.DEFAULT_ENDPOINT};
+ assert.equal(handler(message,{id:'ours',url:'https://suno.com/',tab:{id:1}},()=>{}),undefined);assert.equal(starts.length,0);
+ for(const takeover of [true,'true',false]){
+  await new Promise(resolve=>{assert.equal(handler({...message,takeover},{id:'ours',url:chrome.runtime.getURL('broadcast-worker.js')},resolve),true);});
+  assert.equal(starts.at(-1).takeover,takeover===true);
+ }
 });
