@@ -124,6 +124,7 @@ build_flavor() {
   for file in LICENSE NOTICE LICENSING.md; do copy_source "$PROJECT_DIR/$file" "$package_dir/$file"; done
   if [[ "$flavor" == 'radio' ]]; then
     copy_source "$PROJECT_DIR/docs/BROADCAST-PILOT.md" "$package_dir/docs/BROADCAST-PILOT.md"
+    copy_source "$PROJECT_DIR/docs/RADIO.md" "$package_dir/docs/RADIO.md"
     cat > "$package_dir/PACKAGE-README.md" <<EOF
 # Catnap Radio development package ${SCRIPT_VERSION}
 
@@ -142,7 +143,7 @@ Only one broadcaster should capture the intended music tab at a time. Stop a
 broadcast before changing or reloading its extension. Keep the captured tab open;
 closing the controls window does not stop a started broadcast. Use Stop to end it.
 
-Read docs/BROADCAST-PILOT.md for relay, listener and rehearsal details. This is
+Read docs/RADIO.md for relay, listener and rehearsal details. This is
 a development preview, not an automatic update to Theatre Lite or the Store beta.
 Licensing and branding terms are in LICENSE, NOTICE and LICENSING.md.
 EOF

@@ -23,6 +23,7 @@ function sandbox(t) {
   fs.mkdirSync(path.join(root,'docs'));
   fs.writeFileSync(path.join(root,'docs/ACCEPTANCE.md'),'# Synthetic acceptance notes\n');
   fs.writeFileSync(path.join(root,'docs/BROADCAST-PILOT.md'),'# Synthetic broadcast guide\n');
+  fs.writeFileSync(path.join(root,'docs/RADIO.md'),'# Synthetic current Radio guide\n');
   fs.writeFileSync(path.join(root,'docs/private-event.csv'),'private fixture excluded\n');
   for(const name of ['README.md','CHANGELOG.md','LICENSE','NOTICE','LICENSING.md'])fs.copyFileSync(path.join(SOURCE,name),path.join(root,name));
   // Fix the fixture's manifest version independently of whatever shared branch
@@ -82,7 +83,7 @@ test('all adds a separately pinned Radio package with an exact minimal file and 
   const publicDer=Buffer.from(manifest.key,'base64');assert.doesNotThrow(()=>crypto.createPublicKey({key:publicDer,type:'spki',format:'der'}));
   for(const relative of ['extension/manifest.json','packaging/inbox/manifest.json'])assert.notEqual(manifest.key,JSON.parse(fs.readFileSync(path.join(f.root,relative),'utf8')).key);
   const expected=[
-    'manifest.json','package-mode.js','PACKAGE-README.md','LICENSE','NOTICE','LICENSING.md','docs/BROADCAST-PILOT.md',
+    'manifest.json','package-mode.js','PACKAGE-README.md','LICENSE','NOTICE','LICENSING.md','docs/BROADCAST-PILOT.md','docs/RADIO.md',
     'broadcast-source.js','broadcast-core.js','broadcast-metadata-core.js','broadcast-metadata.js','broadcast-worker.js',
     'broadcast-panel.js','broadcast-offscreen.js','broadcast.html','broadcast.css','broadcast-offscreen.html','radio-tab.js','visualizer.js',
     ...[16,32,48,128].map(size=>'assets/icons/radio-'+size+'.png')
