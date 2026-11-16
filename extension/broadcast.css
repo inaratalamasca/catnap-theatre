@@ -1,2 +1,14 @@
 /* Catnap broadcast panel, version 0.3.0. */
 :root{color-scheme:dark;font:14px system-ui;background:#0d0a18;color:#f4eefb}body{width:360px;margin:0;padding:18px}h1{font-size:20px;margin:0 0 8px}small{font-size:10px;color:#37dfd3}p{line-height:1.45}label{display:block;margin:16px 0 8px}input{display:block;box-sizing:border-box;width:100%;padding:9px;margin-top:6px;border:1px solid #74568c;border-radius:6px;background:#191025;color:inherit}.buttons{display:flex;gap:8px;margin-top:18px}button{cursor:pointer;padding:10px;border:1px solid #9a6cce;border-radius:7px;background:#51306e;color:white}button:disabled{opacity:.5;cursor:default}#stop{background:#252032}#status{padding:10px;border-left:3px solid #2dd4bf;background:#191426;min-height:40px;overflow-wrap:anywhere}.help{font-size:12px;color:#c3b4d0}progress{width:100%;display:block;margin-top:6px;accent-color:#2dd4bf}
+/* 0.7.0: compact source context, optional Theatre launcher and truthful state. */
+[hidden]{display:none!important}.source{font-size:12px;color:#c5e5df;overflow-wrap:anywhere;padding:9px;border:1px solid #365950;border-radius:7px}.check{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5}.check input{width:auto;margin:3px 0 0;flex:none;accent-color:#2dd4bf}#status[data-state="live"]{background:#112c23;border-color:#4fe5a0;color:#b8f6ce}#status[data-state="error"]{background:#321524;border-color:#ee6584;color:#ffcbda}body{box-sizing:border-box;width:100%;max-width:420px}h1{font-size:20px}
+.eyebrow{font-size:10px;letter-spacing:.2em;color:#cfb4e4;margin:0 0 6px;line-height:1.45}
+.status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 9px;background:#a5a0ae}
+.token-status{display:flex;gap:8px;align-items:center;margin:8px 0;font-size:12px;line-height:1.45;color:#ffbacb}
+.token-status .status-dot{background:#ef809d}
+.token-status[data-state=entered]{color:#acf0cc}.token-status[data-state=entered] .status-dot{background:#69d9a0}
+#token[data-token-state=entered]{border:2px solid #58b98b;background:#11271f}
+#token[data-token-state=missing],#token[data-token-state=malformed],#token[data-token-state=rejected]{border:2px solid #d96b8e;background:#2b1421}
+.buttons{flex-wrap:wrap;align-items:center}.buttons #start{flex:1;min-width:160px}
+#on-air{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;white-space:nowrap;color:#bcb4c7}
+#on-air[data-live=true]{color:#a9f4c7}#on-air[data-live=true] .status-dot{background:#55e99e;box-shadow:0 0 8px #55e99e66}
