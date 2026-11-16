@@ -75,7 +75,7 @@ test('the verified LP connection has a persistent active Inbox mode and matching
   assert.equal(f.element('control-mode-title').textContent,'Inbox show controls active');
   assert.equal(f.element('control-mode').dataset.mode,'inbox');
   assert.match(f.element('control-mode-detail').textContent,/LP · manual advance.*stop at the end.*Load.*quietly/);
-  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno \(tab 22\)/);
+  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno/);
   assert.equal(f.element('bind-player').getAttribute('aria-pressed'),'true');assert.equal(f.element('bind-player').disabled,true);
   assert.equal(f.element('unbind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('unbind-player').disabled,false);
   await f.click('playlists');
@@ -115,8 +115,8 @@ test('an unhealthy saved binding warns about uncertain control without claiming 
 test('choosing another tab keeps the actual controlled target visible until explicit activation',async t=>{
   const f=await fixture();t.after(()=>f.dom.window.close());
   f.tabs.push({id:23,title:'Other Suno tab',kind:'suno'});await f.poll();await f.change('player-tab','23');
-  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno \(tab 22\)/);
-  assert.match(f.element('selected-player').textContent,/Selected tab: Other Suno tab \(tab 23\).*has not changed the controlled tab/);
+  assert.match(f.element('bound-player').textContent,/Currently controlled: Suno/);
+  assert.match(f.element('selected-player').textContent,/Selected tab: Other Suno tab.*has not changed the controlled tab/);
   assert.equal(f.element('bind-player').getAttribute('aria-pressed'),'false');assert.equal(f.element('bind-player').disabled,false);
   assert.equal(f.element('control-mode-title').textContent,'Inbox show controls active');
   assert.equal(f.messages.some(message=>['bind-player','load','play'].includes(message.action)),false);

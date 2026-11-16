@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Catnap Theater Mode for Suno
 // @namespace    https://catnap.radio/
-// @version      0.6.8
+// @version      0.6.9
 // @description  Suno-native Theater Mode with full-resolution artwork, Up Next preview, and AI:Underground branding.
 // @author       Catnap Radio
 // @match        https://suno.com/*
@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 /*
- * CATNAP THEATRE · v0.6.8 development
+ * CATNAP THEATRE · v0.6.9 development
  * Change: canonical native lyric panels preserve raw text line breaks.
  *
  * Ordinary mode delegates playback/queue/repeat/shuffle to Suno. Optional
@@ -26,7 +26,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '0.6.8';
+  const SCRIPT_VERSION = '0.6.9';
   const DOC = document;
   const INSTALL_MARKER = 'catnapTheaterInstalled';
   if (DOC.documentElement.dataset[INSTALL_MARKER] === 'yes') return;
@@ -133,8 +133,12 @@
 #${ROOT_ID} button:focus-visible, #${ROOT_ID} input:focus-visible { outline: 2px solid #c69cff; outline-offset: 4px; }
 #${ROOT_ID} .ct-header {
   flex: none; height: 64px; padding: 8px clamp(20px,2.5vw,45px);
-  display: flex; align-items: center; gap: clamp(12px,2.6vw,42px);
+  display: flex; align-items: center; gap: clamp(10px,1.5vw,24px);
 }
+#${ROOT_ID} .ct-header-actions {display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}
+#${ROOT_ID} .ct-header-actions .ct-header-action {display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 11px;border:1px solid #77618c;border-radius:8px;background:rgba(34,27,48,.7);color:#eadff5;font:600 12px/1.2 system-ui;white-space:nowrap}
+#${ROOT_ID} .ct-header-actions .ct-header-action:hover {background:#3b2b4d;border-color:#b69acb}
+#${ROOT_ID} .ct-header-actions .ct-close {width:34px;padding:0;font-size:21px}
 #${ROOT_ID} .ct-brand { display: flex; align-items: center; gap: 11px; opacity: .92; flex: 0 0 auto; }
 #${ROOT_ID} .ct-brand svg { height: 34px; width: 34px; flex: none; color: #d7caec; }
 #${ROOT_ID} .ct-brand-main { letter-spacing: .13em; font-size: 13px; font-weight: 650; line-height: 1.3; }
@@ -221,6 +225,9 @@
   #${ROOT_ID} .ct-bottom { padding: 10px 15px; min-height: 63px; }
 }
 @media (max-width: 610px) {
+  #${ROOT_ID} .ct-header {height:auto;min-height:96px;flex-wrap:wrap;gap:6px 12px}
+  #${ROOT_ID} .ct-header-actions {flex-basis:100%;justify-content:flex-end}
+  #${ROOT_ID} .ct-aiu {margin-left:auto}
   #${ROOT_ID} .ct-brand-sub { display:none; }
   #${ROOT_ID} .ct-brand { gap:4px; }
   #${ROOT_ID} .ct-brand-main { max-width: 68px; font-size: 10px; line-height:1.2; }
@@ -275,6 +282,7 @@
           <img class="ct-aiu-logo" src="${chrome.runtime.getURL('assets/aiu-logo.png')}" alt="AI:Underground" />
           <span class="ct-aiu-fallback" aria-hidden="true">AI:<small>UNDERGROUND</small></span>
         </div>
+        <div class="ct-header-actions" role="group" aria-label="Theatre control windows"></div>
       </header>
       <main class="ct-main">
         <section class="ct-showcase" aria-label="Now playing">

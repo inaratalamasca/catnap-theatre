@@ -1,11 +1,10 @@
-// Catnap Theatre standalone companion, version 0.5.0.
-// Changes: presentation options live in the persistent control window; the
-// canvas retains only its Controls entry point and normal playback/navigation.
+// Catnap Theatre standalone companion, version 0.6.9.
+// Changes: group matching control-window buttons and explicitly label Suno rows.
 // Reads native page rows only. Never refreshes the page, fetches a private API,
 // alters the playlist, or contacts a bot. Keep source adapters small and replaceable.
 (() => {
   'use strict';
-  const SCRIPT_VERSION = '0.5.0';
+  const SCRIPT_VERSION = '0.6.9';
   const {defaults,settings,isCue,songId} = globalThis.CatnapTheatre;
   const STORAGE_KEY='catnap-theatre-settings-v1';
   let prefs={...defaults},root=null,tools=null,playlist=null,status=null,signature='',observer=null,ready=false,logoUrl='',backgroundUrl='';
@@ -56,7 +55,6 @@
 #catnap-theater-root::before {opacity:.3}
 #catnap-theater-root .ct-lyrics-content {font-size:var(--ct-lyric-size,21px)}
 #catnap-theater-root .ct-standalone-tools[hidden],#catnap-theater-root .ct-visual-tools[hidden],#catnap-theater-root .ct-lyrics-auto,#catnap-theater-root .ct-lyrics-reload {display:none!important}
-#catnap-theater-root .ct-popout-controls {flex:none;font:13px system-ui;padding:7px 10px;border:1px solid #77618c;border-radius:8px;white-space:nowrap}
 #catnap-theater-root .ct-standalone-tools summary {cursor:pointer;padding:7px 10px;border:1px solid #77618c;border-radius:8px;list-style:none}
 #catnap-theater-root .ct-settings-panel {position:absolute;top:40px;right:0;width:300px;max-height:75vh;overflow:auto;padding:15px;background:#161322;border:1px solid #77618c;border-radius:12px;display:grid;gap:11px;box-shadow:0 10px 35px #000b;letter-spacing:normal}
 #catnap-theater-root .ct-settings-panel label {display:grid;gap:5px;font-size:13px}
@@ -64,7 +62,6 @@
 #catnap-theater-root .ct-settings-panel .ct-check {display:flex;gap:8px;align-items:center}
 #catnap-theater-root .ct-settings-panel .ct-font-row {display:flex;align-items:center;gap:10px}
 #catnap-theater-root .ct-settings-panel a {color:#a8dfef;text-decoration:underline}
-#catnap-theater-root .ct-close {padding:6px;font-size:19px;flex:none}
 #catnap-theater-root .ct-lineup {display:none;min-height:0;overflow-y:auto;border:1px solid #4b3a5b;border-radius:12px;padding:12px;background:#0d0e19}
 #catnap-theater-root .ct-lineup h2 {font:700 12px system-ui;letter-spacing:.15em;color:#d8bee9;margin:0 0 8px}
 #catnap-theater-root .ct-lineup small {display:block;color:#a9a3b5;font-size:11px;line-height:1.4;margin-bottom:10px}
@@ -103,13 +100,14 @@
     tools.querySelector('.ct-lounge').href=chrome.runtime.getURL('lounge.html');
     root.appendChild(tools);
     const header=root.querySelector('.ct-header');
-    const controls=element('button',{type:'button',class:'ct-popout-controls','aria-label':'Theatre controls',title:'Open persistent Theatre controls'},'Controls ↗');
-    header.insertBefore(controls,header.querySelector('.ct-aiu'));
-    const close=element('button',{type:'button',class:'ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
-    close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));header.appendChild(close);
+    let actions=header.querySelector('.ct-header-actions');if(!actions){actions=element('div',{class:'ct-header-actions',role:'group','aria-label':'Theatre control windows'});header.append(actions);}
+    const controls=element('button',{type:'button',class:'ct-header-action ct-popout-controls','aria-label':'Theatre controls',title:'Open presentation settings'},'Presentation ↗');
+    actions.insertBefore(controls,actions.firstChild);
+    const close=element('button',{type:'button',class:'ct-header-action ct-close','aria-label':'Close theatre',title:'Close theatre (Esc)'},'×');
+    close.onclick=()=>document.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape',bubbles:true}));actions.appendChild(close);
     status=tools.querySelector('.ct-settings-status');
     controls.onclick=async()=>{
-      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.textContent='Controls ↗';controls.title='Open persistent Theatre controls';}
+      try{const result=await chrome.runtime.sendMessage({target:'presentation-worker',action:'open'});if(result?.error)throw Error(result.error);controls.textContent='Presentation ↗';controls.title='Open presentation settings';}
       catch(error){controls.textContent='Controls unavailable';controls.title=error.message||'Could not open controls.';}
     };
     const logo=element('img',{class:'ct-custom-logo',alt:'Host logo',hidden:''});Object.assign(logo.style,{maxWidth:'100px',height:'36px',objectFit:'contain'});root.querySelector('.ct-brand').prepend(logo);
@@ -165,7 +163,7 @@
     const nextSignature=JSON.stringify([location.pathname,current,rows.map(r=>[r.id,r.title,!!r.button])]);
     if(nextSignature===signature)return;signature=nextSignature;
     const scroll=playlist.scrollTop;
-    playlist.replaceChildren(element('h2',{},'PLAYLIST'),element('small',{},'Visible Suno rows only. Not the internal queue. New rows appear when Suno renders them.'));
+    playlist.replaceChildren(element('h2',{},'SUNO PLAYLIST'),element('small',{},'Suno controls playback. These are the visible Suno playlist rows.'));
     if(!rows.length)playlist.append(element('small',{},'Open a Suno playlist. Suno may need to load more rows before they can appear here.'));
     rows.forEach((row,index)=>{
       const button=element('button',{type:'button',class:'ct-track','aria-current':String(row.id===current)},`${String(index+1).padStart(2,'0')}  ${row.title}`);

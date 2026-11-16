@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.9 development — November 15, 2026
+
+- Group Presentation, Inbox & show and Close together with consistent button styling. Explicitly label the Theatre list INBOX SHOW ORDER or SUNO PLAYLIST.
+- Show the verified playback mode prominently: active Inbox show, ordinary Suno, or a saved Inbox connection needing repair. Identify the controlled tab separately from a selected destination and mark the active mode button.
+- Enlarge the last successful read summary to Inbox Submissions: N Pending · N held · (time), with errors separate from counts. Explain AP autoplay accurately instead of retaining manual-only helper text.
+- Retain the 0.6.8 lyrics and setup fixes. Current live screenshots still show 0.6.7; 0.6.9 actual lyrics/intake and mixed-source acceptance remain pending.
+
 ## 0.6.8 development — November 15, 2026
 
 - Preserve raw newlines when reading plain native lyrics. A fresh Chromium differential reproduces the 0.6.7 failure with normal whitespace and confirms the corrected reader, including unrelated artwork and Copy controls.

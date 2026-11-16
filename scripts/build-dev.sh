@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Catnap development package builder, version 0.6.8.
+# Catnap development package builder, version 0.6.9.
 # Change summary: explicit public source allowlists, independently loadable
 # combined/Inbox-only packages, root manifests and SHA-256 checksums.
 # Builds files only. It never installs extensions, registers a native host,
 # contacts services, reads browser profiles or deploys a package.
 set -euo pipefail
-SCRIPT_VERSION='0.6.8'
+SCRIPT_VERSION='0.6.9'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR=''

@@ -1,10 +1,10 @@
-/* Catnap host-only Inbox & show window, version 0.6.8.
+/* Catnap host-only Inbox & show window, version 0.6.9.
  * Change summary: verified playback-mode display, prominent inbox totals and
  * ordered setup actions. Playback never queues extra starts.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.8', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.6.9', $=id=>document.getElementById(id);
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='',playerChoice;
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
@@ -22,10 +22,10 @@
     label('control-mode-title',linked?'Inbox show controls active':ordinary?'Suno playlist controls':'Inbox show needs reconnecting');
     label('control-mode-detail',linked?`${s.mode==='lp'?'LP · manual advance':autoplay?'AP · autoplay on':'AP · manual advance'}. ${autoplay?'The next song starts automatically.':'Songs stop at the end. Load the next song quietly, then press Play.'}`:ordinary?inboxOnly?'This extension updates playlists. Suno controls song playback.':'Suno controls playback and its next-song behavior. Choose a Theatre tab, then select “Use this Theatre for the show” for Inbox control.':`${data.playbackHealth?.reason||'The saved Theatre connection could not be verified.'} Playback control is uncertain until you reconnect or return to ordinary Suno.`);
     const tabName=id=>data.tabs.find(tab=>tab.kind==='suno'&&tab.id===id)?.title||'Suno / Theatre';
-    label('bound-player',bound?`${linked?'Currently controlled':'Saved connection'}: ${tabName(s.playerTabId)} (tab ${s.playerTabId})${linked?'':' · not verified'}`:'');
+    label('bound-player',bound?`${linked?'Currently controlled':'Saved connection'}: ${tabName(s.playerTabId)}${linked?'':' · not verified'}`:'');
     $('bound-player').hidden=!bound;
     const different=bound&&chosen&&chosen!==s.playerTabId;
-    label('selected-player',inboxOnly?'':chosen?`Selected tab: ${tabName(chosen)} (tab ${chosen}). ${different?'This selection has not changed the controlled tab.':linked?'This is the controlled tab.':'Selecting a tab does not connect it.'}`:'No Theatre tab selected.');
+    label('selected-player',inboxOnly?'':chosen?`Selected tab: ${tabName(chosen)}. ${different?'This selection has not changed the controlled tab.':linked?'This is the controlled tab.':'Selecting a tab does not connect it.'}`:'No Theatre tab selected.');
     $('selected-player').hidden=inboxOnly;
     const same=linked&&chosen===s.playerTabId;
     $('bind-player').setAttribute('aria-pressed',String(same));$('bind-player').classList.toggle('is-active',same);$('bind-player').disabled=!chosen||same;
@@ -55,7 +55,7 @@
     label('inbox-status',read?`Inbox Submissions: ${read.pending} Pending · ${read.held} held · (${Number.isNaN(readTime.getTime())?'time unavailable':readTime.toLocaleTimeString()})`:'Inbox Submissions: Not read yet');
     label('inbox-error',s.error||'');$('inbox-error').hidden=!s.error;
     $('playback-status').textContent=linked?`${data.playbackHealth.phase||p.phase||'Ready'}${p.error?' · '+p.error:''} · ${s.mode==='ap'&&s.autoplay?'AP autoplay':'Manual advance'}`:(data.playbackHealth?.reason||'Choose your Suno tab, then Load or Play to connect the show.');
-    $('autoplay-help').textContent=linked?'Manual mode stops at the end. Load next changes artwork and warning without playing audio.':'Playback is not connected. Load or Play reconnects the selected Theatre; ordinary Suno playback is not yet controlled.';
+    $('autoplay-help').textContent=linked?(s.mode==='ap'&&s.autoplay?'AP autoplay is on. The next inbox entry starts when the current song ends. Load next still stages a song quietly.':'Manual mode stops at the end. Load next changes artwork and warning without playing audio.'):'Playback is not connected. Load or Play reconnects the selected Theatre; ordinary Suno playback is not yet controlled.';
     $('current-title').textContent=entry?entry.title:'No song loaded';
     $('current-credit').textContent=entry?`${entry.artist||'Artist unavailable'} · Submitted by ${entry.uploaderName||'Unavailable'} · ${p.source||entry.preferredSource||'source unavailable'}`:'';
     $('current-note').textContent=entry?.note||'No uploader note.';
