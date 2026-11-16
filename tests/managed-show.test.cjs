@@ -180,7 +180,7 @@ test('held entries show a reason, stay disabled, and Up next follows the next pl
 test('every later AP snapshot carries completed IDs after automatic advance without identity or notes',async()=>{
  const f=await fixture();try{const ap=show();ap.mode='ap';ap.autoplay=true;ap.entries[1].repeatPredecessorId='inbox:1';await f.send({action:'enable',show:ap});await f.send({action:'play',showId:ap.id});const token=f.w.CatnapManagedShow.snapshot().generation;f.adapterOptions().onEnded(token);await flush();assert.equal(f.w.CatnapManagedShow.snapshot().current.id,'inbox:2');assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');const observed=f.messages.filter(m=>m.target==='catnap-show-observed');const later=observed.filter(m=>m.playback.current?.id==='inbox:2');assert.ok(later.length>=2);for(const message of later)assert.deepEqual(Array.from(message.playback.completedEntryIds),['inbox:1']);assert.equal(JSON.stringify(observed).includes('PRIVATE HOST NOTE'),false);assert.equal(JSON.stringify(observed).includes('Fixture submitter'),false);assert.equal(f.root().querySelector('.ct-managed-lineup button:nth-of-type(2)').disabled,false);}finally{f.dom.window.close();}
 });
-test('stable row identity wins over stale index and observations preserve actual finish order instead of FIFO',async()=>{
+test('stable row identity wins over stale index while observations retain finish history separately from visible order',async()=>{
  const f=await fixture();try{
   const current=show();await f.send({action:'enable',show:current});
   await f.send({action:'load',entryId:'inbox:2',index:0,showId:current.id});assert.equal(f.w.CatnapManagedShow.snapshot().current.id,'inbox:2');
@@ -188,7 +188,7 @@ test('stable row identity wins over stale index and observations preserve actual
   await f.send({action:'load',entryId:'inbox:1',index:0,showId:current.id});await f.send({action:'play',showId:current.id});f.adapterOptions().onEnded(f.w.CatnapManagedShow.snapshot().generation);await flush();
   const latest=f.messages.filter(m=>m.target==='catnap-show-observed').at(-1);
   assert.deepEqual(Array.from(latest.playback.completedEntryIds),['inbox:2','inbox:1']);
-  assert.deepEqual(Array.from(f.w.CatnapManagedShow.snapshot().queue,e=>e.id),['inbox:2','inbox:1']);
+  assert.deepEqual(Array.from(f.w.CatnapManagedShow.snapshot().queue,e=>e.id),['inbox:1','inbox:2']);
   assert.equal(JSON.stringify(latest).includes('PRIVATE'),false);assert.equal(JSON.stringify(latest).includes('Fixture submitter'),false);
  }finally{f.dom.window.close();}
 });

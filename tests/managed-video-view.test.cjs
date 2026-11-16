@@ -1,4 +1,4 @@
-// Version 0.8.1: exercise the real managed adapter/coordinator/view together.
+// Version 0.8.2: exercise the real managed adapter/coordinator/view together.
 // Synthetic YouTube events only; never contact a provider or use browser fullscreen.
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
@@ -24,7 +24,7 @@ async function fixture(){
  root().getBoundingClientRect=()=>({left:0,top:0,width:1280,height:720});
  const frame=()=>root()?.querySelector('iframe.ct-managed-youtube');
  const event=(data,target=frame())=>w.dispatchEvent(new w.MessageEvent('message',{origin:'https://www.youtube-nocookie.com',source:target.contentWindow,data:JSON.stringify(data)}));
- const load=async()=>{await send({action:'enable',show:show()});await send({action:'load',index:0,showId:'video-show'});frame().contentWindow.postMessage=value=>commands.push(JSON.parse(value));};
+ const load=async(custom=show(),index=0)=>{await send({action:'enable',show:custom});await send({action:'load',index,showId:'video-show'});frame().contentWindow.postMessage=value=>commands.push(JSON.parse(value));};
  const play=async()=>{const pending=send({action:'play',showId:'video-show'});await flush();event({event:'onReady'});await flush();event({event:'onStateChange',info:1});return pending;};
  return {dom,w,send,root,frame,event,load,play,messages,commands,get fullscreen(){return fullscreen;}};
 }
@@ -39,7 +39,7 @@ test('quiet video Load stays in artwork geometry with one paused iframe and a sa
 test('Play fills only the Theatre viewport and view toggles preserve the exact iframe/source and command count',async()=>{
  const f=await fixture();try{await f.load();const frame=f.frame(),parent=frame.parentElement,src=frame.src;await f.play();const root=f.root(),stage=root.querySelector('.ct-managed-media-stage');
   assert.equal(root.classList.contains('ct-managed-window-video'),true);assert.equal(f.w.getComputedStyle(stage).position,'fixed');assert.equal(f.w.getComputedStyle(stage).inset,'0');assert.equal(f.w.getComputedStyle(stage).width,'100%');
-  assert.equal(root.querySelector('.ct-managed-video-controls'),null);assert.equal(root.querySelector('.ct-managed-video-toggle'),null);assert.equal(root.querySelector('.ct-managed-video-close'),null);const restore=root.querySelector('.ct-managed-video-restore');assert.equal(restore.hidden,false);assert.equal(restore.getAttribute('aria-label'),'Restore artwork view');assert.equal(f.w.getComputedStyle(restore).opacity,'0');assert.notEqual(f.w.document.activeElement,restore);
+  assert.equal(root.querySelector('.ct-managed-video-controls'),null);assert.equal(root.querySelector('.ct-managed-video-toggle'),null);assert.equal(root.querySelector('.ct-managed-video-close'),null);const restore=root.querySelector('.ct-managed-video-restore');assert.equal(restore.hidden,false);assert.equal(restore.getAttribute('aria-label'),'Exit full-window video');assert.equal(restore.textContent,'↙ Exit video');assert.equal(f.w.getComputedStyle(restore).opacity,'1');assert.equal(f.w.getComputedStyle(restore).minHeight,'44px');assert.notEqual(f.w.document.activeElement,restore);
   const warning=root.querySelector('.ct-managed-warning');assert.equal(warning.hidden,false);assert.ok(Number(f.w.getComputedStyle(warning).zIndex)>Number(f.w.getComputedStyle(stage).zIndex));
   const toggle=root.querySelector('.ct-managed-video-window'),count=f.commands.length;assert.equal(toggle.closest('.ct-header-actions')!==null,true);assert.equal(toggle.textContent,'Window view');restore.click();assert.equal(root.classList.contains('ct-managed-window-video'),false);assert.equal(restore.hidden,true);assert.equal(f.w.document.activeElement,toggle);assert.equal(root.querySelector('.ct-toggle')!==null,true);assert.equal(root.querySelector('.ct-next')!==null,true);assert.equal(root.querySelector('.ct-close')!==null,true);
   f.event({event:'infoDelivery',info:{playerState:1}});assert.equal(root.classList.contains('ct-managed-window-video'),false,'ordinary progress cannot undo manual restoration');
@@ -89,5 +89,18 @@ test('restoration and managed-show reopening keep controls recoverable without i
   const plays=f.commands.filter(c=>c.func==='playVideo').length;await f.send({action:'disable'});await f.send({action:'enable',show:show()});await f.send({action:'load',entryId:'video',showId:'video-show'});
   assert.equal(f.root().querySelectorAll('.ct-managed-video-window').length,1);assert.equal(f.root().querySelectorAll('.ct-managed-video-restore').length,1);
   assert.equal(f.root().querySelector('.ct-managed-video-restore').hidden,true);assert.equal(f.root().querySelector('.ct-managed-video-controls'),null);assert.equal(f.w.CatnapManagedShow.snapshot().phase,'ready');assert.equal(f.commands.filter(c=>c.func==='playVideo').length,plays);
+ }finally{f.dom.window.close();}
+});
+
+
+test('a paired YouTube third entry has a visible exit before ending and a replayable Played badge afterward',async()=>{
+ const f=await fixture();try{
+  const second='22222222-2222-4222-8222-222222222222',third='33333333-3333-4333-8333-333333333333';
+  const custom=show();custom.entries=[{id:'first',title:'First',preferredSource:'suno',sunoId:id,sunoUrl:'https://suno.com/song/'+id},{id:'second',title:'Second',preferredSource:'suno',sunoId:second,sunoUrl:'https://suno.com/song/'+second},{...custom.entries[0],sunoId:third,sunoUrl:'https://suno.com/song/'+third}];
+  await f.load(custom,2);await f.play();const frame=f.frame(),src=frame.src,parent=frame.parentElement,count=f.commands.length;
+  const exit=f.root().querySelector('.ct-managed-video-restore');assert.equal(exit.hidden,false);assert.equal(f.w.getComputedStyle(exit).opacity,'1');assert.equal(exit.textContent,'↙ Exit video');assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');
+  exit.click();assert.equal(f.root().classList.contains('ct-managed-window-video'),false);assert.equal(f.w.CatnapManagedShow.snapshot().phase,'playing');assert.equal(f.frame(),frame);assert.equal(frame.src,src);assert.equal(frame.parentElement,parent);assert.equal(f.commands.length,count);
+  f.event({event:'onStateChange',info:0});await flush();const row=f.root().querySelector('[data-entry-id="video"]');assert.equal(row.querySelector('.ct-managed-played').textContent,'Played');assert.equal(row.disabled,false,'Played history must not disable deliberate replay');
+  assert.equal(f.messages.filter(message=>message.target==='managed-native'&&message.action==='play').length,0);
  }finally{f.dom.window.close();}
 });

@@ -1,4 +1,4 @@
-/* Catnap Theatre managed-show presentation, version 0.8.1.
+/* Catnap Theatre managed-show presentation, version 0.8.2.
  * Change summary: managed Suno lyrics prepare the matching native details
  * panel; stale and YouTube slots cannot borrow old native lyrics. A second
  * toggle cancels pending playback; reload-safe binding
@@ -6,7 +6,7 @@
  * controls routed through manual/AP coordination, staged artwork and timed
  * warnings. One YouTube stage expands within the Theatre viewport on Play,
  * without a permanent custom control strip or browser fullscreen. A discreet
- * edge restore button appears on hover/focus; ordinary controls return with
+ * always-visible Exit video button restores ordinary controls with
  * the artwork layout. Local held rows
  * stay disabled, repeat releases join the ready tail, and observations retain
  * the actual completion sequence. Row Load resolves stable submission IDs.
@@ -15,7 +15,7 @@
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.8.1';
+  const SCRIPT_VERSION='0.8.2';
   if(globalThis.CatnapManagedShow)return;
   let active=false,show=null,coordinator=null,adapter=null,observedSignature='',queueSignature='',revision=0,timing={elapsed:0,duration:0};
   const state=()=>coordinator?.snapshot()||null;
@@ -31,11 +31,11 @@
 #catnap-theater-root .ct-managed-warning[hidden]{display:none}
 #catnap-theater-root.ct-managed-window-video>.ct-managed-media-stage{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important;z-index:24!important;background:#000}
 #catnap-theater-root.ct-managed-window-video>.ct-header,#catnap-theater-root.ct-managed-window-video>.ct-main,#catnap-theater-root.ct-managed-window-video>.ct-bottom{visibility:hidden}
-/* Keep the embedded player's controls clear. This small edge target remains
-   reachable even when pointer/keyboard focus has entered the cross-origin frame.
-   Do not depend on pointer events or key events crossing that frame boundary. */
-#catnap-theater-root .ct-managed-video-restore{position:fixed;right:4px;top:calc(50% - 22px);z-index:35;width:44px;height:44px;padding:0;border:1px solid #8c7caa;border-radius:9px;background:#10121bec;color:#fff;font:25px/1 system-ui;opacity:0;cursor:pointer}
-#catnap-theater-root .ct-managed-video-restore:hover,#catnap-theater-root .ct-managed-video-restore:focus{opacity:1}
+/* Keep the embedded player's corner controls clear. A visible labeled exit
+   remains reachable while focus is inside the cross-origin frame; recovery
+   never depends on pointer or key events crossing that frame boundary. */
+#catnap-theater-root .ct-managed-video-restore{position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:35;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:44px;min-height:44px;max-width:calc(100vw - 24px);padding:9px 12px;border:1px solid #8c7caa;border-radius:9px;background:#10121bf2;color:#fff;font:600 12px/1.2 system-ui;white-space:nowrap;opacity:1;cursor:pointer}
+#catnap-theater-root .ct-managed-video-restore:hover{border-color:#d1c0ef;background:#252033}
 #catnap-theater-root .ct-managed-video-restore:focus-visible{outline:3px solid #e4b86e;outline-offset:2px}
 #catnap-theater-root .ct-managed-video-restore[hidden],#catnap-theater-root .ct-managed-video-window[hidden]{display:none!important}
 #catnap-theater-root .ct-managed-yt{display:inline-flex;align-items:center;justify-content:center;width:19px;height:13px;margin-left:6px;border-radius:4px;background:#df202c;vertical-align:middle}
@@ -44,7 +44,8 @@
 #catnap-theater-root .ct-managed-status{font-size:11px;color:#c2aad4;max-width:180px;overflow-wrap:anywhere}
 #catnap-theater-root .ct-managed-source{font-size:12px;letter-spacing:.09em;color:#b5dcd5}
 #catnap-theater-root .ct-managed-lineup button{display:block;width:100%;text-align:left;padding:10px 5px;border-bottom:1px solid #51405e55;font-size:13px;overflow-wrap:anywhere}
-#catnap-theater-root .ct-managed-held{display:inline-block;margin-left:6px;padding:1px 5px;border:1px solid #8b739855;border-radius:4px;color:#bea9ce;font:600 10px/1.4 system-ui}
+#catnap-theater-root .ct-managed-held,#catnap-theater-root .ct-managed-played{display:inline-block;margin-left:6px;padding:1px 5px;border:1px solid #8b739855;border-radius:4px;color:#bea9ce;font:600 10px/1.4 system-ui}
+#catnap-theater-root .ct-managed-played{color:#a6c7ba;border-color:#82aa9944}
 #catnap-theater-root .ct-managed-lineup button:disabled{cursor:default;opacity:.6}
 #catnap-theater-root .ct-managed-lineup button[aria-current=true]{color:#f4d59c;background:#c69be513}
 `;document.documentElement.appendChild(element);
@@ -74,6 +75,7 @@
         const icon=document.createElement('span');icon.className='ct-managed-yt';icon.setAttribute('role','img');icon.setAttribute('aria-label','YouTube');icon.title='YouTube source';
         const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');svg.setAttribute('viewBox','0 0 10 10');svg.setAttribute('aria-hidden','true');path.setAttribute('d','M2 1 9 5 2 9Z');svg.append(path);icon.append(svg);button.append(icon);
       }
+      if(CatnapManagedPlayer.wasPlayed(entry)){const badge=document.createElement('span');badge.className='ct-managed-played';badge.textContent='Played';button.append(badge);}
       const held=CatnapManagedPlayer.isHeld(entry);if(held){const badge=document.createElement('span');badge.className='ct-managed-held';badge.textContent=entry.state==='declined'?'Declined':'Held';button.append(badge);}
       button.setAttribute('aria-current',String(index===snapshot.index));button.disabled=held;button.title=held?(entry.effectiveHoldReason||entry.holdReason||'Held · release this entry in Inbox & show'): 'Load · press Play separately';button.onclick=()=>{void command('load',{entryId:entry.id}).catch(displayError);};panel.append(button);});
   }
@@ -103,15 +105,15 @@
       stage.querySelector('.ct-header-actions')?.prepend(windowButton);
     }
     if(!restoreButton){
-      restoreButton=document.createElement('button');restoreButton.type='button';restoreButton.className='ct-managed-video-restore';restoreButton.textContent='↙';
-      restoreButton.setAttribute('aria-label','Restore artwork view');restoreButton.title='Restore artwork view · Esc also works while Theatre controls are focused';
+      restoreButton=document.createElement('button');restoreButton.type='button';restoreButton.className='ct-managed-video-restore';restoreButton.textContent='↙ Exit video';
+      restoreButton.setAttribute('aria-label','Exit full-window video');restoreButton.title='Return to artwork view without stopping the video · Esc also works while Theatre controls are focused';
       restoreButton.onclick=()=>{adapter?.setWindowView?.(false);render();stage.querySelector('.ct-managed-video-window')?.focus();};
       stage.append(restoreButton);
     }
     windowButton.setAttribute('aria-pressed',String(video.expanded));
     restoreButton.hidden=!video.expanded;
-    // No focus transfer on expansion: the recovery control must stay invisible
-    // until deliberately reached, and view changes never command playback.
+    // Keep the labeled exit visible without stealing focus from the player.
+    // View changes never command playback.
     adapter?.refreshVideoView?.();
   }
   function restoreVideoOnEscape(event){
@@ -140,7 +142,7 @@
     else{art.removeAttribute('src');frame.classList.add('ct-no-art');}
     const lyricText=readManagedLyrics(snapshot,native);
     if(stage.dataset.managedLyrics!==String(entry?.id)+String(lyricText)){
-      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · Play fills the Theatre window. Hover the right edge or Tab to Restore artwork view for show controls.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
+      stage.dataset.managedLyrics=String(entry?.id)+String(lyricText);view()?.writeLyrics(lyricText||'',entry?.preferredSource==='youtube'?'YouTube source · Play fills the Theatre window. Use Exit video to return to artwork view and show controls without stopping playback.':entry?'Lyrics appear when Suno loads this song.':'Choose a song from your show controls.');
     }
     select('.ct-up-next-label').textContent=snapshot.autoplay?'UP NEXT · AP AUTOPLAY':'UP NEXT · LOAD MANUALLY';
     select('.ct-up-next-title').textContent=snapshot.queue[snapshot.nextIndex]?.title||(snapshot.queue.some(CatnapManagedPlayer.isHeld)?'No unheld songs remain':'End of show queue');
