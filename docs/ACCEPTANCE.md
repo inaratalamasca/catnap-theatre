@@ -1,6 +1,17 @@
 # Host acceptance checklist
 
-Current preview: 0.7.0 development, November 16, 2026. Run in a separate test profile before replacing a working show extension. Theatre Lite 0.5.0 remains separate and unchanged.
+Current preview: 0.8.0 development, November 16, 2026. Activate between broadcasts in a test profile. Theatre Lite0.5.0 remains unchanged.
+
+## 0.8.0 fair rotation and playlist checks
+
+Isolated verification passes410 maintained tests, including native framing, queue policy, ordered MCP readbacks, manual Decline and GET-only uncertain-result recovery. Fresh Chromium at920px/390px verifies visible held/duplicate labels, release-at-tail, cancel/confirm Decline, manual Release and contained controls. All data is fictional; no real submission/playlist was mutated. Real provider/host checks below remain pending.
+
+- [ ] Real AP: X1/Y1/X2/Z1/X3 includes only X1/Y1/Z1 in the managed playlist initially. Finishing X1 appends X2 at the current tail, and X3 waits for X2's completion.
+- [ ] Manual Hold/Release, same-uploader highlighting, refresh/reopen and late arrivals preserve the intended order and sticky overrides. Skip/load/interruption does not count as completion.
+- [ ] Explicit sync/AP two-minute checks update managed order and held membership, verify saved order and leave current audio unchanged. Foreign destination tracks block destructive changes; pending/deferred/error status remains visible.
+- [ ] New companion supports removal with existing OAuth scopes; an old helper fails clearly before unsupported removal while read/add still work.
+- [ ] Manual Decline shows the exact entry and reason, sends once, verifies exact Declined status and stays disabled for loaded/completed entries. Ambiguous results require checking the uploader; no automatic Decline or Accepted-as-Played changes.
+- [ ] Confirm real mixed-source projection limits: YouTube-only entries remain Theatre-only and duplicate Suno IDs appear once in Suno membership.
 
 Ina confirmed Dev1 activation, matching status indicators and working managed lyrics in **0.6.10** on November 16. That result does not mark the following new 0.7.0 behavior as live accepted.
 
@@ -12,7 +23,7 @@ Ina confirmed Dev1 activation, matching status indicators and working managed ly
 - [ ] Real host: leave repeat-uploader holding off for ordinary FIFO; enable it and confirm the later song releases only after its predecessor finishes.
 - [ ] Real host: interrupt/skip the predecessor, explicitly release two later parts, and confirm those multipart overrides survive refresh while the global rule stays on.
 - [ ] Real host: held rows stay visible, Load next/AP use unheld entries, an invalid source cannot be released, and loaded/completed anchors cannot move or be held.
-- [ ] Confirm Suno playlist order/membership remains independent; the Inbox-only creator still has FIFO intake and no local order/hold controls.
+- [ ] Historical0.7.0 behavior: playlist order/membership was independent.0.8.0 supersedes this for explicitly managed playlists; the Inbox-only creator still retains simple FIFO additions.
 
 The historical 0.5.0 checklist below was recorded on November 12 while installed 0.4.0 remained untouched. It does not describe the current installed version.
 

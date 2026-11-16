@@ -1,4 +1,4 @@
-# Catnap Suno companion · 0.6.0 development
+# Catnap Suno companion · bundled with0.8.0 (wire protocol0.6.0)
 
 This independently implemented companion carries a narrow set of Suno MCP
 playlist requests from Catnap Inbox or Theatre's shared inbox engine. It is not an LLM, background service or web
@@ -60,17 +60,14 @@ accepts only MCP initialization/discovery plus these tools:
 - `playlists-list-clips`
 - `playlists-create`
 - `playlists-add-clips`
+- `playlists-remove-clips` (0.8.0 managed-order companion update)
 
-Requests and responses are bounded. It has no delete, audio-generation, arbitrary
+Requests and responses are bounded. Removing playlist membership does not delete a library song. It has no library-delete, audio-generation, arbitrary
 URL, shell-command or cookie access. OAuth exchange runs separately in the
 extension against Suno's published authorization server. **Disconnect Suno**
 forgets local session credentials; it does not claim to revoke server-side grants.
 
-Playlist writes are append-only reconciliation with membership readback. They
-are never reported complete merely because a write request was sent. Empty or
-short pages are followed using `next_cursor`; existing songs are not added
-again. Readback confirms membership, not an independent guarantee of provider
-append-order semantics. Verify the saved playlist order before a real show.
+The Inbox-only creator keeps append-only reconciliation. Combined Theatre0.8.0 can reconcile an explicitly managed playlist using remove-clips followed by tail additions, reading back each mutation and the final order. Only the managed upcoming suffix may be rebuilt; unrelated tracks block destructive changes, and current playback is protected. Empty/short pages still follow `next_cursor`; uncertain writes are never blindly retried. Install the companion bundled with0.8.0 with the same extension ID to enable removal/reordering. It uses the existing library-write scope and native protocol; a fresh broader OAuth grant is not required. An older helper remains usable for reads/additions and reports an update requirement before an unsupported removal.
 
 ## Windows host setup
 

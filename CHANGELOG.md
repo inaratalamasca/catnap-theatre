@@ -1,5 +1,14 @@
 # Changes
 
+## 0.8.0 preview — fair rotation and managed playlist order
+
+- Keep held submissions out of the managed Suno playlist. On confirmed predecessor completion, release only that uploader's next entry at the current ready tail; subsequent entries remain held. Starting, skipping and replaying do not release extra submissions.
+- Preserve actual played order, host moves and sticky manual Release across inbox refreshes. Held rows and repeated uploaders have distinct labels/colour.
+- Reconcile an explicitly managed playlist to played/current/ready order using supported MCP removal and tail additions with readback. Protect current audio, unrelated tracks and incomplete writes. New Catnap playlists are owned automatically; existing destinations require an explicit management choice.
+- Add host-confirmed Decline with the reason “Only one song at a time, please.” Verify the exact submission in Declined before excluding it locally. No automatic Decline, Accepted-as-Played changes or MP3 access.
+- Add the native companion's fixed remove-clips allowlist entry using existing library-write authorization. Update the companion when removal/reordering is required; ordinary reads/additions remain compatible with an older helper.
+- Preserve Lite0.5.0, installed/current folders and the active0.6.10 broadcast. Real0.8.0 provider/playback/Decline acceptance remains separate from fixture checks.
+
 ## 0.7.0 preview — independent Radio and AIU player publishing
 
 - Added an independently packaged Radio broadcaster: no Theatre, Inbox, Suno OAuth or native helper. Captures the explicitly selected Suno or AIU party-player tab using the existing stereo Opus/WHIP path.
