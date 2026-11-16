@@ -82,13 +82,13 @@ test('presentation allowlist reuses banners and lyric controls while excluding p
 });
 
 test('presentation worker reuses a window per source and never changes broadcast binding',async()=>{
-  const stored={broadcastSourceTabId:77},created=[],forwarded=[],listeners=[],removed=[];
+  const stored={broadcastSourceTabId:77},created=[],forwarded=[],listeners=[],removed=[],radioOpened=[];
   const windows=new Map();let counter=0;
   const chrome={runtime:{id:'test',getURL:file=>'chrome-extension://test/'+file,onMessage:{addListener:fn=>listeners.push(fn)}},
     storage:{session:{get:async key=>({[key]:structuredClone(stored[key])}),set:async value=>Object.assign(stored,structuredClone(value))}},
     windows:{onRemoved:{addListener:fn=>removed.push(fn)},create:async value=>{const window={id:++counter,...value};created.push(window);windows.set(window.id,window);return window;},update:async id=>{if(!windows.has(id))throw Error('Closed');return windows.get(id);}},
     tabs:{get:async id=>({id,url:'https://suno.com/playlist/fixture'}),sendMessage:async(id,message)=>{forwarded.push({id,message});return {open:true};}}};
-  vm.runInNewContext(fs.readFileSync(path.join(extension,'presentation-control-worker.js'),'utf8'),{chrome,crypto:{randomUUID:()=>String(counter+1)},console});
+  vm.runInNewContext(fs.readFileSync(path.join(extension,'presentation-control-worker.js'),'utf8'),{chrome,crypto:{randomUUID:()=>String(counter+1)},console,openPanel:async tab=>radioOpened.push(tab.id)});
   const send=(message,sender)=>new Promise(resolve=>listeners[0]({target:'presentation-worker',...message},{id:'test',...sender},resolve));
   await send({action:'open'},{tab:{id:10},url:'https://suno.com/playlist/a'});
   await send({action:'open'},{tab:{id:10},url:'https://suno.com/playlist/a'});assert.equal(created.length,1);
@@ -98,6 +98,8 @@ test('presentation worker reuses a window per source and never changes broadcast
   const rejected=await send({action:'button',name:'clearOverlay',control:nonce},{url:'https://suno.com/playlist/b',tab:{id:20}});
   assert.match(rejected.error,/Untrusted/);assert.equal(forwarded.length,1);
   assert.equal(stored.broadcastSourceTabId,77);assert.equal(created[0].type,'popup');
+  const opened=await send({action:'open-radio',control:nonce},{url:first});assert.equal(opened.opened,true);assert.deepEqual(radioOpened,[10]);assert.equal(forwarded.length,1,'Radio opens controls rather than forwarding a capture command');
+  assert.match((await send({action:'open-radio',control:nonce},{url:'https://suno.com/',tab:{id:20}})).error,/Untrusted/);assert.equal(radioOpened.length,1);
 });
 
 test('queued popout actions preserve rapid font increments and banner-before-show order',async()=>{

@@ -1,10 +1,12 @@
-/* Catnap host-only Inbox & show window, version 0.6.10.
+/* Catnap host-only Inbox & show window, version 0.7.0.
  * Change summary: local readiness, verified playback-mode display, prominent
  * inbox totals and ordered setup actions. Playback never queues extra starts.
  */
 (() => {
   'use strict';
-  const SCRIPT_VERSION='0.6.10', $=id=>document.getElementById(id);
+  const SCRIPT_VERSION='0.7.0', $=id=>document.getElementById(id);
+  const buildVersion=chrome.runtime.getManifest?.()?.version||SCRIPT_VERSION;
+  document.querySelector('header .eyebrow').textContent='CATNAP THEATRE · DEVELOPMENT '+buildVersion;
   let snapshot=null,inboxes={lp:[],ap:[]},playlists=[],busy=false,queueSignature='',sunoMessage='',playerChoice;
   let actionTail=Promise.resolve(),waiting=0,active=0,refreshRevision=0,failureRevision=0,lastFailure='';
   if(globalThis.CatnapPackage?.inboxOnly){document.title='Catnap Inbox · playlist creator';document.querySelector('h1').textContent='Inbox → playlist';document.querySelector('header > p:last-child').textContent='Read Pending submissions and keep your Suno playlist up to date.';$('theatre-playback').hidden=true;$('current-card').hidden=true;$('mode').querySelector('[value=lp]').textContent='Listening party';$('queue-help').textContent='FIFO submission list. This creator updates playlists; Suno controls playback.';}
@@ -96,7 +98,7 @@
         const li=document.createElement('li');li.setAttribute('aria-current',String(e.id===entry?.id));
         const title=document.createElement('strong');title.textContent=`${index+1}. ${e.title||'Untitled submission'}`;
         const info=document.createElement('small');info.textContent=`${(e.preferredSource||'held').toUpperCase()} · ${e.uploaderName||'Uploader unavailable'}${e.disclaimer==='yes'?' · ⚠ Disclaimer':''}${e.holdReason?' · '+e.holdReason:''}`;
-        const button=document.createElement('button');button.type='button';button.textContent='Load';button.hidden=globalThis.CatnapPackage?.inboxOnly===true;button.disabled=e.state==='held'||!Number($('player-tab').value);button.onclick=()=>action(()=>send('load',{index,tabId:Number($('player-tab').value)}), 'Loaded quietly. Press Play when ready.');
+        const button=document.createElement('button');button.type='button';button.textContent='Load';button.hidden=globalThis.CatnapPackage?.inboxOnly===true;button.disabled=e.state==='held'||!Number($('player-tab').value);button.onclick=()=>action(()=>send('load',{index,tabId:Number($('player-tab').value)}), 'Loaded. Press Play when ready.');
         li.append(title,info,button);$('queue').append(li);
       });
     }
@@ -151,7 +153,7 @@
   $('warning-seconds').onchange=()=>{const warningSeconds=Number($('warning-seconds').value);return setup(()=>configure({warningSeconds}),'Warning duration saved.','Saving warning duration…');};
   $('watch').onchange=()=>{const enabled=$('watch').checked;return setup(()=>send('watch',{enabled}),'Inbox update setting saved.','Updating AP inbox settings…');};
   $('new-show').onclick=()=>action(async()=>{await send('new-show');inboxes={lp:[],ap:[]};queueSignature='';},'New local show. Existing Suno playlists and uploader submissions are unchanged.');
-  for(const id of ['previous','next','play','repeat-warning'])$(id).onclick=()=>action(()=>send(id,{tabId:Number($('player-tab').value)}),['next','previous'].includes(id)?'Loaded quietly. Press Play when ready.':undefined);
+  for(const id of ['previous','next','play','repeat-warning'])$(id).onclick=()=>action(()=>send(id,{tabId:Number($('player-tab').value)}),['next','previous'].includes(id)?'Loaded. Press Play when ready.':undefined);
   $('pause').onclick=()=>action(()=>send('pause',{tabId:Number($('player-tab').value)}),undefined,true);
   $('reload-lyrics').onclick=()=>action(()=>send('reload-lyrics'),'Requested lyrics for the loaded Suno song.');
   $('connect-suno').onclick=()=>{

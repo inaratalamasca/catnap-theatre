@@ -1,5 +1,4 @@
-/* Catnap development package configuration, version 0.6.10.
- * Change summary: shared controls default to the combined Theatre package.
- * The Inbox-only builder generates a separate copy with inboxOnly:true.
+/* Catnap package configuration, version 0.7.0.
+ * Builders generate separate Inbox-only and Radio-only copies.
  */
-globalThis.CatnapPackage = Object.freeze({version:'0.6.10',inboxOnly:false});
+globalThis.CatnapPackage = Object.freeze({version:'0.7.0',inboxOnly:false,radioOnly:false});

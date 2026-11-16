@@ -1,3 +1,7 @@
+# Broadcast development history
+
+For the current separate Radio package and Suno/AIU player instructions, read [Radio setup](RADIO.md). The dated pilot evidence below describes earlier builds and does not certify the new 0.7.0 AIU capture path.
+
 # Music-only broadcast and controls pilot — 0.5.0 development build
 
 Prepared November 12, 2026. This is a test build, not a production acceptance claim.

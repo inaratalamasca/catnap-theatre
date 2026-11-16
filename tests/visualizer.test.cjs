@@ -82,7 +82,7 @@ test('native selection ignores Theatre media and ambiguous simultaneous audio',(
 test('worker accepts only exact offscreen spectra and forwards only to the live pinned source',async()=>{
  let handler,clock=2000;const forwarded=[],state={broadcastSourceTabId:99,broadcastToken:'private',broadcastMetadataSession:{sourceTabId:7,live:true,endpoint:'https://relay.example/live/whip'}};
  const chrome={runtime:{id:'ours',getURL:p=>'chrome-extension://ours/'+p,onMessage:{addListener:f=>{handler=f;}}},storage:{session:{get:async key=>({[key]:state[key]})}},action:{onClicked:{addListener(){}}},tabs:{sendMessage:async(id,payload,options)=>{forwarded.push({id,payload,options});}}};
- const sandbox={chrome,importScripts(){},CatnapVisualizer:V,Date:{now:()=>clock}};
+ const sandbox={chrome,importScripts(){},CatnapBroadcastSource:require('../extension/broadcast-source.js'),CatnapVisualizer:V,Date:{now:()=>clock}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/broadcast-worker.js'),'utf8'),sandbox);
  const send=async(message,sender)=>{handler(message,sender,()=>{});await new Promise(r=>setImmediate(r));};
  const message={target:'broadcast-visualizer',bands:Array(48).fill(.5)},sender={id:'ours',url:'chrome-extension://ours/broadcast-offscreen.html'};

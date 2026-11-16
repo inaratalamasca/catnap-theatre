@@ -1,5 +1,15 @@
 # Changes
 
+## 0.7.0 preview — independent Radio and AIU player publishing
+
+- Added an independently packaged Radio broadcaster: no Theatre, Inbox, Suno OAuth or native helper. Captures the explicitly selected Suno or AIU party-player tab using the existing stereo Opus/WHIP path.
+- Added the AIU party source to combined Theatre broadcasting while keeping Theatre/managed playback scripts restricted to Suno. An upper-right Radio/On Air control opens broadcasting options on AIU.
+- Source-bound On Air indicators, green AIU Theatre logo and white/grey No Radio state follow actual publisher connection status. A radio-only-use preference hides the Theatre launcher when off-air. Toolbar LIVE/error badges remain.
+- Presentation controls identify Inbox versus Suno playlist mode and show green success separately from closed/disconnected/error status.
+- Managed YouTube Play expands inside the browser's Theatre window with restore controls, without requesting monitor fullscreen; quiet Load remains held. YouTube queue entries use a small red video badge.
+- Lite 0.5.0 and its existing downloads remain unchanged. Current 0.6.10 Dev1 activation/status/lyrics confirmation remains historical evidence, not live acceptance of these new changes.
+
+
 ## 0.6.10 host verification — November 16, 2026
 
 - Ina confirmed loading 0.6.10 in Dev1: the status indicators match the setup and lyrics work in Inbox mode.

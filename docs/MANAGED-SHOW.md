@@ -1,5 +1,8 @@
 # Inbox playlists and managed shows · 0.6.10 development
 
+**0.7.0 presentation update:** YouTube expands to the Theatre's browser window on Play. The small controls let you restore Artwork view, pause or load the next song; no monitor fullscreen is requested. Quiet Load still does not start audio. Red video badges identify YouTube queue entries. Status text now says Loaded. The single Theatre gear opens Presentation controls, with Radio and Inbox entries at the top and a green, mode-labeled ready status when connected without a reported error. These additions need a real host rehearsal; the 0.6.10 Dev1 lyrics/status confirmation remains separately recorded.
+
+
 This is the optional AIU Inbox development edition. Theatre Lite 0.5.0 remains a separate, unchanged current presentation release for hosts who do not need AIU inboxes. Lite does not gain these controls or require a connector. The submitted 0.5.0 Store beta is also separate. It has two packages built from the same inbox and playlist engine:
 
 - **Catnap Theatre + Inbox:** Theatre, LP/AP inbox reader, Suno playlist creator/synchronizer, host notes and disclaimer flags, mixed Suno/YouTube show order, manual Load/Play controls and clipboard announcements.

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Catnap Theatre + Inbox — Development",
-  "version": "0.6.10",
-  "description": "Development theatre with optional AIU inbox playlists, mixed Suno/YouTube shows, manual advance and content warnings.",
+  "version": "0.7.0",
+  "description": "Suno theatre, optional AIU inbox shows, manual advance and music-only radio broadcasting from Suno or the AIU player.",
   "permissions": [
     "storage",
     "activeTab",
@@ -48,6 +48,20 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "https://suno.com/*",
+        "https://www.suno.com/*",
+        "https://party.aiu.fm/party",
+        "https://party.aiu.fm/party/*"
+      ],
+      "js": [
+        "broadcast-source.js",
+        "radio-tab.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
@@ -74,7 +88,7 @@
     "service_worker": "broadcast-worker.js"
   },
   "action": {
-    "default_title": "Catnap Theatre — broadcast and inbox controls",
+    "default_title": "Catnap Theatre — radio and inbox controls",
     "default_icon": {
       "16": "assets/icons/theatre-16.png",
       "32": "assets/icons/theatre-32.png",

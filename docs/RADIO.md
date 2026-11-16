@@ -1,0 +1,82 @@
+# Catnap Radio — 0.7.0 preview
+
+Broadcast the music playing in one desktop Chrome/Brave tab to a compatible
+Catnap audio relay. Use any Suno page, or `https://party.aiu.fm/party`.
+Theatre does not have to be open. No microphone, recording or LLM is involved.
+
+## Choose a package
+
+- **Radio:** just broadcasting, with a teal radio-tower icon. No Inbox, Suno
+  sign-in helper or Theatre installation is needed. Works alongside unchanged
+  Theatre Lite 0.5.0 or the separate Inbox creator.
+- **Theatre + Inbox:** the same broadcaster is built in, alongside the optional
+  presentation and managed-show controls.
+- **Inbox creator:** reads Pending submissions and creates/updates a Suno
+  playlist. It has no radio capture; use the separate Radio extension alongside
+  it when needed.
+
+Use one Catnap publisher for the show. Running two publishers does not mix
+their audio; a relay/capture conflict can reject the second one. Existing
+installed editions are not automatically replaced by these preview folders.
+
+## Start broadcasting
+
+1. Load the unpacked Radio folder in a desktop Chrome/Brave test profile and pin
+   its teal icon. Linux, Windows and macOS use the same extension; Radio needs no
+   native helper. Switch/install extensions between shows.
+2. Open Suno or the AIU party player and start your music there normally.
+3. **Click the pinned Catnap icon while that source tab is selected.** This
+   selects the source and gives Chrome its required capture invocation. The page
+   Radio button opens controls but may still require this toolbar click.
+4. In the control window, check the selected source, enter the relay's WHIP
+   address and your private publish token, then choose **Start music broadcast**.
+   Grant access to that relay when asked. The token is not a listener link.
+5. Wait for **Live** and the green **On Air** dot. Opening the controls, granting
+   permission or seeing a starting state does not mean the broadcast is live.
+6. Listeners open the relay's listener page. For the Catnap pilot, that is
+   `https://listen.catnapradio.com/`. Stop broadcasting with the control window's
+   **Stop** button. Closing that window keeps the broadcast running.
+
+Radio captures audio from the selected source tab only, including embedded
+media playing within it. It does not combine other tabs, Discord voices or your
+microphone. Keep the source tab open. Toolbar selection in another tab does
+not retarget an existing broadcast; Stop first, then select/start the new source.
+The host's existing local audio monitor and stereo Opus 256 kbps target remain.
+
+## Small indicators
+
+The AIU player's radio entry is in its upper-right area. Suno has a compact
+entry too. The green On Air dot means **this tab** is the live capture source.
+Another Suno tab does not inherit it. The toolbar retains LIVE/error badges.
+
+In Theatre, the AIU logo turns green with small **On Air** text while that tab
+broadcasts. Otherwise it is white with grey **No Radio** text. The combined
+broadcast panel offers **Hide the Theatre button** for radio-only use; the
+compact On Air entry remains available while live. This preference does not
+stop audio or close an already open Theatre.
+
+The Presentation window's status box identifies Inbox or Suno playlist mode.
+Green describes a ready presentation connection with no current reported error;
+it is separate from the radio On Air state.
+
+## Metadata and limits
+
+On Suno, the existing public metadata reader can send current song, artist,
+allowlisted artwork and visible upcoming rows, even with Theatre closed. AIU
+player capture currently sends audio only: it clears any previous public song
+details instead of inventing a title or upcoming list. A signed-in AIU host
+session and playable media remain the host's responsibility.
+
+The publish token stays in extension-session storage, never in the source
+page or a listener link. Page indicators receive only a small status projection.
+Other hosts need their own authorized relay/token. This download does not
+grant access to Catnap's publisher key, create a server or change the player
+website. See [privacy](RELEASE-AND-PRIVACY.md) for the data flow.
+
+Automated fixtures exercise source restrictions, package independence, status
+ownership and UI changes. A fresh real AIU/Suno publish, audible listener test,
+Discord coexistence and platform-specific browser setup remain live rehearsal
+checks. The successful 0.6.10 Dev1 statuses/lyrics report does not establish these
+new features.
+
+Implementation reference: [Chrome tab capture](https://developer.chrome.com/docs/extensions/reference/api/tabCapture).

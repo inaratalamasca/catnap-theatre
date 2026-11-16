@@ -197,7 +197,7 @@ test('queue Load, Load next and Load previous never send Play',async t=>{
   assert.equal(f.element('current-warning').dataset.warning,'unknown');
   await f.click('next');await f.click('previous');
   assert.equal(f.messages.some(message=>message.action==='play'),false);
-  assert.match(f.element('status').textContent,/Loaded quietly/);
+  assert.match(f.element('status').textContent,/Loaded\. Press Play/);
 });
 
 test('copy now playing uses prepared active-source text and does not send chat or notes',async t=>{

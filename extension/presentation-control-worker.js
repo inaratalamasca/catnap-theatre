@@ -1,13 +1,14 @@
 /* Catnap presentation controls, version 0.5.0.
  * Reusable windows stay pinned to their originating Suno tab. This module has
- * no broadcast, navigation, audio-capture or playback commands.
+ * no audio-capture or playback commands. The source-bound Radio entry opens
+ * controls only; explicit publisher Start and the toolbar capture grant remain.
  */
 (() => {
   'use strict';
   const PANEL = chrome.runtime.getURL('presentation-panel.html');
   const KEY = 'presentationControlWindows';
   const SUNO = /^https:\/\/(?:www\.)?suno\.com\//;
-  const ACTIONS = new Set(['state','set-settings','field','button','preset','file-begin','file-chunk','file-finish','file-cancel']);
+  const ACTIONS = new Set(['state','set-settings','field','button','preset','file-begin','file-chunk','file-finish','file-cancel','open-radio']);
   const opening = new Map();
   let mutations = Promise.resolve();
   function mutate(update) {
@@ -61,6 +62,10 @@
       if (!binding || !Number.isInteger(binding.tabId)) throw Error('This control window is no longer linked. Reopen it from Theatre.');
       const tab = await chrome.tabs.get(binding.tabId);
       if (tab.url && !SUNO.test(tab.url)) throw Error('The linked Suno tab has changed. Reopen controls from Theatre.');
+      if(message.action==='open-radio'){
+        if(!SUNO.test(tab.url||''))throw Error('The linked Suno tab is unavailable. Reopen controls from Theatre.');
+        await openPanel(tab);return {opened:true};
+      }
       const command = {...message,target:'presentation-tab'};
       delete command.control;
       return chrome.tabs.sendMessage(binding.tabId,command);
